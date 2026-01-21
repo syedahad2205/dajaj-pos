@@ -11,6 +11,8 @@ import GrillButtonWithStepper from '@/components/GrillButtonWithStepper';
 import SimpleStepperButton from '@/components/SimpleStepperButton';
 import ShawarmaAddonsModal from '@/components/ShawarmaAddonsModal';
 
+type VariantKey = 'Roll' | 'Plate' | '';
+
 interface CartItem extends BillItem {
   itemId: string;
   variant: string;
@@ -84,7 +86,10 @@ export default function POSPage() {
     const addonPrices = addons.map(addonId => {
       const addon = addonsData.find(a => a.id === addonId);
       if (!addon) return { name: '', price: 0 };
-      const addonPrice = addon.price[variantKey] || addon.price[''] || 0;
+      const addonPrice =
+        addon.price[variantKey as VariantKey] ??
+        addon.price[''] ??
+        0;
       return {
         name: addon.name,
         price: addonPrice
