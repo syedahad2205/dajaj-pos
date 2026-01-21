@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { PDFDownloadLink, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { type Bill } from '@/lib/firestore';
 import logoImage from '@/public/logo.png';
@@ -240,9 +241,9 @@ export default function BillPDF({ bill }: BillPDFProps) {
       fileName={`${bill.billNo}.pdf`}
       className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium inline-block"
     >
-      {({ blob, url, loading, error }) =>
-        loading ? 'Generating PDF...' : 'Download PDF'
-      }
+      {(({ loading }: { loading: boolean }) => (
+        <span>{loading ? 'Generating PDF...' : 'Download PDF'}</span>
+      )) as any}
     </PDFDownloadLink>
   );
 }

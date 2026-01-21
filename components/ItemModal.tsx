@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { menuData, addonsData, type MenuItem } from '@/lib/menu';
 
+type VariantKey = 'Roll' | 'Plate' | '';
+
 interface ItemModalProps {
   item: MenuItem;
   onClose: () => void;
@@ -14,10 +16,10 @@ export default function ItemModal({ item, onClose, onAdd }: ItemModalProps) {
   const [quantity, setQuantity] = useState(1);
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
 
-  const variants = Object.keys(item.variants);
+  const variants = Object.keys(item.variants) as VariantKey[];
   const applicableAddons = addonsData.filter(addon => {
     // Check if addon has prices for any variant of this item
-    const itemVariants = Object.keys(item.variants);
+    const itemVariants = Object.keys(item.variants) as VariantKey[];
     return itemVariants.some(v => addon.price[v] !== undefined) || 
            addon.price[''] !== undefined;
   });
@@ -28,7 +30,7 @@ export default function ItemModal({ item, onClose, onAdd }: ItemModalProps) {
     setSelectedAddons(prev => prev.filter(addonId => {
       const addon = addonsData.find(a => a.id === addonId);
       if (!addon) return false;
-      return addon.price[variant] !== undefined || addon.price[''] !== undefined;
+      return addon.price[variant as VariantKey] !== undefined || addon.price[''] !== undefined;
     }));
   };
 
@@ -43,10 +45,10 @@ export default function ItemModal({ item, onClose, onAdd }: ItemModalProps) {
   const getAddonPrice = (addonId: string): number => {
     const addon = addonsData.find(a => a.id === addonId);
     if (!addon) return 0;
-    return addon.price[selectedVariant] || addon.price[''] || 0;
+    return addon.price[selectedVariant as VariantKey] ?? addon.price[''] ?? 0;
   };
 
-  const basePrice = selectedVariant ? item.variants[selectedVariant] : 0;
+  const basePrice = selectedVariant ? item.variants[selectedVariant] ?? 0 : 0;
   const addonTotal = selectedAddons.reduce((sum, id) => sum + getAddonPrice(id), 0);
   const total = (basePrice + addonTotal) * quantity;
 
@@ -88,7 +90,7 @@ export default function ItemModal({ item, onClose, onAdd }: ItemModalProps) {
                     className="text-blue-600"
                   />
                   <span className="text-sm">
-                    {variant || 'Standard'}: ₹{item.variants[variant]}
+                    {variant || 'Standard'}: ₹{item.variants[variant] ?? 0}
                   </span>
                 </label>
               ))}
@@ -114,7 +116,7 @@ export default function ItemModal({ item, onClose, onAdd }: ItemModalProps) {
                 const price = getAddonPrice(addon.id);
                 const isSelected = selectedAddons.includes(addon.id);
                 const canSelect = selectedVariant 
-                  ? (addon.price[selectedVariant] !== undefined || addon.price[''] !== undefined)
+                  ? (addon.price[selectedVariant as VariantKey] !== undefined || addon.price[''] !== undefined)
                   : addon.price[''] !== undefined;
 
                 if (!canSelect) return null;

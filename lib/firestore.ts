@@ -71,13 +71,14 @@ async function generatePublicToken(): Promise<string> {
   // Generate token and check for collisions
   while (exists && attempts < maxAttempts) {
     // Try to use crypto.randomUUID() first (browser and Node.js 19+)
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-      token = crypto.randomUUID();
+    const webCrypto = globalThis.crypto;
+    if (webCrypto && typeof webCrypto.randomUUID === 'function') {
+      token = webCrypto.randomUUID();
     } else {
       // Fallback: Generate 32 hex characters (128 bits) using crypto.getRandomValues
       const array = new Uint8Array(16);
-      if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
-        crypto.getRandomValues(array);
+      if (webCrypto && typeof webCrypto.getRandomValues === 'function') {
+        webCrypto.getRandomValues(array);
         token = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
       } else {
         // Final fallback for Node.js environments without Web Crypto API
