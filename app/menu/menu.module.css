@@ -1,0 +1,37 @@
+.menuRoot {
+  font-family: "Charter", "Bitstream Charter", "Sitka Text", "Cambria", serif;
+}
+
+.displayTitle {
+  font-family: "Impact", "Haettenschweiler", "Arial Narrow Bold", sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  transform: skewX(-4deg);
+}
+
+.sectionTitle {
+  font-family: "Impact", "Haettenschweiler", "Arial Narrow Bold", sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  transform: skewX(-4deg);
+}
+
+.bodyText {
+  font-family: "Charter", "Bitstream Charter", "Sitka Text", "Cambria", serif;
+}
+
+.italicText {
+  font-family: "Charter", "Bitstream Charter", "Sitka Text", "Cambria", serif;
+  font-style: italic;
+}
+
+.numberText {
+  font-family: "Charter-Bold", "Charter Bold", "Charter", "Bitstream Charter", serif;
+  font-weight: 700;
+}
+
+.metaHeaderText {
+  font-family: "Charter-Bold", "Charter Bold", "Charter", "Bitstream Charter", serif;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+}
