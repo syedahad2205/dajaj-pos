@@ -1,19 +1,28 @@
+@font-face {
+  font-family: "GagalinWeb";
+  src:
+    local("Gagalin-Regular"),
+    local("Gagalin"),
+    url("/fonts/Gagalin-Regular.otf") format("opentype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 .menuRoot {
   font-family: "Charter", "Bitstream Charter", "Sitka Text", "Cambria", serif;
 }
 
 .displayTitle {
-  font-family: "Impact", "Haettenschweiler", "Arial Narrow Bold", sans-serif;
+  font-family: "GagalinWeb", "Gagalin-Regular", "Gagalin", "Impact", "Haettenschweiler", "Arial Narrow Bold", sans-serif;
   font-weight: 400;
   letter-spacing: 0.04em;
-  transform: skewX(-4deg);
 }
 
 .sectionTitle {
-  font-family: "Impact", "Haettenschweiler", "Arial Narrow Bold", sans-serif;
+  font-family: "GagalinWeb", "Gagalin-Regular", "Gagalin", "Impact", "Haettenschweiler", "Arial Narrow Bold", sans-serif;
   font-weight: 400;
   letter-spacing: 0.05em;
-  transform: skewX(-4deg);
 }
 
 .bodyText {
