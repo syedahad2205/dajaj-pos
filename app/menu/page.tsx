@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { displayMenu, type MenuPriceRow, type MenuSinglePriceRow } from "@/lib/display-menu";
 import styles from "./menu.module.css";
+import MenuPageTracker from "@/components/MenuPageTracker";
 
 const COLORS = {
   page: "#e7dbc4",
@@ -88,6 +89,7 @@ export default function MenuPage() {
       className={`min-h-screen px-4 py-6 md:px-8 md:py-8 ${styles.menuRoot}`}
       style={{ backgroundColor: COLORS.page, color: COLORS.text }}
     >
+      <MenuPageTracker />
       <div className="mx-auto max-w-7xl">
         <div className="mb-4 rounded-md p-6 text-center" style={{ backgroundColor: COLORS.panel }}>
           <Image src="/logo.png" alt="Dajaj logo" width={100} height={100} className="mx-auto mb-3 h-auto w-auto" />

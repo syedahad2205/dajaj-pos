@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import FirebaseAnalytics from "@/components/FirebaseAnalytics";
+import UTMTracker from "@/components/UTMTracker";
 
 export const metadata: Metadata = {
-  title: "DAJAJ POS System",
-  description: "Point of Sale System for DAJAJ Restaurant",
+  title: "Dajaj",
+  description: "Dajaj Restaurant",
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({
@@ -13,8 +20,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <FirebaseAnalytics />
+        <UTMTracker />
+        {children}
+      </body>
     </html>
   );
 }
-

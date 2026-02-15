@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import styles from "./menu/menu.module.css";
+import LocationLink from "@/components/LocationLink";
 
 const COLORS = {
   page: "#e7dbc4",
@@ -26,15 +27,13 @@ export default function Home() {
           </p>
 
           <div className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-2">
-            <Link
+            <LocationLink
               href={MAPS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
               className={`block rounded-md px-6 py-8 text-2xl uppercase transition hover:opacity-95 ${styles.sectionTitle}`}
               style={{ backgroundColor: COLORS.titleBar, color: COLORS.titleText }}
             >
               Google Maps Location
-            </Link>
+            </LocationLink>
             <Link
               href="/menu"
               className={`block rounded-md px-6 py-8 text-2xl uppercase transition hover:opacity-95 ${styles.sectionTitle}`}
