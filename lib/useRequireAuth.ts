@@ -1,0 +1,63 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { hasAdminBypassSession } from "@/lib/devAuth";
+import { auth } from "@/lib/firebase";
+import { getAdminProfile } from "@/services/adminService";
+import type { UserRole } from "@/lib/firebase";
+
+export function useRequireAuth(requiredRole?: UserRole) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [authenticated, setAuthenticated] = useState(false);
+  const [role, setRole] = useState<UserRole | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (requiredRole === "admin" && hasAdminBypassSession()) {
+      setAuthenticated(true);
+      setRole("admin");
+      setLoading(false);
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setAuthenticated(false);
+        setRole(null);
+        const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
+        router.push(`${requiredRole === "admin" ? "/admin/login" : "/login"}${next}`);
+        setLoading(false);
+        return;
+      }
+
+      const isAdminRequest = requiredRole === "admin";
+      const adminProfile = isAdminRequest ? await getAdminProfile(user.uid) : null;
+      const nextRole = isAdminRequest ? (adminProfile ? "admin" : null) : null;
+
+      if (!nextRole) {
+        setAuthenticated(false);
+        setRole(null);
+        await signOut(auth);
+        router.push(isAdminRequest ? "/admin/login" : "/login");
+        setLoading(false);
+        return;
+      }
+
+      setAuthenticated(true);
+      setRole(nextRole);
+
+      if (requiredRole && nextRole !== requiredRole) {
+        router.push(nextRole === "admin" ? "/admin" : "/menu");
+      }
+
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [pathname, requiredRole, router]);
+
+  return { authenticated, loading, role };
+}

@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
+import { clearAdminBypassSession } from '@/lib/devAuth';
 import { auth } from '@/lib/firebase';
 import { getBillsByDate, type Bill } from '@/lib/firestore';
+import { requireAdmin } from '@/lib/roleGuard';
 
 const SOFT_BLACK = '#1a1a1a';
 const SOFT_WHITE = '#fafafa';
@@ -12,8 +14,7 @@ const SOFT_GRAY = '#e8e8e8';
 const BRAND_RED = '#d43f2f';
 
 export default function BillsHistoryPage() {
-  const [authenticated, setAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { authenticated, loading, role } = requireAdmin();
   const [bills, setBills] = useState<Bill[]>([]);
   const [loadingBills, setLoadingBills] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -22,19 +23,6 @@ export default function BillsHistoryPage() {
     return today.toISOString().split('T')[0];
   });
   const router = useRouter();
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthenticated(true);
-      } else {
-        router.push('/login');
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [router]);
 
   useEffect(() => {
     if (authenticated && selectedDate) {
@@ -60,8 +48,9 @@ export default function BillsHistoryPage() {
   };
 
   const handleLogout = async () => {
+    clearAdminBypassSession();
     await signOut(auth);
-    router.push('/login');
+    router.push('/admin/login');
   };
 
   const formatDate = (date: Date | string) => {
@@ -89,7 +78,7 @@ export default function BillsHistoryPage() {
     );
   }
 
-  if (!authenticated) {
+  if (!authenticated || role !== 'admin') {
     return null;
   }
 
@@ -199,4 +188,3 @@ export default function BillsHistoryPage() {
     </div>
   );
 }
-

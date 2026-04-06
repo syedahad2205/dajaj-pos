@@ -1,244 +1,152 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
+import { clearAdminBypassSession } from '@/lib/devAuth';
 import { auth } from '@/lib/firebase';
-import { menuData, addonsData, generateSKU, getBaseProductId, type MenuItem } from '@/lib/menu';
 import { createBill, type BillItem } from '@/lib/firestore';
-import ShawarmaRow from '@/components/ShawarmaRow';
-import GrillButtonWithStepper from '@/components/GrillButtonWithStepper';
-import SimpleStepperButton from '@/components/SimpleStepperButton';
-import ShawarmaAddonsModal from '@/components/ShawarmaAddonsModal';
+import { requireAdmin } from '@/lib/roleGuard';
+import type { MenuTreeNode } from '@/lib/menu-builder';
+import { getAvailableMenuTree } from '@/services/menuService';
+import VariantModal, { getInstantAddModifiers } from '@/components/menu/VariantModal';
 
-type VariantKey = 'Roll' | 'Plate' | '';
+type PosModifier = {
+  id: string;
+  name: string;
+  price: number;
+  groupName: string;
+};
 
-interface CartItem extends BillItem {
-  itemId: string;
-  variant: string;
-  selectedAddons: string[];
-  cartKey: string; // Unique key: itemId-variant-addons
-  baseProductId: string;
-}
+type PosCartItem = {
+  id: string;
+  sku: string;
+  name: string;
+  variantLabel: string;
+  qty: number;
+  basePrice: number;
+  modifiers: PosModifier[];
+  itemTotal: number;
+  variantId: string;
+};
 
-// Brand colors from SVG
-const BRAND_RED = '#d43f2f';
 const SOFT_BLACK = '#1a1a1a';
 const SOFT_WHITE = '#fafafa';
 const SOFT_GRAY = '#e8e8e8';
+const BRAND_RED = '#d43f2f';
+
+function collectVariants(node: MenuTreeNode): MenuTreeNode[] {
+  const variants: MenuTreeNode[] = [];
+
+  for (const child of node.children) {
+    if (child.type === 'variant') {
+      variants.push(child);
+    }
+
+    variants.push(...collectVariants(child));
+  }
+
+  return variants;
+}
+
+function buildSku(variant: MenuTreeNode, modifiers: PosModifier[]) {
+  const modifierPart = modifiers
+    .map((modifier) => modifier.id)
+    .sort()
+    .join('-');
+
+  return `${variant.id}${modifierPart ? `-${modifierPart}` : ''}`;
+}
+
+function getPerUnitTotal(basePrice: number, modifiers: PosModifier[]) {
+  return basePrice + modifiers.reduce((sum, modifier) => sum + modifier.price, 0);
+}
+
+function getCartSignature(variantId: string, modifiers: PosModifier[]) {
+  return `${variantId}:${JSON.stringify(modifiers.map((modifier) => modifier.id).sort())}`;
+}
 
 export default function POSPage() {
-  const [authenticated, setAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const { authenticated, loading, role } = requireAdmin();
+  const router = useRouter();
+  const [menuTree, setMenuTree] = useState<MenuTreeNode[]>([]);
+  const [status, setStatus] = useState('Loading menu...');
+  const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
+  const [cart, setCart] = useState<PosCartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
-  const [addonsModal, setAddonsModal] = useState<{
-    item: MenuItem;
-    variant: 'Roll' | 'Plate';
-  } | null>(null);
+  const [activeVariant, setActiveVariant] = useState<MenuTreeNode | null>(null);
+  const [activeCategoryName, setActiveCategoryName] = useState('');
   const [generating, setGenerating] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthenticated(true);
-      } else {
-        router.push('/login');
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [router]);
-
-  // Generate unique cart key - consistent and deterministic
-  const generateCartKey = (itemId: string, variant: string, addons: string[]): string => {
-    const sortedAddons = [...addons].sort().join(',');
-    return `${itemId}-${variant}-${sortedAddons}`;
-  };
-
-  // Get quantity for a specific variant type (Roll or Plate) of a base product
-  const getVariantQuantity = (itemId: string, variantType: 'Roll' | 'Plate'): number => {
-    const baseProductId = getBaseProductId(itemId);
-    return cart
-      .filter(item => 
-        getBaseProductId(item.itemId) === baseProductId && 
-        item.variant === variantType
-      )
-      .reduce((sum, item) => sum + item.qty, 0);
-  };
-
-  // Get quantity for specific variant+addons combination
-  const getQuantity = (itemId: string, variant: string, addons: string[] = []): number => {
-    const cartKey = generateCartKey(itemId, variant, addons);
-    const cartItem = cart.find(item => item.cartKey === cartKey);
-    return cartItem?.qty || 0;
-  };
-
-  // Core cart update function - single source of truth
-  const updateCartQuantity = (item: MenuItem, variant: string, quantity: number, addons: string[] = []) => {
-    const variantKey = variant || '';
-    const basePrice = item.variants[variantKey] || 0;
-    
-    // Calculate addon prices
-    const addonPrices = addons.map(addonId => {
-      const addon = addonsData.find(a => a.id === addonId);
-      if (!addon) return { name: '', price: 0 };
-      const addonPrice =
-        addon.price[variantKey as VariantKey] ??
-        addon.price[''] ??
-        0;
-      return {
-        name: addon.name,
-        price: addonPrice
-      };
-    }).filter(a => a.name); // Remove empty addons
-
-    const addonTotal = addonPrices.reduce((sum, a) => sum + a.price, 0);
-    const itemTotal = (basePrice + addonTotal) * quantity;
-    const sku = generateSKU(item.id, variant, addons);
-    const cartKey = generateCartKey(item.id, variant, addons);
-    const baseProductId = getBaseProductId(item.id);
-
-    setCart(prev => {
-      // Find existing item by cartKey
-      const existingIndex = prev.findIndex(cartItem => cartItem.cartKey === cartKey);
-      
-      if (quantity > 0) {
-        const cartItem: CartItem = {
-          sku,
-          name: item.name,
-          variant: variant || 'Standard',
-          qty: quantity,
-          basePrice,
-          addons: addonPrices,
-          itemTotal,
-          itemId: item.id,
-          selectedAddons: addons,
-          cartKey,
-          baseProductId
-        };
-        
-        if (existingIndex >= 0) {
-          // Update existing item in place to maintain position
-          const updated = [...prev];
-          updated[existingIndex] = cartItem;
-          return updated;
-        } else {
-          // Add new item at the end
-          return [...prev, cartItem];
-        }
-      } else {
-        // Remove item if quantity is 0
-        if (existingIndex >= 0) {
-          return prev.filter((_, index) => index !== existingIndex);
-        }
-        return prev;
-      }
-    });
-  };
-
-  // Handle adding item without add-ons
-  const handleAddItem = (item: MenuItem, variant: string) => {
-    const currentQty = getQuantity(item.id, variant, []);
-    updateCartQuantity(item, variant, currentQty + 1, []);
-  };
-
-  // Handle adding Shawarma normal (without add-ons)
-  const handleAddShawarmaNormal = (item: MenuItem, variant: 'Roll' | 'Plate') => {
-    const currentQty = getQuantity(item.id, variant, []);
-    updateCartQuantity(item, variant, currentQty + 1, []);
-  };
-
-  // Handle decrementing Shawarma variant
-  const handleDecrementShawarma = (item: MenuItem, variant: 'Roll' | 'Plate') => {
-    const baseProductId = getBaseProductId(item.id);
-    // Get all items of this base product with this variant type
-    const variantItems = cart.filter(c => 
-      getBaseProductId(c.itemId) === baseProductId && 
-      c.variant === variant
-    );
-    
-    if (variantItems.length === 0) return;
-    
-    // Prefer decrementing from base item (no add-ons)
-    const baseItem = variantItems.find(c => 
-      c.itemId === item.id && 
-      c.selectedAddons.length === 0
-    );
-    
-    if (baseItem && baseItem.qty > 0) {
-      updateCartQuantity(item, variant, baseItem.qty - 1, []);
+    if (!authenticated || role !== 'admin') {
       return;
     }
-    
-    // Otherwise, decrement from first available item of this variant
-    const itemToDecrement = variantItems[0];
-    const menuItem = menuData.find(m => m.id === itemToDecrement.itemId);
-    if (menuItem) {
-      updateCartQuantity(menuItem, variant, itemToDecrement.qty - 1, itemToDecrement.selectedAddons);
-    }
-  };
 
-  // Handle Shawarma add-ons dialog
-  const handleShawarmaAddons = (item: MenuItem, variant: 'Roll' | 'Plate') => {
-    setAddonsModal({ item, variant });
-  };
+    let cancelled = false;
+    void getAvailableMenuTree()
+      .then(({ tree }) => {
+        if (cancelled) {
+          return;
+        }
 
-  // Handle add-ons confirmation - adds items with selected add-ons
-  const handleAddonsConfirm = (quantity: number, addons: string[]) => {
-    if (!addonsModal) return;
-    const { item, variant } = addonsModal;
-    const currentQty = getQuantity(item.id, variant, addons);
-    updateCartQuantity(item, variant, currentQty + quantity, addons);
-    setAddonsModal(null);
-  };
+        setMenuTree(tree);
+        setExpandedCategoryId((current) => current ?? tree.find((node) => node.type === 'category')?.id ?? null);
+        setStatus(tree.length === 0 ? 'No menu is available right now.' : '');
+      })
+      .catch((error: Error) => {
+        if (cancelled) {
+          return;
+        }
 
-  // Remove item from cart
-  const removeFromCart = (cartKey: string) => {
-    setCart(prev => {
-      const existingIndex = prev.findIndex(item => item.cartKey === cartKey);
-      if (existingIndex >= 0) {
-        return prev.filter((_, index) => index !== existingIndex);
+        setStatus(error.message || 'Failed to load menu.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, role]);
+
+  const categories = useMemo(() => menuTree.filter((node) => node.type === 'category'), [menuTree]);
+
+  const addVariantToCart = (variant: MenuTreeNode, categoryName: string, modifiers: PosModifier[], qty = 1) => {
+    const perUnit = getPerUnitTotal(variant.price, modifiers);
+    const signature = getCartSignature(variant.id, modifiers);
+
+    setCart((current) => {
+      const existing = current.find((item) => getCartSignature(item.variantId, item.modifiers) === signature);
+      if (!existing) {
+        return [
+          ...current,
+          {
+            id: crypto.randomUUID(),
+            sku: buildSku(variant, modifiers),
+            name: categoryName,
+            variantLabel: variant.name,
+            qty,
+            basePrice: variant.price,
+            modifiers,
+            itemTotal: perUnit * qty,
+            variantId: variant.id,
+          },
+        ];
       }
-      return prev;
-    });
-  };
 
-  // Handle quantity change in cart - direct update using cartKey
-  const handleCartQuantityChange = (cartKey: string, newQuantity: number) => {
-    if (newQuantity < 0) return;
-    
-    setCart(prev => {
-      const existingIndex = prev.findIndex(item => item.cartKey === cartKey);
-      if (existingIndex < 0) return prev;
-      
-      const existingItem = prev[existingIndex];
-      
-      if (newQuantity === 0) {
-        // Remove item
-        return prev.filter((_, index) => index !== existingIndex);
-      }
-      
-      // Update quantity in place
-      const updated = [...prev];
-      const itemTotal = existingItem.basePrice * newQuantity + 
-        existingItem.addons.reduce((sum, addon) => sum + addon.price * newQuantity, 0);
-      
-      updated[existingIndex] = {
-        ...existingItem,
-        qty: newQuantity,
-        itemTotal
-      };
-      
-      return updated;
+      return current.map((item) =>
+        item.id === existing.id
+          ? {
+              ...item,
+              qty: item.qty + qty,
+              itemTotal: perUnit * (item.qty + qty),
+            }
+          : item,
+      );
     });
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.itemTotal, 0);
-  const grandTotal = subtotal; // Tax already included
+  const grandTotal = subtotal;
   const cgst = grandTotal * 0.025;
   const sgst = grandTotal * 0.025;
 
@@ -256,27 +164,30 @@ export default function POSPage() {
     setGenerating(true);
 
     try {
-      const billItems: BillItem[] = cart.map(item => ({
+      const billItems: BillItem[] = cart.map((item) => ({
         sku: item.sku,
         name: item.name,
-        variant: item.variant,
+        variant: item.variantLabel,
         qty: item.qty,
         basePrice: item.basePrice,
-        addons: item.addons,
-        itemTotal: item.itemTotal
+        addons: item.modifiers.map((modifier) => ({
+          name: `${modifier.groupName}: ${modifier.name}`,
+          price: modifier.price,
+        })),
+        itemTotal: item.itemTotal,
       }));
 
       const { billNo, publicToken } = await createBill({
-        customer: { 
+        customer: {
           name: customerName.trim(),
-          ...(customerMobile.trim() && { mobile: customerMobile.trim() })
+          ...(customerMobile.trim() && { mobile: customerMobile.trim() }),
         },
         items: billItems,
         subtotal,
         cgst,
         sgst,
         grandTotal,
-        paymentMode: 'Cash'
+        paymentMode: 'Cash',
       });
 
       router.push(`/bill/${billNo}?token=${encodeURIComponent(publicToken)}`);
@@ -289,28 +200,9 @@ export default function POSPage() {
   };
 
   const handleLogout = async () => {
+    clearAdminBypassSession();
     await signOut(auth);
-    router.push('/login');
-  };
-
-  // Group menu items by category
-  const menuByCategory = useMemo(() => {
-    const grouped: { [key: string]: MenuItem[] } = {};
-    menuData.forEach(item => {
-      if (!grouped[item.category]) {
-        grouped[item.category] = [];
-      }
-      grouped[item.category].push(item);
-    });
-    return grouped;
-  }, []);
-
-  // Get aggregated quantity for base product (for Breads & Dips and Grill Chicken)
-  const getAggregatedQuantity = (itemId: string): number => {
-    const baseProductId = getBaseProductId(itemId);
-    return cart
-      .filter(item => getBaseProductId(item.itemId) === baseProductId)
-      .reduce((sum, item) => sum + item.qty, 0);
+    router.push('/admin/login');
   };
 
   if (loading) {
@@ -321,7 +213,7 @@ export default function POSPage() {
     );
   }
 
-  if (!authenticated) {
+  if (!authenticated || role !== 'admin') {
     return null;
   }
 
@@ -354,104 +246,94 @@ export default function POSPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Menu */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-lg p-6">
             <h2 className="text-xl font-semibold mb-6" style={{ color: SOFT_BLACK }}>Menu</h2>
-            <div className="space-y-8">
-              {/* Shawarmas */}
-              {menuByCategory['Shawarmas'] && (
-                <div>
-                  <h3 className="text-lg font-medium mb-4" style={{ color: SOFT_BLACK }}>Shawarmas</h3>
-                  <div className="space-y-4">
-                    {menuByCategory['Shawarmas'].map(item => {
-                      const rollPrice = item.variants['Roll'] || 0;
-                      const platePrice = item.variants['Plate'] || 0;
-                      const rollQuantity = getVariantQuantity(item.id, 'Roll');
-                      const plateQuantity = getVariantQuantity(item.id, 'Plate');
-                      
-                      return (
-                        <ShawarmaRow
-                          key={item.id}
-                          item={item}
-                          rollQuantity={rollQuantity}
-                          plateQuantity={plateQuantity}
-                          rollPrice={rollPrice}
-                          platePrice={platePrice}
-                          onAddNormal={(variant) => handleAddShawarmaNormal(item, variant)}
-                          onDecrement={(variant) => handleDecrementShawarma(item, variant)}
-                          onOpenAddonsDialog={(variant) => handleShawarmaAddons(item, variant)}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
-              {/* Grill Chicken */}
-              {menuByCategory['Grill Chicken'] && (
-                <div>
-                  <h3 className="text-lg font-medium mb-4" style={{ color: SOFT_BLACK }}>Grill Chicken</h3>
-                  <div className="space-y-4">
-                    {menuByCategory['Grill Chicken'].map(item => (
-                      <div key={item.id} className="mb-4">
-                        <h4 className="font-semibold mb-2" style={{ color: SOFT_BLACK }}>{item.name}</h4>
-                        <div className="grid grid-cols-3 gap-2">
-                          {Object.entries(item.variants).map(([variant, price]) => (
-                            <GrillButtonWithStepper
-                              key={variant}
-                              variant={variant}
-                              price={price}
-                              quantity={getQuantity(item.id, variant, [])}
-                              onIncrement={() => handleAddItem(item, variant)}
-                              onDecrement={() => {
-                                const currentQty = getQuantity(item.id, variant, []);
-                                if (currentQty > 0) {
-                                  updateCartQuantity(item, variant, currentQty - 1, []);
-                                }
-                              }}
-                            />
-                          ))}
+            {status ? (
+              <div className="rounded-lg border px-4 py-10 text-center text-sm" style={{ borderColor: SOFT_GRAY, color: `${SOFT_BLACK}99` }}>
+                {status}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {categories.map((category) => {
+                  const isExpanded = expandedCategoryId === category.id;
+                  const variants = collectVariants(category);
+
+                  return (
+                    <section key={category.id} className="rounded-2xl border" style={{ borderColor: SOFT_GRAY }}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedCategoryId((current) => (current === category.id ? null : category.id))}
+                        className="flex w-full items-center justify-between px-5 py-4 text-left"
+                      >
+                        <div>
+                          <h3 className="text-lg font-semibold" style={{ color: SOFT_BLACK }}>
+                            {isExpanded ? '▼' : '►'} {category.name}
+                          </h3>
+                          <p className="text-sm" style={{ color: `${SOFT_BLACK}99` }}>
+                            {variants.length} {variants.length === 1 ? 'item' : 'items'}
+                          </p>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                      </button>
 
-              {/* Breads & Dips */}
-              {menuByCategory['Breads & Dips'] && (
-                <div>
-                  <h3 className="text-lg font-medium mb-4" style={{ color: SOFT_BLACK }}>Breads & Dips</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {menuByCategory['Breads & Dips'].map(item => {
-                      const variant = Object.keys(item.variants)[0] || '';
-                      const price = item.variants[variant] || 0;
-                      const aggregatedQty = getAggregatedQuantity(item.id);
-                      return (
-                        <SimpleStepperButton
-                          key={item.id}
-                          name={item.name}
-                          price={price}
-                          quantity={aggregatedQty}
-                          onIncrement={() => handleAddItem(item, variant)}
-                          onDecrement={() => {
-                            const currentQty = getQuantity(item.id, variant, []);
-                            if (currentQty > 0) {
-                              updateCartQuantity(item, variant, currentQty - 1, []);
-                            }
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
+                      {isExpanded ? (
+                        <div className="border-t px-5 py-5" style={{ borderColor: SOFT_GRAY }}>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {variants.map((variant) => (
+                              <div key={variant.id} className="rounded-2xl border p-4" style={{ borderColor: SOFT_GRAY, backgroundColor: SOFT_WHITE }}>
+                                <div className="flex items-start justify-between gap-4">
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: BRAND_RED }}>
+                                      {category.name}
+                                    </p>
+                                    <h4 className="text-lg font-bold" style={{ color: SOFT_BLACK }}>{variant.name}</h4>
+                                    {variant.description ? (
+                                      <p className="mt-1 text-sm" style={{ color: `${SOFT_BLACK}99` }}>{variant.description}</p>
+                                    ) : null}
+                                  </div>
+                                  <span className="text-lg font-bold" style={{ color: SOFT_BLACK }}>₹{variant.price}</span>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const instantModifiers = getInstantAddModifiers(variant);
+                                    if (instantModifiers) {
+                                      addVariantToCart(
+                                        variant,
+                                        category.name,
+                                        instantModifiers.map((modifier) => ({
+                                          id: modifier.id,
+                                          name: modifier.name,
+                                          price: modifier.price,
+                                          groupName: modifier.groupName,
+                                        })),
+                                      );
+                                      return;
+                                    }
+
+                                    setActiveVariant(variant);
+                                    setActiveCategoryName(category.name);
+                                  }}
+                                  className="mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold text-white"
+                                  style={{ backgroundColor: SOFT_BLACK }}
+                                >
+                                  Add
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Right: Cart & Bill */}
         <div className="lg:col-span-1">
           <div className="bg-white border rounded-lg p-6 space-y-4 sticky top-4" style={{ borderColor: SOFT_GRAY }}>
             <div>
@@ -464,19 +346,7 @@ export default function POSPage() {
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="Enter customer name"
                 className="w-full px-3 py-3 rounded-md focus:outline-none focus:ring-2 transition-colors"
-                style={{ 
-                  borderColor: SOFT_GRAY,
-                  color: SOFT_BLACK,
-                  borderWidth: '1px'
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = BRAND_RED;
-                  e.currentTarget.style.boxShadow = `0 0 0 2px ${BRAND_RED}20`;
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = SOFT_GRAY;
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
+                style={{ borderColor: SOFT_GRAY, color: SOFT_BLACK, borderWidth: '1px' }}
                 required
               />
             </div>
@@ -490,19 +360,7 @@ export default function POSPage() {
                 onChange={(e) => setCustomerMobile(e.target.value)}
                 placeholder="9XXXXXXXXX (Optional)"
                 className="w-full px-3 py-3 rounded-md focus:outline-none focus:ring-2 transition-colors"
-                style={{ 
-                  borderColor: SOFT_GRAY,
-                  color: SOFT_BLACK,
-                  borderWidth: '1px'
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = BRAND_RED;
-                  e.currentTarget.style.boxShadow = `0 0 0 2px ${BRAND_RED}20`;
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = SOFT_GRAY;
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
+                style={{ borderColor: SOFT_GRAY, color: SOFT_BLACK, borderWidth: '1px' }}
               />
             </div>
 
@@ -510,35 +368,41 @@ export default function POSPage() {
               <h3 className="text-lg font-semibold mb-2" style={{ color: SOFT_BLACK }}>Items</h3>
               <div className="space-y-2">
                 {cart.length === 0 ? (
-                  <p className="text-sm" style={{ color: SOFT_BLACK + '99' }}>No items added</p>
+                  <p className="text-sm" style={{ color: `${SOFT_BLACK}99` }}>No items added</p>
                 ) : (
                   cart.map((item) => (
-                    <div key={item.cartKey} className="p-3 rounded-lg border" style={{ backgroundColor: SOFT_WHITE, borderColor: SOFT_GRAY }}>
+                    <div key={item.id} className="p-3 rounded-lg border" style={{ backgroundColor: SOFT_WHITE, borderColor: SOFT_GRAY }}>
                       <div className="flex justify-between items-start gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm" style={{ color: SOFT_BLACK }}>{item.name}</div>
-                          <div className="text-xs" style={{ color: SOFT_BLACK + '99' }}>{item.variant}</div>
-                          {item.addons.length > 0 && (
-                            <div className="text-xs mt-1" style={{ color: SOFT_BLACK + '80' }}>
-                              + {item.addons.map(a => a.name).join(', ')}
+                          <div className="text-xs" style={{ color: `${SOFT_BLACK}99` }}>{item.variantLabel}</div>
+                          {item.modifiers.length > 0 ? (
+                            <div className="text-xs mt-1" style={{ color: `${SOFT_BLACK}80` }}>
+                              + {item.modifiers.map((modifier) => `${modifier.groupName}: ${modifier.name}`).join(', ')}
                             </div>
-                          )}
+                          ) : null}
                         </div>
                         <div className="flex flex-col items-end gap-2">
                           <div className="font-medium text-sm" style={{ color: SOFT_BLACK }}>₹{item.itemTotal.toFixed(2)}</div>
-                          
-                          {/* Quantity Control */}
                           <div className="flex items-center gap-2 rounded-lg border bg-white overflow-hidden" style={{ borderColor: SOFT_GRAY }}>
                             <button
-                              onClick={() => handleCartQuantityChange(item.cartKey, item.qty - 1)}
-                              className="flex items-center justify-center transition-colors font-bold text-lg"
-                              style={{
-                                minHeight: '36px',
-                                minWidth: '36px',
-                                color: SOFT_BLACK
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
-                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              onClick={() =>
+                                setCart((current) =>
+                                  current
+                                    .map((entry) =>
+                                      entry.id === item.id
+                                        ? {
+                                            ...entry,
+                                            qty: entry.qty - 1,
+                                            itemTotal: getPerUnitTotal(entry.basePrice, entry.modifiers) * (entry.qty - 1),
+                                          }
+                                        : entry,
+                                    )
+                                    .filter((entry) => entry.qty > 0),
+                                )
+                              }
+                              className="flex items-center justify-center font-bold text-lg"
+                              style={{ minHeight: '36px', minWidth: '36px', color: SOFT_BLACK }}
                             >
                               –
                             </button>
@@ -546,37 +410,29 @@ export default function POSPage() {
                               {item.qty}
                             </div>
                             <button
-                              onClick={() => handleCartQuantityChange(item.cartKey, item.qty + 1)}
-                              className="flex items-center justify-center transition-colors font-bold text-lg"
-                              style={{
-                                minHeight: '36px',
-                                minWidth: '36px',
-                                color: SOFT_BLACK
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
-                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              onClick={() =>
+                                setCart((current) =>
+                                  current.map((entry) =>
+                                    entry.id === item.id
+                                      ? {
+                                          ...entry,
+                                          qty: entry.qty + 1,
+                                          itemTotal: getPerUnitTotal(entry.basePrice, entry.modifiers) * (entry.qty + 1),
+                                        }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                              className="flex items-center justify-center font-bold text-lg"
+                              style={{ minHeight: '36px', minWidth: '36px', color: SOFT_BLACK }}
                             >
                               +
                             </button>
                           </div>
-                          
-                          {/* Remove Button - Highlighted */}
                           <button
-                            onClick={() => removeFromCart(item.cartKey)}
+                            onClick={() => setCart((current) => current.filter((entry) => entry.id !== item.id))}
                             className="text-xs px-2 py-1 rounded transition-colors font-medium"
-                            style={{ 
-                              color: BRAND_RED,
-                              border: `1px solid ${BRAND_RED}`,
-                              backgroundColor: 'transparent'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = BRAND_RED;
-                              e.currentTarget.style.color = SOFT_WHITE;
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = 'transparent';
-                              e.currentTarget.style.color = BRAND_RED;
-                            }}
+                            style={{ color: BRAND_RED, border: `1px solid ${BRAND_RED}`, backgroundColor: 'transparent' }}
                           >
                             Remove
                           </button>
@@ -593,11 +449,11 @@ export default function POSPage() {
                 <span>Subtotal:</span>
                 <span>₹{subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm" style={{ color: SOFT_BLACK + '99' }}>
+              <div className="flex justify-between text-sm" style={{ color: `${SOFT_BLACK}99` }}>
                 <span>CGST (2.5%):</span>
                 <span>₹{cgst.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm" style={{ color: SOFT_BLACK + '99' }}>
+              <div className="flex justify-between text-sm" style={{ color: `${SOFT_BLACK}99` }}>
                 <span>SGST (2.5%):</span>
                 <span>₹{sgst.toFixed(2)}</span>
               </div>
@@ -611,20 +467,7 @@ export default function POSPage() {
               onClick={handleGenerateBill}
               disabled={generating || cart.length === 0 || !customerName.trim()}
               className="w-full py-4 px-4 rounded-md font-medium transition-colors"
-              style={{ 
-                backgroundColor: cart.length === 0 || !customerName.trim() ? SOFT_GRAY : SOFT_BLACK,
-                color: SOFT_WHITE
-              }}
-              onMouseEnter={(e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.backgroundColor = '#2a2a2a';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.backgroundColor = SOFT_BLACK;
-                }
-              }}
+              style={{ backgroundColor: cart.length === 0 || !customerName.trim() ? SOFT_GRAY : SOFT_BLACK, color: SOFT_WHITE }}
             >
               {generating ? 'Generating...' : 'Generate Bill'}
             </button>
@@ -632,16 +475,31 @@ export default function POSPage() {
         </div>
       </div>
 
-      {/* Shawarma Add-ons Modal */}
-      {addonsModal && (
-        <ShawarmaAddonsModal
-          itemName={addonsModal.item.name}
-          variant={addonsModal.variant}
-          variantPrice={addonsModal.item.variants[addonsModal.variant]}
-          onClose={() => setAddonsModal(null)}
-          onConfirm={handleAddonsConfirm}
-        />
-      )}
+      <VariantModal
+        open={Boolean(activeVariant)}
+        variant={activeVariant}
+        categoryName={activeCategoryName}
+        onClose={() => setActiveVariant(null)}
+        onSubmit={(item) => {
+          const variant = activeVariant;
+          if (!variant) {
+            return;
+          }
+
+          addVariantToCart(
+            variant,
+            activeCategoryName,
+            item.modifiers.map((modifier) => ({
+              id: modifier.id,
+              name: modifier.name,
+              price: modifier.price,
+              groupName: modifier.groupName,
+            })),
+            item.quantity,
+          );
+          setActiveVariant(null);
+        }}
+      />
     </div>
   );
 }

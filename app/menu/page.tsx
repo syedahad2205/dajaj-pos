@@ -1,164 +1,278 @@
-import Image from "next/image";
-import { displayMenu, type MenuPriceRow, type MenuSinglePriceRow } from "@/lib/display-menu";
-import styles from "./menu.module.css";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import AddressSelector from "@/components/address/AddressSelector";
+import { useAddresses } from "@/components/address/AddressProvider";
+import CartDrawer from "@/components/cart/CartDrawer";
+import { useCart } from "@/components/cart/CartProvider";
+import VariantGrid from "@/components/menu/VariantGrid";
+import VariantModal, { getInstantAddModifiers } from "@/components/menu/VariantModal";
 import MenuPageTracker from "@/components/MenuPageTracker";
+import type { MenuTreeNode } from "@/lib/menu-builder";
+import { requireCustomer } from "@/lib/roleGuard";
+import { getAvailableMenuTree } from "@/services/menuService";
+import CustomerNavBar from "@/components/CustomerNavBar";
 
-const COLORS = {
-  page: "#e7dbc4",
-  panel: "#f4eee0",
-  titleBar: "#c6533f",
-  titleText: "#fff7ec",
-  text: "#2f2a25",
-  muted: "#7b5a47",
-};
+function collectVariants(node: MenuTreeNode): MenuTreeNode[] {
+  const variants: MenuTreeNode[] = [];
 
-function SectionTitle({ title }: { title: string }) {
-  return (
-    <h2
-      className={`mb-4 rounded-sm px-4 py-2 text-center text-2xl font-black uppercase ${styles.sectionTitle}`}
-      style={{ backgroundColor: COLORS.titleBar, color: COLORS.titleText }}
-    >
-      {title}
-    </h2>
-  );
+  for (const child of node.children) {
+    if (child.type === "variant") {
+      variants.push(child);
+    }
+
+    variants.push(...collectVariants(child));
+  }
+
+  return variants;
 }
 
-function TableSection({
-  title,
-  headers,
-  rows,
-}: {
-  title: string;
-  headers: readonly string[];
-  rows: MenuPriceRow[];
-}) {
-  return (
-    <section className="mb-6">
-      <SectionTitle title={title} />
-      <table className="w-full border-separate border-spacing-y-2 text-lg">
-        <thead>
-          <tr className={`text-right text-base uppercase ${styles.metaHeaderText}`} style={{ color: COLORS.muted }}>
-            <th className="text-left">{""}</th>
-            {headers.map((header) => (
-              <th key={header}>{header}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.item} className={`font-semibold ${styles.bodyText}`} style={{ color: COLORS.text }}>
-              <td className="py-1">{row.item}</td>
-              {row.prices.map((price, i) => (
-                <td key={`${row.item}-${i}`} className={`py-1 text-right ${styles.numberText}`}>
-                  {price}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
-  );
-}
+function MenuExperience() {
+  const router = useRouter();
+  const { authenticated, loading, role } = requireCustomer();
+  const { items, itemCount, subtotal, addItem, updateItem } = useCart();
+  const { selectedAddress } = useAddresses();
+  const [menuTree, setMenuTree] = useState<MenuTreeNode[]>([]);
+  const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
+  const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
+  const [editingCartItemId, setEditingCartItemId] = useState<string | null>(null);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [addressSelectorOpen, setAddressSelectorOpen] = useState(false);
+  const [status, setStatus] = useState("Loading menu...");
 
-function ListSection({
-  title,
-  rows,
-}: {
-  title: string;
-  rows: MenuSinglePriceRow[];
-}) {
+  useEffect(() => {
+    if (!authenticated) {
+      return;
+    }
+
+    let cancelled = false;
+    void getAvailableMenuTree()
+      .then(({ tree }) => {
+        if (cancelled) {
+          return;
+        }
+
+        setMenuTree(tree);
+        setStatus(tree.length === 0 ? "No menu is available right now." : "");
+      })
+      .catch((error: Error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setStatus(error.message || "Failed to load menu.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated]);
+
+  const categories = useMemo(() => menuTree.filter((node) => node.type === "category"), [menuTree]);
+
+  const variantLookup = useMemo(() => {
+    const map = new Map<string, MenuTreeNode>();
+
+    const walk = (nodes: MenuTreeNode[]) => {
+      nodes.forEach((node) => {
+        map.set(node.id, node);
+        walk(node.children);
+      });
+    };
+
+    walk(menuTree);
+    return map;
+  }, [menuTree]);
+
+  const activeVariant = activeVariantId ? variantLookup.get(activeVariantId) ?? null : null;
+  const editingItem = editingCartItemId ? items.find((item) => item.id === editingCartItemId) ?? null : null;
+  const activeCategoryName = editingItem?.categoryName ?? categories.find((category) => collectVariants(category).some((variant) => variant.id === activeVariantId))?.name ?? "";
+
+  if (loading) {
+    return (
+      <main className="min-h-screen w-full overflow-x-hidden bg-[linear-gradient(180deg,#fff8ed_0%,#ffe7cf_100%)] py-4 text-slate-900">
+        <div className="mx-auto w-full max-w-[1200px] px-4">
+          <div className="rounded-[28px] border border-orange-200 bg-white px-6 py-14 text-center text-sm font-medium text-slate-600">
+            Checking your session...
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!authenticated || role !== "customer") {
+    return null;
+  }
+
+  const handleAddVariant = (variant: MenuTreeNode) => {
+    setEditingCartItemId(null);
+
+    const instantAddModifiers = getInstantAddModifiers(variant);
+
+    if (instantAddModifiers) {
+      addItem({
+        categoryName: categories.find((category) => collectVariants(category).some((entry) => entry.id === variant.id))?.name ?? "",
+        variantId: variant.id,
+        variantName: variant.name,
+        basePrice: variant.price,
+        modifiers: instantAddModifiers ?? [],
+        quantity: 1,
+        totalPrice: variant.price + (instantAddModifiers?.reduce((sum, modifier) => sum + modifier.price, 0) ?? 0),
+        imageUrl: variant.imageUrl,
+        description: variant.description,
+      });
+      setCartOpen(true);
+      return;
+    }
+
+    setActiveVariantId(variant.id);
+  };
+
   return (
-    <section className="mb-6">
-      <SectionTitle title={title} />
-      <ul className={`space-y-3 text-lg font-semibold ${styles.bodyText}`} style={{ color: COLORS.text }}>
-        {rows.map((row) => (
-          <li key={row.item} className="flex items-center justify-between gap-4 border-b border-dotted pb-2">
-            <span>{row.item}</span>
-            <span className={styles.numberText}>{row.price}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <main className="min-h-screen w-full overflow-x-hidden bg-[linear-gradient(180deg,#fff8ed_0%,#ffe7cf_100%)] py-4 text-slate-900 md:pt-[72px]">
+      <MenuPageTracker />
+
+      <div className="mx-auto w-full max-w-[1200px] px-4 pb-36 md:pb-24">
+        <header className="mb-5 rounded-[28px] border border-orange-200 bg-white/85 px-5 py-5 shadow-[0_20px_60px_rgba(194,65,12,0.12)] backdrop-blur">
+          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-orange-600">Dajaj</p>
+          <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h1 className="text-3xl font-black">Customer Menu</h1>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Choose a category, customize each dish if needed, and build your order with ease.
+              </p>
+            </div>
+            <div className="rounded-2xl bg-orange-50 px-4 py-3 text-sm font-semibold text-orange-700">
+              {itemCount} items • ₹{subtotal}
+            </div>
+          </div>
+          <div className="mt-4 flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Delivering to</p>
+              {selectedAddress ? (
+                <>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">📍 {selectedAddress.label}</p>
+                  <p className="mt-1 text-sm text-slate-500">{selectedAddress.addressLine1}</p>
+                </>
+              ) : (
+                <p className="mt-1 text-sm font-semibold text-slate-900">Choose a delivery address</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setAddressSelectorOpen(true)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700"
+            >
+              Change
+            </button>
+          </div>
+        </header>
+
+        <section className="space-y-4">
+          {status ? (
+            <div className="rounded-[28px] border border-orange-200 bg-white px-6 py-14 text-center text-sm font-medium text-slate-600">
+              {status}
+            </div>
+          ) : categories.length > 0 ? (
+            categories.map((category) => {
+              const isExpanded = expandedCategoryId === category.id;
+              const visibleVariants = collectVariants(category).filter((node) => node.type === "variant");
+
+              return (
+                <section key={category.id} className="rounded-[28px] border border-orange-100 bg-white/90 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedCategoryId((prev) => (prev === category.id ? null : category.id))}
+                    className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left"
+                  >
+                    <div>
+                      <h2 className="break-words text-2xl font-black text-slate-900">
+                        {isExpanded ? "▼" : "►"} {category.name}
+                      </h2>
+                      <p className="mt-1 text-sm font-medium text-slate-500">
+                        {visibleVariants.length} {visibleVariants.length === 1 ? "item" : "items"}
+                      </p>
+                      {category.description ? (
+                        <p className="mt-2 text-sm leading-6 text-slate-600">{category.description}</p>
+                      ) : null}
+                    </div>
+                  </button>
+
+                  {isExpanded ? (
+                    <div className="border-t border-orange-100 px-5 py-5">
+                      <VariantGrid
+                        categoryName={category.name}
+                        variants={visibleVariants}
+                        onAdd={handleAddVariant}
+                      />
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })
+          ) : (
+            <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-14 text-center text-sm text-slate-500">
+              No categories available.
+            </div>
+          )}
+        </section>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setCartOpen(true)}
+        className="fixed bottom-20 right-4 z-30 rounded-full bg-slate-900 px-5 py-4 text-sm font-semibold text-white shadow-[0_16px_32px_rgba(15,23,42,0.28)] md:bottom-4"
+      >
+        Cart ({itemCount})
+      </button>
+
+      <VariantModal
+        open={Boolean(activeVariant)}
+        variant={activeVariant}
+        categoryName={activeCategoryName}
+        cartItem={editingItem}
+        onClose={() => {
+          setActiveVariantId(null);
+          setEditingCartItemId(null);
+        }}
+        onSubmit={(item, existingId) => {
+          if (existingId) {
+            updateItem(existingId, item);
+          } else {
+            addItem(item);
+          }
+
+          setActiveVariantId(null);
+          setEditingCartItemId(null);
+          setCartOpen(true);
+        }}
+      />
+
+      <CartDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        onCheckout={() => {
+          setCartOpen(false);
+          router.push("/checkout");
+        }}
+        onEditItem={(itemId) => {
+          const item = items.find((entry) => entry.id === itemId);
+          if (!item) {
+            return;
+          }
+
+          setEditingCartItemId(item.id);
+          setActiveVariantId(item.variantId);
+          setCartOpen(false);
+        }}
+      />
+      <AddressSelector open={addressSelectorOpen} onClose={() => setAddressSelectorOpen(false)} />
+      <CustomerNavBar />
+    </main>
   );
 }
 
 export default function MenuPage() {
-  return (
-    <main
-      className={`min-h-screen px-4 py-6 md:px-8 md:py-8 ${styles.menuRoot}`}
-      style={{ backgroundColor: COLORS.page, color: COLORS.text }}
-    >
-      <MenuPageTracker />
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-4 rounded-md p-6 text-center" style={{ backgroundColor: COLORS.panel }}>
-          <Image src="/logo.png" alt="Dajaj logo" width={100} height={100} className="mx-auto mb-3 h-auto w-auto" />
-          {/* <h1 className={`text-4xl font-black uppercase ${styles.displayTitle}`} style={{ color: COLORS.titleBar }}>
-            {displayMenu.brand.name}
-          </h1> */}
-          <p className={`mt-1 text-xl font-extrabold uppercase ${styles.displayTitle}`} style={{ color: COLORS.titleBar }}>
-            {displayMenu.brand.tagline}
-          </p>
-          <p className={`mt-3 text-base font-semibold ${styles.bodyText}`}>
-            Catering Orders: <span className="font-black">{displayMenu.brand.cateringContact}</span>
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <div className="rounded-md p-6" style={{ backgroundColor: COLORS.panel }}>
-            <TableSection title="Alfaham" headers={displayMenu.alfaham.headers} rows={displayMenu.alfaham.rows} />
-            <ListSection title="Charcoal" rows={displayMenu.charcoal} />
-            <TableSection title="Grill" headers={displayMenu.grill.headers} rows={displayMenu.grill.rows} />
-          </div>
-
-          <div className="rounded-md p-6" style={{ backgroundColor: COLORS.panel }}>
-            <TableSection
-              title="Khubbus Shawarma"
-              headers={displayMenu.khubbusShawarma.headers}
-              rows={displayMenu.khubbusShawarma.rows}
-            />
-            <p className={`-mt-2 mb-6 text-center text-base font-semibold ${styles.italicText}`} style={{ color: COLORS.titleBar }}>
-              {displayMenu.khubbusShawarma.note}
-            </p>
-            <TableSection
-              title="Rumali Shawarma"
-              headers={displayMenu.rumaliShawarma.headers}
-              rows={displayMenu.rumaliShawarma.rows}
-            />
-            <section className="mb-3">
-              <SectionTitle title="Special Item" />
-              <p className={`pt-2 text-center text-2xl font-black ${styles.bodyText}`} style={{ color: COLORS.text }}>
-                {displayMenu.specialItem}
-              </p>
-            </section>
-          </div>
-
-          <div className="rounded-md p-6" style={{ backgroundColor: COLORS.panel }}>
-            <TableSection
-              title="Tandoor Special"
-              headers={displayMenu.tandoorSpecial.headers}
-              rows={displayMenu.tandoorSpecial.rows}
-            />
-            <ListSection title="Tandoori Kebab" rows={displayMenu.tandooriKebab} />
-            <ListSection title="Tandoori Parathas" rows={displayMenu.tandooriParathas} />
-            <TableSection
-              title="Tandoor Breads"
-              headers={displayMenu.tandoorBreads.headers}
-              rows={displayMenu.tandoorBreads.rows}
-            />
-            <section>
-              <SectionTitle title="Breads & Dips" />
-              <div className={`grid grid-cols-1 gap-2 text-center text-base font-bold md:grid-cols-2 ${styles.bodyText}`}>
-                {displayMenu.breadsAndDips.map((row) => (
-                  <p key={row.item}>
-                    {row.item}: <span className={styles.numberText}>{row.price}</span>
-                  </p>
-                ))}
-              </div>
-            </section>
-          </div>
-        </div>
-      </div>
-    </main>
-  );
+  return <MenuExperience />;
 }
