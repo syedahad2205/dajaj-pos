@@ -2,6 +2,8 @@ import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { NextResponse } from "next/server";
 import { firestore } from "@/lib/firebase";
 
+export const dynamic = "force-dynamic";
+
 interface WAMessage {
   from?: string;
   type?: string;

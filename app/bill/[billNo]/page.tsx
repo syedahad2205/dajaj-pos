@@ -154,7 +154,7 @@ export default function BillPage() {
         <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
           <div className="text-center mb-6">
             <h1 className="text-3xl font-bold text-gray-800 mb-2">DAJAJ</h1>
-            <p className="text-gray-600">Real Grill Taste</p>
+            <p className="text-gray-600">The Spice of Spices</p>
             <p className="text-sm text-gray-500 mt-1">Kundapura</p>
           </div>
 
@@ -197,8 +197,7 @@ export default function BillPage() {
                   <tr key={index} className="border-b">
                     <td className="py-2">
                       <div className="text-sm font-medium">{item.name}</div>
-                      <div className="text-xs text-gray-500">{item.variant}</div>
-                      <div className="text-xs text-gray-400">{item.sku}</div>
+                      {item.variant && <div className="text-xs text-gray-500">{item.variant}</div>}
                       {item.addons.length > 0 && (
                         <div className="mt-1">
                           {item.addons.map((addon, ai) => (
@@ -218,20 +217,8 @@ export default function BillPage() {
           </div>
 
           <div className="border-t pt-4 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Subtotal:</span>
-              <span>₹{bill.subtotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm text-gray-600">
-              <span>CGST (2.5%):</span>
-              <span>₹{bill.cgst.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm text-gray-600">
-              <span>SGST (2.5%):</span>
-              <span>₹{bill.sgst.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
-              <span>Grand Total:</span>
+            <div className="flex justify-between font-bold text-lg">
+              <span>Total:</span>
               <span>₹{bill.grandTotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm text-gray-600 mt-2">

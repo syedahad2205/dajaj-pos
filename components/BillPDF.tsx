@@ -150,7 +150,7 @@ const BillDocument = ({ bill }: { bill: Bill }) => {
         <View>
           <View style={styles.header}>
           <Text style={styles.title}>DAJAJ</Text>
-          <Text style={styles.subtitle}>Real Grill Taste</Text>
+          <Text style={styles.subtitle}>The Spice of Spices</Text>
           <Text style={styles.location}>Kundapura</Text>
         </View>
 
@@ -184,8 +184,7 @@ const BillDocument = ({ bill }: { bill: Bill }) => {
             <View key={index} style={styles.tableRow}>
               <View style={styles.tableCol1}>
                 <Text style={styles.itemName}>{item.name}</Text>
-                <Text style={styles.itemDetail}>{item.variant}</Text>
-                <Text style={styles.itemDetail}>{item.sku}</Text>
+                {item.variant ? <Text style={styles.itemDetail}>{item.variant}</Text> : null}
                 {item.addons.map((addon, ai) => (
                   <Text key={ai} style={styles.addon}>
                     + {addon.name} (₹{addon.price})
@@ -203,20 +202,8 @@ const BillDocument = ({ bill }: { bill: Bill }) => {
         </View>
 
         <View style={styles.totals}>
-          <View style={styles.totalRow}>
-            <Text>Subtotal:</Text>
-            <Text>₹{bill.subtotal.toFixed(2)}</Text>
-          </View>
-          <View style={styles.totalRow}>
-            <Text style={styles.label}>CGST (2.5%):</Text>
-            <Text style={styles.label}>₹{bill.cgst.toFixed(2)}</Text>
-          </View>
-          <View style={styles.totalRow}>
-            <Text style={styles.label}>SGST (2.5%):</Text>
-            <Text style={styles.label}>₹{bill.sgst.toFixed(2)}</Text>
-          </View>
           <View style={styles.grandTotal}>
-            <Text>Grand Total:</Text>
+            <Text>Total:</Text>
             <Text>₹{bill.grandTotal.toFixed(2)}</Text>
           </View>
           <View style={styles.totalRow}>

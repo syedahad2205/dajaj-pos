@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { ADMIN_BYPASS_CODE, hasAdminBypassSession, setAdminBypassSession } from "@/lib/devAuth";
 import { auth } from "@/lib/firebase";
 import { getAdminProfile, syncAdminProfile } from "@/services/adminService";
 
-export default function AdminLoginPage() {
+function AdminLoginContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -121,5 +121,13 @@ export default function AdminLoginPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense>
+      <AdminLoginContent />
+    </Suspense>
   );
 }

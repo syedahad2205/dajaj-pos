@@ -1,11 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { requireCustomer } from "@/lib/roleGuard";
 import CustomerNavBar from "@/components/CustomerNavBar";
 
-export default function OrderSuccessPage() {
+function OrderSuccessContent() {
   const { authenticated, loading, role } = requireCustomer();
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId") || "----";
@@ -36,5 +37,13 @@ export default function OrderSuccessPage() {
       </div>
       <CustomerNavBar />
     </main>
+  );
+}
+
+export default function OrderSuccessPage() {
+  return (
+    <Suspense>
+      <OrderSuccessContent />
+    </Suspense>
   );
 }

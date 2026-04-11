@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     }
 
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+    const accessToken = process.env.SYSTEM_USER_TOKEN;
 
     if (!phoneNumberId || !accessToken) {
       return NextResponse.json({ success: false, message: "WhatsApp configuration is missing." }, { status: 500 });

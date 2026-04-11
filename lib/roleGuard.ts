@@ -10,19 +10,23 @@ export function requireAdmin() {
   return useRequireAuth("admin");
 }
 
-export function requireCustomer() {
+export function requirePosStaff() {
+  return useRequireAuth("pos");
+}
+
+export function requireCustomer({ redirect = true }: { redirect?: boolean } = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const { authenticated, loading, customerPhone, customer } = useCustomerAuth();
 
   useEffect(() => {
-    if (loading || authenticated) {
+    if (!redirect || loading || authenticated) {
       return;
     }
 
     const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
     router.push(`/login${next}`);
-  }, [authenticated, loading, pathname, router]);
+  }, [authenticated, loading, pathname, router, redirect]);
 
   return {
     authenticated,

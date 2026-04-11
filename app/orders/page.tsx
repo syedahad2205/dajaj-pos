@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { ChevronDown, ChevronUp, ArrowRight } from "lucide-react";
 import { requireCustomer } from "@/lib/roleGuard";
 import { getDeliveryStatusCopy, formatOrderStatusLabel } from "@/lib/orderStatus";
@@ -140,7 +141,9 @@ function OrderTimeline({ status }: { status: OrderStatus }): JSX.Element | null 
 function OrderCard({ order }: { order: OrderRecord }) {
   const [expanded, setExpanded] = useState(false);
   const orderDate = getOrderDate(order);
-  const isActive: boolean = ACTIVE_STATUSES.includes(order.orderStatus);
+  const isActive: boolean = ACTIVE_STATUSES.some((s) => s === order.orderStatus);
+  const previewItems = order.items.slice(0, 3);
+  const extraCount = order.items.length - previewItems.length;
 
   return (
     <article
@@ -148,9 +151,9 @@ function OrderCard({ order }: { order: OrderRecord }) {
         isActive ? "border-orange-200" : "border-slate-200"
       }`}
     >
-      {isActive && (
+      {isActive ? (
         <div className="h-1 w-full bg-gradient-to-r from-orange-400 via-orange-500 to-amber-400" />
-      )}
+      ) : null}
 
       <div className="p-5">
         {/* Top row */}
@@ -162,25 +165,41 @@ function OrderCard({ order }: { order: OrderRecord }) {
               </span>
               <span className="text-xs text-slate-400">{timeAgo(orderDate)}</span>
             </div>
-            <p className="mt-1.5 truncate text-base font-bold text-slate-900">{itemsSummary(order)}</p>
-            <p className="mt-0.5 text-sm font-semibold text-slate-700">
+            {/* Item preview chips */}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {previewItems.map((item) => (
+                <span
+                  key={item.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-800"
+                >
+                  <span>{item.variantName}</span>
+                  <span className="rounded-full bg-orange-200 px-1.5 py-0.5 text-[10px] font-bold text-orange-900">×{item.quantity}</span>
+                </span>
+              ))}
+              {extraCount > 0 ? (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
+                  +{extraCount} more
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-2 text-sm font-semibold text-slate-700">
               ₹{order.total}
-              {order.items.length > 0 && (
+              {order.items.length > 0 ? (
                 <span className="ml-1.5 text-xs font-normal text-slate-400">
                   ({order.items.length} {order.items.length === 1 ? "item" : "items"})
                 </span>
-              )}
+              ) : null}
             </p>
           </div>
           <StatusChip status={order.orderStatus} />
         </div>
 
         {/* Status timeline for active orders */}
-        {isActive && (
+        {isActive ? (
           <div className="mt-4">
             <OrderTimeline status={order.orderStatus} />
           </div>
-        )}
+        ) : null}
 
         {/* Status message */}
         <p className="mt-3 text-sm text-slate-500">
@@ -192,7 +211,7 @@ function OrderCard({ order }: { order: OrderRecord }) {
         </p>
 
         {/* Delivered timestamp */}
-        {order.orderStatus === "delivered" && order.deliveredAt && (
+        {order.orderStatus === "delivered" && order.deliveredAt ? (
           <p className="mt-1 text-xs text-emerald-600">
             Delivered{" "}
             {(() => {
@@ -208,7 +227,7 @@ function OrderCard({ order }: { order: OrderRecord }) {
               return "";
             })()}
           </p>
-        )}
+        ) : null}
 
         {/* Footer */}
         <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
@@ -231,18 +250,18 @@ function OrderCard({ order }: { order: OrderRecord }) {
         </div>
 
         {/* Expanded items */}
-        {expanded && (
+        {expanded ? (
           <div className="mt-4 space-y-2.5 border-t border-slate-100 pt-4">
             {order.items.map((item) => (
               <div key={item.id} className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-slate-900">{item.variantName}</p>
                   <p className="text-xs text-slate-500">{item.categoryName} × {item.quantity}</p>
-                  {item.modifiers.length > 0 && (
+                  {item.modifiers.length > 0 ? (
                     <p className="mt-1 text-xs text-slate-400">
                       {item.modifiers.map((m) => m.name).join(" · ")}
                     </p>
-                  )}
+                  ) : null}
                 </div>
                 <span className="shrink-0 text-sm font-black text-slate-900">₹{item.totalPrice}</span>
               </div>
@@ -260,16 +279,16 @@ function OrderCard({ order }: { order: OrderRecord }) {
               </div>
             </div>
 
-            {order.address && (
+            {order.address ? (
               <div className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
                 <p className="font-semibold text-slate-800">{order.address.label}</p>
                 <p>{order.address.addressLine1}</p>
-                {order.address.addressLine2 && <p>{order.address.addressLine2}</p>}
-                {order.address.landmark && <p>Near {order.address.landmark}</p>}
+                {order.address.addressLine2 ? <p>{order.address.addressLine2}</p> : null}
+                {order.address.landmark ? <p>Near {order.address.landmark}</p> : null}
               </div>
-            )}
+            ) : null}
           </div>
-        )}
+        ) : null}
       </div>
     </article>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import NameForm from "@/components/auth/NameForm";
 import PhoneInput from "@/components/auth/PhoneInput";
@@ -10,7 +10,7 @@ import { normalizePhoneNumber } from "@/lib/phone";
 
 type Step = "phone" | "waiting" | "profile";
 
-export default function CustomerLoginPage() {
+function CustomerLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { authenticated, customer, setCustomerSession, refreshCustomer } = useCustomerAuth();
@@ -232,5 +232,13 @@ export default function CustomerLoginPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function CustomerLoginPage() {
+  return (
+    <Suspense>
+      <CustomerLoginContent />
+    </Suspense>
   );
 }

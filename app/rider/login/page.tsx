@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRiderAuth } from "@/components/auth/RiderAuthProvider";
 import { authenticateRider } from "@/services/riderService";
 
-export default function RiderLoginPage() {
+function RiderLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { authenticated, rider, setRiderSession } = useRiderAuth();
@@ -101,3 +101,10 @@ export default function RiderLoginPage() {
   );
 }
 
+export default function RiderLoginPage() {
+  return (
+    <Suspense>
+      <RiderLoginContent />
+    </Suspense>
+  );
+}

@@ -4,6 +4,8 @@ import { firestore } from "@/lib/firebase";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { createCustomerProfile, getCustomerProfile, touchCustomerLogin } from "@/services/customerService";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

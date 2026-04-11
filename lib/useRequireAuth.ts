@@ -6,6 +6,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { hasAdminBypassSession } from "@/lib/devAuth";
 import { auth } from "@/lib/firebase";
 import { getAdminProfile } from "@/services/adminService";
+import { getPosStaffProfile, getPosStaffProfileByEmail } from "@/lib/firestore";
 import type { UserRole } from "@/lib/firebase";
 
 export function useRequireAuth(requiredRole?: UserRole) {
@@ -16,7 +17,7 @@ export function useRequireAuth(requiredRole?: UserRole) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (requiredRole === "admin" && hasAdminBypassSession()) {
+    if ((requiredRole === "admin" || requiredRole === "pos") && hasAdminBypassSession()) {
       setAuthenticated(true);
       setRole("admin");
       setLoading(false);
@@ -28,7 +29,40 @@ export function useRequireAuth(requiredRole?: UserRole) {
         setAuthenticated(false);
         setRole(null);
         const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
-        router.push(`${requiredRole === "admin" ? "/admin/login" : "/login"}${next}`);
+        if (requiredRole === "admin") router.push(`/admin/login${next}`);
+        else if (requiredRole === "pos") router.push(`/pos/login`);
+        else router.push(`/login${next}`);
+        setLoading(false);
+        return;
+      }
+
+      if (requiredRole === "pos") {
+        // Admins can also access POS
+        const adminProfile = await getAdminProfile(user.uid);
+        if (adminProfile) {
+          setAuthenticated(true);
+          setRole("admin");
+          setLoading(false);
+          return;
+        }
+        if (!user.email) {
+          await signOut(auth);
+          router.push("/pos/login");
+          setLoading(false);
+          return;
+        }
+        const posProfile = await getPosStaffProfileByEmail(user.email)
+                           ?? await getPosStaffProfile(user.uid);
+        if (!posProfile || posProfile.status !== "active") {
+          setAuthenticated(false);
+          setRole(null);
+          await signOut(auth);
+          router.push("/pos/login");
+          setLoading(false);
+          return;
+        }
+        setAuthenticated(true);
+        setRole("pos");
         setLoading(false);
         return;
       }

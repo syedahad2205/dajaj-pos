@@ -1,0 +1,171 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // AUTH MODEL
+    // ─────────────────────────────────────────────────────────────────────────
+    // ADMIN     — Firebase Auth (email). isAdmin() checks /admins/{uid}.
+    //
+    // POS STAFF — Firebase Auth (email). Created on first login after approval.
+    //             isActivePosStaff() checks /pos_staff/{email}.status == active.
+    //             Docs are keyed by lowercase email (not UID).
+    //
+    // CUSTOMER  — No Firebase Auth. Phone + OTP session in localStorage.
+    //
+    // RIDER     — No Firebase Auth. riderId + access code in localStorage.
+    // =========================================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+          && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isAdminSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isActivePosStaff() {
+      return isSignedIn()
+          && request.auth.token.email != null
+          && get(/databases/$(database)/documents/pos_staff/$(request.auth.token.email.lower())).data.status == 'active';
+    }
+
+    function isAdminOrPosStaff() {
+      return isAdmin() || isActivePosStaff();
+    }
+
+    // ── Admin Profiles ────────────────────────────────────────────────────────
+    // A Firebase Auth user may read their OWN doc (needed during login to verify
+    // admin status). Any existing admin may read/write other admin docs.
+    match /admins/{adminId} {
+      allow read:  if isAdminSelf(adminId) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ── POS Staff ─────────────────────────────────────────────────────────────
+    // Doc ID = lowercase email. Anyone signed in may create their OWN request
+    // (status will be 'pending'). Only admins may approve/reject.
+    // A signed-in user may read their own doc to check approval status.
+    match /pos_staff/{email} {
+      // Public read — it's just approval status, no sensitive data.
+      // Also needed for the pre-auth first-login check.
+      allow read: if true;
+      // Unauthenticated create for pending request submissions (no auth account yet)
+      allow create: if request.resource.data.status == 'pending'
+                    && request.resource.data.email == email;
+      // Signed-in POS user may update their own doc (e.g. to store uid on first login)
+      allow update: if isSignedIn()
+                    && request.auth.token.email != null
+                    && request.auth.token.email.lower() == email;
+      // Admin has full access
+      allow write: if isAdmin();
+    }
+
+    // ── POS Open Orders ───────────────────────────────────────────────────────
+    // Internal POS tablet. Requires admin or active POS staff session.
+    match /pos_open_orders/{orderId} {
+      allow read, write: if isAdminOrPosStaff();
+    }
+
+    // ── Bills ─────────────────────────────────────────────────────────────────
+    // Read is public — bills are shared with customers via a WhatsApp link
+    // containing a UUID publicToken. Token validation is done in the app;
+    // Firestore allows the read so the app can perform the check.
+    // POS staff may create bills; only admin can update or delete.
+    match /bills/{billId} {
+      allow read:          if true;
+      allow create:        if isAdminOrPosStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Counters ──────────────────────────────────────────────────────────────
+    // counters/orders — incremented during online checkout (no Firebase Auth).
+    //   Transaction must read before it can write, so read must be public too.
+    // counters/bills  — incremented during POS bill generation (admin or POS staff).
+    match /counters/{counterId} {
+      allow read, write: if isAdminOrPosStaff() || counterId == 'orders';
+    }
+
+    // ── Online Orders ─────────────────────────────────────────────────────────
+    // Customers (no Firebase Auth) create orders from checkout.
+    // Admin and riders manage status. Riders have no Firebase Auth, so
+    // update is kept open (enforced by app-level session checks).
+    match /orders/{orderId} {
+      allow create, read: if true;
+      allow update:       if true;   // admin + rider status updates (app-enforced)
+      allow delete:       if isAdmin();
+    }
+
+    // ── OTP Verifications ─────────────────────────────────────────────────────
+    // Written and read by Next.js API routes using the client SDK (no request.auth).
+    // Records are short-lived (5 min TTL) and contain only a phone + OTP hash.
+    match /otp_verifications/{phone} {
+      allow read, write, delete: if true;
+    }
+
+    // ── Customer Profiles ─────────────────────────────────────────────────────
+    // Phone number is the document ID. No Firebase Auth — identity is enforced
+    // at the app layer (WhatsApp OTP session in localStorage).
+    match /customers/{customerPhone} {
+      allow read, create, update: if true;
+      allow delete:               if isAdmin();
+
+      match /addresses/{addressId} {
+        allow read, write, delete: if true;
+      }
+    }
+
+    // ── Riders ────────────────────────────────────────────────────────────────
+    // Admin creates and deactivates rider accounts.
+    // Rider app reads its own profile and writes live location / availability.
+    // No Firebase Auth on the rider side — app enforces session.
+    match /riders/{riderId} {
+      allow read:           if true;
+      allow create, delete: if isAdmin();
+      allow update:         if true;   // rider updates location / availability
+    }
+
+    // ── Delivery Assignments ──────────────────────────────────────────────────
+    // Admin creates and cancels assignments.
+    // Rider reads assigned jobs and updates delivery status (no Firebase Auth).
+    match /delivery_assignments/{assignmentId} {
+      allow read:           if true;
+      allow create, delete: if isAdmin();
+      allow update:         if true;   // rider updates delivery status
+    }
+
+    // ── Order Tracking ────────────────────────────────────────────────────────
+    // Rider writes live GPS position; customer reads on the tracking page.
+    // Neither has Firebase Auth.
+    match /order_tracking/{orderId} {
+      allow read, write: if true;
+    }
+
+    // ── Menu ──────────────────────────────────────────────────────────────────
+    // Public read for online menu page and POS item picker.
+    // Only admin can modify the menu tree.
+    match /menus/{menuId} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Delivery Settings ─────────────────────────────────────────────────────
+    // Public read for delivery fee calculation on the checkout page.
+    // Only admin can configure zones and minimum order.
+    match /deliverySettings/{docId} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Default deny ──────────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
