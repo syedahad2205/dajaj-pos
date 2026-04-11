@@ -11,8 +11,11 @@ import {
   deletePosOpenOrder,
   getNextDailyOrderLabel,
   markPosOrderBilled,
+  reopenBillAsOrder,
   subscribeToPosOpenOrders,
+  subscribeToTodaysBills,
   updatePosOpenOrder,
+  type Bill,
   type BillItem,
   type PosCartItem,
   type PosModifier,
@@ -92,13 +95,16 @@ export default function POSPage() {
   // Open orders (from Firestore)
   const [openOrders, setOpenOrders] = useState<PosOpenOrder[]>([]);
 
+  // Today's billed orders
+  const [todayBills, setTodayBills] = useState<(Bill & { docId: string })[]>([]);
+
   // Active order being edited
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [localItems, setLocalItems] = useState<PosCartItem[]>([]);
   const [localLabel, setLocalLabel] = useState('');
 
   // Bill confirm modal
-  type BillConfirm = { orderId: string; label: string; items: PosCartItem[]; grandTotal: number; paymentMode: PaymentMode };
+  type BillConfirm = { orderId: string; label: string; items: PosCartItem[]; grandTotal: number; paymentMode: PaymentMode; cashCollected: string };
   const [billConfirm, setBillConfirm] = useState<BillConfirm | null>(null);
   const [lastBill, setLastBill] = useState<{ billNo: string; publicToken: string } | null>(null);
 
@@ -131,6 +137,13 @@ export default function POSPage() {
   useEffect(() => {
     if (!authenticated || (role !== 'admin' && role !== 'pos')) return;
     const unsub = subscribeToPosOpenOrders(setOpenOrders);
+    return unsub;
+  }, [authenticated, role]);
+
+  // ── Subscribe to today's bills ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!authenticated || (role !== 'admin' && role !== 'pos')) return;
+    const unsub = subscribeToTodaysBills(setTodayBills);
     return unsub;
   }, [authenticated, role]);
 
@@ -171,6 +184,35 @@ export default function POSPage() {
     setLocalLabel(order.label);
     setMobileTab('menu');
   }, [activeOrderId, flushSync]);
+
+  // ── Reopen a billed order for editing ────────────────────────────────────────
+  const handleReopenBill = async (bill: Bill & { docId: string }) => {
+    await flushSync();
+    const newId = await reopenBillAsOrder(bill);
+    // The new order will appear via the subscription — select it
+    const waitForOrder = () => {
+      setActiveOrderId(newId);
+      setLocalItems(
+        bill.items.map((bi, idx) => ({
+          id: `reopened-${idx}-${Date.now()}`,
+          sku: bi.sku,
+          name: bi.name,
+          variantLabel: bi.variant,
+          qty: bi.qty,
+          basePrice: bi.basePrice,
+          modifiers: bi.addons.map((a, ai) => {
+            const parts = a.name.split(': ');
+            return { id: `mod-${idx}-${ai}`, groupName: parts[0] || '', name: parts[1] || a.name, price: a.price };
+          }),
+          itemTotal: bi.itemTotal,
+          variantId: '',
+        }))
+      );
+      setLocalLabel(bill.customer.name || bill.billNo);
+      setMobileTab('menu');
+    };
+    waitForOrder();
+  };
 
   // ── New order ────────────────────────────────────────────────────────────────
   const handleNewOrder = async () => {
@@ -264,13 +306,13 @@ export default function POSPage() {
     if (!label.trim()) { alert('Please enter a customer name.'); return; }
 
     const { grandTotal } = calcTotals(items);
-    setBillConfirm({ orderId: targetId, label, items, grandTotal, paymentMode: 'Cash' });
+    setBillConfirm({ orderId: targetId, label, items, grandTotal, paymentMode: 'Cash', cashCollected: '' });
   };
 
   // ── Execute bill after modal confirm ─────────────────────────────────────────
   const confirmBill = async () => {
     if (!billConfirm) return;
-    const { orderId: targetId, label, items, paymentMode: chosenMode } = billConfirm;
+    const { orderId: targetId, label, items, paymentMode: chosenMode, cashCollected } = billConfirm;
     setBilling(true);
     try {
       const { subtotal, cgst, sgst, grandTotal } = calcTotals(items);
@@ -292,6 +334,7 @@ export default function POSPage() {
         sgst,
         grandTotal,
         paymentMode: chosenMode,
+        ...(chosenMode === 'UPI' && cashCollected.trim() ? { cashCollected: parseFloat(cashCollected) } : {}),
         punchedBy: auth.currentUser?.email ?? 'unknown',
       });
 
@@ -408,7 +451,7 @@ export default function POSPage() {
             <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Open Orders</p>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            {openOrders.length === 0 && (
+            {openOrders.length === 0 && todayBills.length === 0 && (
               <p className="text-center text-xs text-neutral-400 mt-6">No open orders.<br />Create a new one.</p>
             )}
             {openOrders.map((order) => {
@@ -469,6 +512,51 @@ export default function POSPage() {
                 </div>
               );
             })}
+
+            {/* Billed orders section */}
+            {todayBills.length > 0 ? (
+              <>
+                <div className="px-1 pt-3 pb-1">
+                  <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Billed Today</p>
+                </div>
+                {todayBills.map((bill) => {
+                  const oTotal = bill.grandTotal;
+                  return (
+                    <div
+                      key={bill.docId}
+                      onClick={() => void handleReopenBill(bill)}
+                      className="rounded-xl p-3 cursor-pointer border border-neutral-100 bg-neutral-50 hover:border-orange-300 hover:bg-orange-50/40 transition-all opacity-70 hover:opacity-100"
+                    >
+                      <div className="flex items-start justify-between gap-1">
+                        <span className="font-semibold text-sm text-neutral-600 truncate leading-tight">
+                          {bill.customer.name || bill.billNo}
+                        </span>
+                        <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-1.5 py-0.5 rounded-md flex-shrink-0">Billed</span>
+                      </div>
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        {bill.items.length} item{bill.items.length !== 1 ? 's' : ''}
+                        {bill.items.length > 0 ? ` · ₹${oTotal.toFixed(0)}` : ''}
+                      </p>
+                      {bill.items.length > 0 && (
+                        <p className="text-[10px] text-neutral-400 mt-1 leading-snug line-clamp-2">
+                          {bill.items.map((i) => {
+                            const parts = [i.variant, ...i.addons.map((a) => a.name.split(': ').pop())].filter(Boolean).join(', ');
+                            return `${parts}${i.qty > 1 ? ` ×${i.qty}` : ''}`;
+                          }).join(' · ')}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-neutral-400 mt-0.5">{bill.billNo} · {bill.paymentMode}</p>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); void handleReopenBill(bill); }}
+                        className="mt-2 w-full text-sm py-2 rounded-lg border border-neutral-300 bg-white text-neutral-700 font-medium hover:border-orange-400 hover:text-orange-600 transition-colors"
+                      >
+                        Reopen & Edit
+                      </button>
+                    </div>
+                  );
+                })}
+              </>
+            ) : null}
           </div>
           <div className="flex-shrink-0 border-t border-neutral-100 p-2">
             <button
@@ -784,6 +872,20 @@ export default function POSPage() {
                 ))}
               </div>
             </div>
+
+            {billConfirm.paymentMode === 'UPI' ? (
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5 block">Cash Collected (optional)</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="₹ 0"
+                  value={billConfirm.cashCollected}
+                  onChange={(e) => setBillConfirm((prev) => prev ? { ...prev, cashCollected: e.target.value } : prev)}
+                  className="w-full px-3 py-2.5 rounded-xl border-2 border-neutral-200 focus:border-orange-400 focus:outline-none text-sm font-medium"
+                />
+              </div>
+            ) : null}
 
             <div className="flex gap-3">
               <button

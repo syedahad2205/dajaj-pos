@@ -164,6 +164,26 @@ export function subscribeToPosOpenOrders(
   });
 }
 
+/** Subscribe to today's bills in real-time */
+export function subscribeToTodaysBills(
+  callback: (bills: (Bill & { docId: string })[]) => void,
+): () => void {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const startTs = Timestamp.fromDate(todayStart);
+
+  const q = query(
+    collection(firestore, 'bills'),
+    where('createdAt', '>=', startTs),
+    orderBy('createdAt', 'desc'),
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const bills = snapshot.docs.map((d) => ({ docId: d.id, ...(d.data() as Bill) }));
+    callback(bills);
+  });
+}
+
 export async function updatePosOpenOrder(
   id: string,
   label: string,
@@ -178,6 +198,41 @@ export async function updatePosOpenOrder(
 
 export async function markPosOrderBilled(id: string): Promise<void> {
   await updateDoc(doc(firestore, 'pos_open_orders', id), { billedAt: serverTimestamp() });
+}
+
+export async function unmarkPosOrderBilled(id: string): Promise<void> {
+  await updateDoc(doc(firestore, 'pos_open_orders', id), { billedAt: null });
+}
+
+/** Recreate a POS open order from a bill so it can be edited and re-billed */
+export async function reopenBillAsOrder(bill: Bill & { docId: string }): Promise<string> {
+  const items: PosCartItem[] = bill.items.map((bi, idx) => ({
+    id: `reopened-${idx}-${Date.now()}`,
+    sku: bi.sku,
+    name: bi.name,
+    variantLabel: bi.variant,
+    qty: bi.qty,
+    basePrice: bi.basePrice,
+    modifiers: bi.addons.map((a, ai) => {
+      const parts = a.name.split(': ');
+      return { id: `mod-${idx}-${ai}`, groupName: parts[0] || '', name: parts[1] || a.name, price: a.price };
+    }),
+    itemTotal: bi.itemTotal,
+    variantId: '',
+  }));
+
+  const ref = await addDoc(collection(firestore, 'pos_open_orders'), {
+    label: bill.customer.name || bill.billNo,
+    items,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    reopenedFromBill: bill.billNo,
+  });
+
+  // Delete the old bill so re-billing won't create a duplicate
+  await deleteDoc(doc(firestore, 'bills', bill.docId));
+
+  return ref.id;
 }
 
 export async function deletePosOpenOrder(id: string): Promise<void> {
@@ -208,6 +263,7 @@ export interface Bill {
   sgst: number;
   grandTotal: number;
   paymentMode: string;
+  cashCollected?: number;
   punchedBy?: string;
 }
 

@@ -210,6 +210,12 @@ const BillDocument = ({ bill }: { bill: Bill }) => {
             <Text style={styles.label}>Payment Mode:</Text>
             <Text style={styles.label}>{bill.paymentMode}</Text>
           </View>
+          {bill.cashCollected ? (
+            <View style={styles.totalRow}>
+              <Text style={styles.label}>Cash Collected:</Text>
+              <Text style={styles.label}>₹{bill.cashCollected.toFixed(2)}</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.footer}>

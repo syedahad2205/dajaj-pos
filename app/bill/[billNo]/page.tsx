@@ -225,6 +225,12 @@ export default function BillPage() {
               <span>Payment Mode:</span>
               <span>{bill.paymentMode}</span>
             </div>
+            {bill.cashCollected ? (
+              <div className="flex justify-between text-sm text-gray-600 mt-1">
+                <span>Cash Collected:</span>
+                <span>₹{bill.cashCollected.toFixed(2)}</span>
+              </div>
+            ) : null}
           </div>
 
           <div className="text-center mt-6 pt-4 border-t">
