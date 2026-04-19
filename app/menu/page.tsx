@@ -15,7 +15,6 @@ function collectVariants(node: MenuTreeNode): MenuTreeNode[] {
 
 export default function MenuPage() {
   const [menuTree, setMenuTree] = useState<MenuTreeNode[]>([]);
-  const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
   const [status, setStatus] = useState("Loading menu...");
 
   useEffect(() => {
@@ -50,55 +49,30 @@ export default function MenuPage() {
         ) : (
           <section className="space-y-4">
             {categories.map((category) => {
-              const isExpanded = expandedCategoryId === category.id;
               const variants = collectVariants(category).filter((n) => n.type === "variant");
 
               return (
                 <section key={category.id} className="rounded-[28px] border border-orange-100 bg-white/90 shadow-sm">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedCategoryId((prev) => (prev === category.id ? null : category.id))}
-                    className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left"
-                  >
-                    <div>
-                      <h2 className="break-words text-2xl font-black text-slate-900">
-                        {isExpanded ? "▼" : "►"} {category.name}
-                      </h2>
-                      <p className="mt-1 text-sm font-medium text-slate-500">
-                        {variants.length} {variants.length === 1 ? "item" : "items"}
-                      </p>
-                      {category.description ? <p className="mt-2 text-sm leading-6 text-slate-600">{category.description}</p> : null}
+                  <div className="px-5 py-5">
+                    <h2 className="text-2xl font-black text-slate-900">{category.name}</h2>
+                    <p className="mt-1 text-sm font-medium text-slate-500">
+                      {variants.length} {variants.length === 1 ? "item" : "items"}
+                    </p>
+                    {category.description ? <p className="mt-2 text-sm leading-6 text-slate-600">{category.description}</p> : null}
+                  </div>
+                  <div className="border-t border-orange-100 px-5 py-5">
+                    <div className="space-y-3">
+                      {variants.map((v) => (
+                        <div key={v.id} className="flex flex-col gap-2 rounded-3xl border border-orange-100 bg-orange-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <h3 className="text-lg font-black text-slate-900">{v.name}</h3>
+                            {v.description ? <p className="mt-1 text-sm leading-6 text-slate-600">{v.description}</p> : null}
+                          </div>
+                          <span className="text-lg font-black text-slate-900">₹{v.price}</span>
+                        </div>
+                      ))}
                     </div>
-                  </button>
-
-                  {isExpanded ? (
-                    <div className="border-t border-orange-100 px-5 py-5">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {variants.map((v) => (
-                          <article key={v.id} className="flex w-full flex-col gap-3 overflow-hidden rounded-2xl border border-orange-100 bg-white p-4 shadow transition hover:shadow-lg">
-                            <div className="relative h-36 w-full overflow-hidden rounded-xl bg-gradient-to-br from-orange-100 via-amber-50 to-white">
-                              {v.imageUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={v.imageUrl} alt={v.name} className="h-full w-full object-cover" />
-                              ) : (
-                                <div className="flex h-full items-center justify-center text-sm font-bold uppercase tracking-[0.3em] text-orange-500">No Image</div>
-                              )}
-                            </div>
-                            <div className="space-y-1">
-                              <div className="flex items-start justify-between gap-4">
-                                <div>
-                                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">{category.name}</p>
-                                  <h3 className="break-words text-lg font-black text-slate-900">{v.name}</h3>
-                                  {v.description ? <p className="mt-1 text-sm leading-6 text-slate-600">{v.description}</p> : null}
-                                </div>
-                                <span className="whitespace-nowrap text-lg font-black text-slate-900">₹{v.price}</span>
-                              </div>
-                            </div>
-                          </article>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                  </div>
                 </section>
               );
             })}

@@ -116,6 +116,7 @@ export default function CheckoutPage() {
     }
 
     setError("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- omit `error`; only re-run when cart / address / payment context changes
   }, [itemCount, selectedAddress, selectedPaymentMethod, subtotal]);
 
   if (loading) {

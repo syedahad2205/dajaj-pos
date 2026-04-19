@@ -9,6 +9,7 @@ service cloud.firestore {
     //
     // POS STAFF — Firebase Auth (email). Created on first login after approval.
     //             isActivePosStaff() checks /pos_staff/{email}.status == active.
+    //             isInventoryManager() checks /pos_staff/{email}.canManageInventory == true.
     //             Docs are keyed by lowercase email (not UID).
     //
     // CUSTOMER  — No Firebase Auth. Phone + OTP session in localStorage.
@@ -29,14 +30,31 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function posStaffPath() {
+      return /databases/$(database)/documents/pos_staff/$(request.auth.token.email.lower());
+    }
+
     function isActivePosStaff() {
       return isSignedIn()
           && request.auth.token.email != null
-          && get(/databases/$(database)/documents/pos_staff/$(request.auth.token.email.lower())).data.status == 'active';
+          && exists(posStaffPath())
+          && get(posStaffPath()).data.status == 'active';
+    }
+
+    function isInventoryManager() {
+      return isSignedIn()
+          && request.auth.token.email != null
+          && exists(posStaffPath())
+          && get(posStaffPath()).data.status == 'active'
+          && get(posStaffPath()).data.canManageInventory == true;
     }
 
     function isAdminOrPosStaff() {
       return isAdmin() || isActivePosStaff();
+    }
+
+    function isAdminOrInventoryManager() {
+      return isAdmin() || isInventoryManager();
     }
 
     // ── Admin Profiles ────────────────────────────────────────────────────────
@@ -49,7 +67,7 @@ service cloud.firestore {
 
     // ── POS Staff ─────────────────────────────────────────────────────────────
     // Doc ID = lowercase email. Anyone signed in may create their OWN request
-    // (status will be 'pending'). Only admins may approve/reject.
+    // (status will be 'pending'). Only admins may approve/reject and manage inventory permissions.
     // A signed-in user may read their own doc to check approval status.
     match /pos_staff/{email} {
       // Public read — it's just approval status, no sensitive data.
@@ -62,7 +80,7 @@ service cloud.firestore {
       allow update: if isSignedIn()
                     && request.auth.token.email != null
                     && request.auth.token.email.lower() == email;
-      // Admin has full access
+      // Admin has full access including inventory permission management
       allow write: if isAdmin();
     }
 
@@ -76,11 +94,12 @@ service cloud.firestore {
     // Read is public — bills are shared with customers via a WhatsApp link
     // containing a UUID publicToken. Token validation is done in the app;
     // Firestore allows the read so the app can perform the check.
-    // POS staff may create bills; only admin can update or delete.
+    // POS staff may create bills and delete them when reopening a bill for edit
+    // (reopenBillAsOrder deletes the old bill after copying to pos_open_orders).
     match /bills/{billId} {
       allow read:          if true;
       allow create:        if isAdminOrPosStaff();
-      allow update, delete: if isAdmin();
+      allow update, delete: if isAdminOrPosStaff();
     }
 
     // ── Counters ──────────────────────────────────────────────────────────────
@@ -162,10 +181,27 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── Inventory Entries ─────────────────────────────────────────────────────
+    // Daily inventory stock entries (opening/closing stock).
+    // Admin has full access. Active POS staff with inventory permission can read/write.
+    match /inventory_entries/{entryId} {
+      allow read, write: if isAdmin();
+      allow read, write: if isInventoryManager();
+    }
+
+    // ── Inventory Audit Logs ──────────────────────────────────────────────────
+    // Complete audit trail of all inventory changes.
+    // Admin can read and manage all logs. Inventory managers may create audit
+    // records for their own stock changes and review the log history.
+    match /inventory_audit_logs/{logId} {
+      allow read: if isAdmin() || isInventoryManager();
+      allow create: if isAdminOrInventoryManager();
+      allow update, delete: if isAdmin();
+    }
+
     // ── Default deny ──────────────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
-

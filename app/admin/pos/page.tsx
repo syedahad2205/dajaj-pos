@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/roleGuard";
 import {
   subscribeToPosStaff,
   updatePosStaffStatus,
+  updatePosStaffInventoryPermission,
   type PosStaff,
   type PosStaffStatus,
 } from "@/lib/firestore";
@@ -27,11 +28,13 @@ function StaffRow({
   staff,
   onApprove,
   onReject,
+  onToggleInventory,
   updating,
 }: {
   staff: PosStaff;
   onApprove?: () => void;
   onReject?: () => void;
+  onToggleInventory?: () => void;
   updating: boolean;
 }) {
   const createdAt =
@@ -41,12 +44,24 @@ function StaffRow({
 
   return (
     <div className="flex items-center justify-between gap-3 py-3 border-b border-neutral-100 last:border-0">
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="font-semibold text-sm text-neutral-800 truncate">{staff.name}</p>
         <p className="text-xs text-neutral-500 truncate">{staff.email}</p>
         {createdAt && <p className="text-xs text-neutral-400 mt-0.5">Requested {createdAt}</p>}
       </div>
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-3 shrink-0">
+        {staff.status === "active" && (
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={staff.canManageInventory ?? false}
+              onChange={onToggleInventory}
+              disabled={updating}
+              className="w-4 h-4 text-orange-600 bg-gray-100 border-gray-300 rounded focus:ring-orange-500"
+            />
+            <span className="text-neutral-600 font-medium">Inventory</span>
+          </label>
+        )}
         <StatusBadge status={staff.status} />
         {onApprove && (
           <button
@@ -86,6 +101,15 @@ export default function AdminPosStaffPage() {
     setUpdating(docId);
     try {
       await updatePosStaffStatus(docId, status);
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const handleToggleInventory = async (docId: string, currentValue: boolean) => {
+    setUpdating(docId);
+    try {
+      await updatePosStaffInventoryPermission(docId, !currentValue);
     } finally {
       setUpdating(null);
     }
@@ -150,6 +174,7 @@ export default function AdminPosStaffPage() {
                 key={s.docId}
                 staff={s}
                 onReject={() => handleStatus(s.docId, "rejected")}
+                onToggleInventory={() => handleToggleInventory(s.docId, s.canManageInventory ?? false)}
                 updating={updating === s.docId}
               />
             ))
@@ -168,8 +193,7 @@ export default function AdminPosStaffPage() {
               <StaffRow
                 key={s.docId}
                 staff={s}
-                onApprove={() => handleStatus(s.docId, "active")}
-                updating={updating === s.docId}
+                onApprove={() => handleStatus(s.docId, "active")}                onToggleInventory={() => handleToggleInventory(s.docId, s.canManageInventory ?? false)}                updating={updating === s.docId}
               />
             ))}
           </div>

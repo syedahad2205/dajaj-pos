@@ -16,6 +16,7 @@ import {
   type MenuNode,
   type MenuNodeInput,
   type MenuNodeType,
+  type InventoryTrackingMode,
   type SelectionType,
   type MenuTreeNode,
 } from "@/lib/menu-builder";
@@ -32,6 +33,9 @@ type FormState = {
   description: string;
   imageUrl: string;
   isAvailable: boolean;
+  trackInventory: boolean;
+  inventoryMultiplier: string;
+  inventoryTrackingMode: InventoryTrackingMode;
   order: string;
 };
 
@@ -70,6 +74,71 @@ function getFirebaseErrorCode(error: unknown) {
   return "";
 }
 
+function supportsInventoryControls(type: MenuNodeType, parentId: string | null) {
+  return type === "variant" || (type === "category" && parentId === null);
+}
+
+function supportsModifierStockControls(type: MenuNodeType) {
+  return type === "modifier";
+}
+
+function supportsInventoryModeControls(type: MenuNodeType, parentId: string | null) {
+  return type === "category" && parentId === null;
+}
+
+function supportsNodeInventoryControls(node: MenuNode) {
+  return supportsInventoryControls(node.type, node.parentId);
+}
+
+function formatInventoryMultiplierInput(node: Pick<MenuNode, "type" | "inventoryMultiplier">) {
+  if (node.type === "variant" && node.inventoryMultiplier === null) {
+    return "";
+  }
+
+  return String(node.inventoryMultiplier ?? 1);
+}
+
+/** Modifier: empty = default full portion (1) in inventory math. */
+function formatModifierStockMultiplier(node: Pick<MenuNode, "type" | "inventoryMultiplier">) {
+  if (node.type !== "modifier") {
+    return "";
+  }
+
+  if (node.inventoryMultiplier === null || node.inventoryMultiplier === undefined) {
+    return "";
+  }
+
+  return String(node.inventoryMultiplier);
+}
+
+function parseModifierStockMultiplierInput(rawValue: string): number | null {
+  const trimmed = rawValue.trim();
+  if (trimmed === "") {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("Stock usage must be a number greater than 0 (e.g. 0.5 for half).");
+  }
+
+  return parsed;
+}
+
+function parseInventoryMultiplierInput(rawValue: string, nodeType: MenuNodeType) {
+  const trimmed = rawValue.trim();
+  if (trimmed === "") {
+    return nodeType === "variant" ? null : 1;
+  }
+
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("Inventory multiplier must be greater than 0.");
+  }
+
+  return parsed;
+}
+
 const emptyForm: FormState = {
   name: "",
   parentId: "",
@@ -81,6 +150,9 @@ const emptyForm: FormState = {
   description: "",
   imageUrl: "",
   isAvailable: true,
+  trackInventory: true,
+  inventoryMultiplier: "",
+  inventoryTrackingMode: "items",
   order: "0",
 };
 
@@ -194,6 +266,8 @@ function NodeRow({
   onCopy,
   onToggleAvailability,
   onQuickPriceSave,
+  onQuickModifierStockSave,
+  onQuickInventorySave,
   onDragStart,
   onDrop,
 }: {
@@ -207,13 +281,35 @@ function NodeRow({
   onCopy: (node: MenuNode) => void;
   onToggleAvailability: (node: MenuNode) => void;
   onQuickPriceSave: (node: MenuNode, value: string) => void;
+  onQuickModifierStockSave: (node: MenuNode, value: string) => void;
+  onQuickInventorySave: (
+    node: MenuNode,
+    trackInventory: boolean,
+    multiplier: string,
+    trackingMode: InventoryTrackingMode | null,
+  ) => void;
   onDragStart: (id: string) => void;
   onDrop: (targetId: string, position: DropPosition) => void;
 }) {
   const [priceDraft, setPriceDraft] = useState(String(node.price));
+  const [modifierStockDraft, setModifierStockDraft] = useState(() =>
+    node.type === "modifier" ? formatModifierStockMultiplier(node) : "",
+  );
+  const [inventoryTrackDraft, setInventoryTrackDraft] = useState(node.trackInventory);
+  const savedInventoryMultiplier = formatInventoryMultiplierInput(node);
+  const [inventoryMultiplierDraft, setInventoryMultiplierDraft] = useState(savedInventoryMultiplier);
+  const [inventoryTrackingModeDraft, setInventoryTrackingModeDraft] = useState<InventoryTrackingMode>(
+    node.inventoryTrackingMode ?? "items",
+  );
   const isExpanded = expandedByDepth[depth] === node.id;
   const hasChildren = node.children.length > 0;
   const behavior = getNodeBehavior(node.type);
+  const inventoryConfigurable = supportsNodeInventoryControls(node);
+  const inventoryModeConfigurable = supportsInventoryModeControls(node.type, node.parentId);
+  const hasPendingInventoryChanges =
+    inventoryTrackDraft !== node.trackInventory ||
+    inventoryMultiplierDraft !== savedInventoryMultiplier ||
+    (inventoryModeConfigurable && inventoryTrackingModeDraft !== (node.inventoryTrackingMode ?? "items"));
   let cardStyle = "";
   switch (node.type) {
     case "category":
@@ -238,6 +334,20 @@ function NodeRow({
   useEffect(() => {
     setPriceDraft(String(node.price));
   }, [node.price]);
+
+  useEffect(() => {
+    if (node.type === "modifier") {
+      setModifierStockDraft(
+        formatModifierStockMultiplier({ type: "modifier", inventoryMultiplier: node.inventoryMultiplier }),
+      );
+    }
+  }, [node.id, node.inventoryMultiplier, node.type]);
+
+  useEffect(() => {
+    setInventoryTrackDraft(node.trackInventory);
+    setInventoryMultiplierDraft(savedInventoryMultiplier);
+    setInventoryTrackingModeDraft(node.inventoryTrackingMode ?? "items");
+  }, [node.trackInventory, node.inventoryMultiplier, node.inventoryTrackingMode, node.type, savedInventoryMultiplier]);
 
   return (
     <div className="space-y-2">
@@ -293,6 +403,28 @@ function NodeRow({
               >
                 {node.isAvailable ? "Available" : "Unavailable"}
               </span>
+              {node.type === "modifier" &&
+              typeof node.inventoryMultiplier === "number" &&
+              node.inventoryMultiplier > 0 &&
+              node.inventoryMultiplier !== 1 ? (
+                <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                  Stock ×{node.inventoryMultiplier}
+                </span>
+                ) : null}
+              {inventoryConfigurable ? (
+                <span
+                  className={`rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-wide ${
+                    node.trackInventory ? "bg-sky-100 text-sky-700" : "bg-slate-200 text-slate-600"
+                  }`}
+                >
+                  {node.trackInventory ? "Track inventory" : "Ignore inventory"}
+                </span>
+              ) : null}
+              {inventoryModeConfigurable ? (
+                <span className="rounded-full bg-sky-50 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sky-700">
+                  {node.inventoryTrackingMode === "aggregate" ? "Whole category" : "Individual items"}
+                </span>
+              ) : null}
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -304,6 +436,18 @@ function NodeRow({
               <span className="text-sm font-semibold text-slate-500">
                 {behavior.priceLabel}: {behavior.supportsPrice ? previewPrice : "No price"}
               </span>
+              {inventoryConfigurable ? (
+                <span className="text-sm font-semibold text-slate-500">
+                  {node.type === "category"
+                    ? `Default multiplier ${node.inventoryMultiplier ?? 1}`
+                    : `Multiplier ${node.inventoryMultiplier ?? "inherits category default"}`}
+                </span>
+              ) : null}
+              {inventoryModeConfigurable ? (
+                <span className="text-sm font-semibold text-slate-500">
+                  Mode: {node.inventoryTrackingMode === "aggregate" ? "Whole category stock" : "Item-by-item stock"}
+                </span>
+              ) : null}
             </div>
 
             {node.description ? <p className="mt-2 text-sm text-slate-600">{node.description}</p> : null}
@@ -335,6 +479,99 @@ function NodeRow({
                 >
                   Save Price
                 </button>
+              </div>
+            ) : null}
+
+            {node.type === "modifier" ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-900">Stock usage</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  POS bills store this modifier on the SKU. Set <strong>0.5</strong> for half portions, or leave empty for a
+                  full portion (<strong>1</strong>). Full category stock uses this times bill quantity.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={modifierStockDraft}
+                    onChange={(event) => setModifierStockDraft(event.target.value)}
+                    placeholder="default 1 (e.g. 0.5 for half)"
+                    className="min-w-[8rem] flex-1 rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-amber-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onQuickModifierStockSave(node, modifierStockDraft)}
+                    className="rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800"
+                  >
+                    Save stock
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {inventoryConfigurable ? (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3">
+                <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={inventoryTrackDraft}
+                    onChange={(event) => setInventoryTrackDraft(event.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Track inventory
+                </label>
+
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={inventoryMultiplierDraft}
+                    onChange={(event) => setInventoryMultiplierDraft(event.target.value)}
+                    placeholder={node.type === "variant" ? "inherit top category" : "1"}
+                    className="min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-500"
+                  />
+                  {inventoryModeConfigurable ? (
+                    <select
+                      value={inventoryTrackingModeDraft}
+                      onChange={(event) => setInventoryTrackingModeDraft(event.target.value as InventoryTrackingMode)}
+                      className="min-w-0 rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
+                    >
+                      <option value="aggregate">Whole category</option>
+                      <option value="items">Individual items</option>
+                    </select>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onQuickInventorySave(
+                        node,
+                        inventoryTrackDraft,
+                        inventoryMultiplierDraft,
+                        inventoryModeConfigurable ? inventoryTrackingModeDraft : null,
+                      )
+                    }
+                    disabled={!hasPendingInventoryChanges}
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Save Tracking
+                  </button>
+                </div>
+
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  {node.type === "category"
+                    ? inventoryTrackingModeDraft === "aggregate"
+                      ? "Whole category mode treats every sold child item as usage from one shared stock bucket."
+                      : "Individual items mode lets child items opt in and use their own multiplier."
+                    : "Tracked items reduce stock from their top-level category. Leave the multiplier blank to inherit the category default."}
+                </p>
+
+                {hasPendingInventoryChanges ? (
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                    Tracking changes are not saved yet
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
@@ -403,6 +640,8 @@ function NodeRow({
               onCopy={onCopy}
               onToggleAvailability={onToggleAvailability}
               onQuickPriceSave={onQuickPriceSave}
+              onQuickModifierStockSave={onQuickModifierStockSave}
+              onQuickInventorySave={onQuickInventorySave}
               onDragStart={onDragStart}
               onDrop={onDrop}
             />
@@ -453,6 +692,9 @@ export default function AdminMenuBuilderPage() {
 
   const tree = useMemo(() => buildMenuTree(nodes), [nodes]);
   const formBehavior = getNodeBehavior(form.type);
+  const formSupportsInventory = supportsInventoryControls(form.type, form.parentId || null);
+  const formSupportsModifierStock = supportsModifierStockControls(form.type);
+  const formSupportsInventoryMode = supportsInventoryModeControls(form.type, form.parentId || null);
 
   useEffect(() => {
     setForm((current) => {
@@ -509,6 +751,10 @@ export default function AdminMenuBuilderPage() {
       description: node.description,
       imageUrl: node.imageUrl,
       isAvailable: node.isAvailable,
+      trackInventory: node.trackInventory,
+      inventoryMultiplier:
+        node.type === "modifier" ? formatModifierStockMultiplier(node) : formatInventoryMultiplierInput(node),
+      inventoryTrackingMode: node.inventoryTrackingMode ?? "items",
       order: String(node.order),
     });
   };
@@ -534,6 +780,13 @@ export default function AdminMenuBuilderPage() {
         description: form.description.trim(),
         imageUrl: form.imageUrl.trim(),
         isAvailable: form.isAvailable,
+        trackInventory: form.trackInventory,
+        inventoryMultiplier: formSupportsModifierStock
+          ? parseModifierStockMultiplierInput(form.inventoryMultiplier)
+          : formSupportsInventory
+            ? parseInventoryMultiplierInput(form.inventoryMultiplier, form.type)
+            : null,
+        inventoryTrackingMode: formSupportsInventoryMode ? form.inventoryTrackingMode : null,
         order: Math.max(0, Number(form.order) || 0),
       };
 
@@ -587,6 +840,50 @@ export default function AdminMenuBuilderPage() {
         setStatus("Firebase denied price update access. Check Firestore rules for authenticated admins.");
       } else {
         setStatus(error instanceof Error ? error.message : "Failed to update price.");
+      }
+    }
+  };
+
+  const handleQuickModifierStockSave = async (node: MenuNode, value: string) => {
+    if (node.type !== "modifier") {
+      return;
+    }
+
+    try {
+      const parsed = parseModifierStockMultiplierInput(value);
+      await updateMenuNode(node.id, { inventoryMultiplier: parsed });
+      setStatus(`Stock usage updated for ${node.name}.`);
+    } catch (error) {
+      if (getFirebaseErrorCode(error) === "permission-denied") {
+        setStatus("Firebase denied menu update access. Check Firestore rules for authenticated admins.");
+      } else {
+        setStatus(error instanceof Error ? error.message : "Failed to update stock usage.");
+      }
+    }
+  };
+
+  const handleQuickInventorySave = async (
+    node: MenuNode,
+    trackInventory: boolean,
+    multiplier: string,
+    trackingMode: InventoryTrackingMode | null,
+  ) => {
+    if (!supportsNodeInventoryControls(node)) {
+      return;
+    }
+
+    try {
+      await updateMenuNode(node.id, {
+        trackInventory,
+        inventoryMultiplier: parseInventoryMultiplierInput(multiplier, node.type),
+        inventoryTrackingMode: supportsInventoryModeControls(node.type, node.parentId) ? trackingMode ?? "items" : null,
+      });
+      setStatus(`Inventory tracking updated for ${node.name}.`);
+    } catch (error) {
+      if (getFirebaseErrorCode(error) === "permission-denied") {
+        setStatus("Firebase denied inventory updates. Check Firestore rules for authenticated admins.");
+      } else {
+        setStatus(error instanceof Error ? error.message : "Failed to update inventory settings.");
       }
     }
   };
@@ -840,6 +1137,83 @@ export default function AdminMenuBuilderPage() {
               />
             </div>
 
+            {formSupportsModifierStock ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Stock usage (optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.inventoryMultiplier}
+                  onChange={(event) => setForm((current) => ({ ...current, inventoryMultiplier: event.target.value }))}
+                  placeholder="1 = full portion; e.g. 0.5 for half"
+                  className="w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 outline-none focus:border-amber-500"
+                />
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  Bills attach modifier IDs to the line SKU. This number multiplies how much tracked stock the line
+                  consumes (times bill quantity and category or item multipliers). Leave empty for a full portion.
+                </p>
+              </div>
+            ) : null}
+
+            {formSupportsInventory ? (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={form.trackInventory}
+                    onChange={(event) => setForm((current) => ({ ...current, trackInventory: event.target.checked }))}
+                    className="h-4 w-4"
+                  />
+                  <span className="text-sm font-semibold text-slate-700">Track inventory</span>
+                </label>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_170px] sm:items-end">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700">
+                      {form.type === "category" ? "Default multiplier" : "Multiplier"}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.inventoryMultiplier}
+                      onChange={(event) => setForm((current) => ({ ...current, inventoryMultiplier: event.target.value }))}
+                      placeholder={form.type === "variant" ? "inherit top category" : "1"}
+                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <p className="text-xs leading-5 text-slate-600">
+                    {form.type === "category"
+                      ? form.inventoryTrackingMode === "aggregate"
+                        ? "Whole category mode uses one shared stock bucket for every child item sale."
+                        : "Individual items mode lets you choose which child items affect inventory."
+                      : "Tracked items consume stock from their top-level category. Leave blank to inherit the category default."}
+                  </p>
+                </div>
+
+                {formSupportsInventoryMode ? (
+                  <div className="mt-4">
+                    <label className="mb-2 block text-sm font-semibold text-slate-700">Tracking mode</label>
+                    <select
+                      value={form.inventoryTrackingMode}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          inventoryTrackingMode: event.target.value as InventoryTrackingMode,
+                        }))
+                      }
+                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-sky-500"
+                    >
+                      <option value="aggregate">Whole category stock</option>
+                      <option value="items">Individual child items</option>
+                    </select>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3">
               <input
                 type="checkbox"
@@ -952,6 +1326,8 @@ export default function AdminMenuBuilderPage() {
                   onCopy={handleCopy}
                   onToggleAvailability={handleToggleAvailability}
                   onQuickPriceSave={handleQuickPriceSave}
+                  onQuickModifierStockSave={handleQuickModifierStockSave}
+                  onQuickInventorySave={handleQuickInventorySave}
                   onDragStart={(id) => setDraggedId(id)}
                   onDrop={handleDrop}
                 />

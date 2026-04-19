@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { ADMIN_BYPASS_CODE, hasAdminBypassSession, setAdminBypassSession } from "@/lib/devAuth";
@@ -16,7 +16,10 @@ function AdminLoginContent() {
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next");
 
-  const resolveRedirect = () => (nextPath && nextPath !== "/admin/login" ? nextPath : "/admin");
+  const resolveRedirect = useCallback(
+    () => (nextPath && nextPath !== "/admin/login" ? nextPath : "/admin"),
+    [nextPath],
+  );
 
   useEffect(() => {
     if (hasAdminBypassSession()) {
@@ -40,7 +43,7 @@ function AdminLoginContent() {
     });
 
     return () => unsubscribe();
-  }, [nextPath, router]);
+  }, [router, resolveRedirect]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

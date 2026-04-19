@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Autocomplete, CircleF, GoogleMap, MarkerF, useLoadScript } from "@react-google-maps/api";
 
 const defaultCenter = { lat: 12.8698, lng: 74.8436 };
@@ -46,6 +46,21 @@ export default function MapPicker({
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const hasAutoLocatedRef = useRef(false);
 
+  const applyPosition = useCallback(
+    async (nextPosition: { lat: number; lng: number }) => {
+      setPosition(nextPosition);
+      onChange(nextPosition);
+
+      const geocoder = new google.maps.Geocoder();
+      const response = await geocoder.geocode({ location: nextPosition });
+      const firstResult = response.results?.[0];
+      if (firstResult) {
+        onAddressResolved?.(parseAddressComponents(firstResult));
+      }
+    },
+    [onChange, onAddressResolved],
+  );
+
   useEffect(() => {
     if (value) {
       setPosition(value);
@@ -74,19 +89,7 @@ export default function MapPicker({
         timeout: 10000,
       },
     );
-  }, [autoLocateOnMount, isLoaded, value]);
-
-  const applyPosition = async (nextPosition: { lat: number; lng: number }) => {
-    setPosition(nextPosition);
-    onChange(nextPosition);
-
-    const geocoder = new google.maps.Geocoder();
-    const response = await geocoder.geocode({ location: nextPosition });
-    const firstResult = response.results?.[0];
-    if (firstResult) {
-      onAddressResolved?.(parseAddressComponents(firstResult));
-    }
-  };
+  }, [applyPosition, autoLocateOnMount, isLoaded, value]);
 
   if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY) {
     return (

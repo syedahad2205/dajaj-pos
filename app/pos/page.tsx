@@ -15,6 +15,7 @@ import {
   subscribeToPosOpenOrders,
   subscribeToTodaysBills,
   updatePosOpenOrder,
+  getPosStaffProfileByEmail,
   type Bill,
   type BillItem,
   type PosCartItem,
@@ -111,6 +112,7 @@ export default function POSPage() {
   // UI state
   const [billing, setBilling] = useState(false);
   const [creatingOrder, setCreatingOrder] = useState(false);
+  const [canManageInventory, setCanManageInventory] = useState(false);
   const [showOrdersPanel, setShowOrdersPanel] = useState(true);
   const [mobileTab, setMobileTab] = useState<'orders' | 'menu' | 'cart'>('menu');
 
@@ -132,6 +134,24 @@ export default function POSPage() {
     });
     return () => { cancelled = true; };
   }, [authenticated, role]);
+
+  useEffect(() => {
+    if (!authenticated || loading) return;
+    if (role === 'admin') {
+      setCanManageInventory(true);
+      return;
+    }
+
+    const email = auth.currentUser?.email;
+    if (!email) {
+      setCanManageInventory(false);
+      return;
+    }
+
+    void getPosStaffProfileByEmail(email)
+      .then((profile) => setCanManageInventory(Boolean(profile?.canManageInventory)))
+      .catch(() => setCanManageInventory(false));
+  }, [authenticated, loading, role]);
 
   // ── Subscribe to open orders ─────────────────────────────────────────────────
   useEffect(() => {
@@ -369,6 +389,11 @@ export default function POSPage() {
     }
   };
 
+  const handleGoToInventory = useCallback(async () => {
+    await flushSync();
+    router.push('/inventory');
+  }, [flushSync, router]);
+
   const handleLogout = async () => {
     clearAdminBypassSession();
     await signOut(auth);
@@ -427,6 +452,14 @@ export default function POSPage() {
           >
             Bills
           </button>
+          {(canManageInventory || role === 'admin') && (
+            <button
+              onClick={() => void handleGoToInventory()}
+              className="hidden sm:block px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              Update Inventory
+            </button>
+          )}
           <button
             onClick={handleLogout}
             className="px-3 py-2 bg-neutral-900 hover:bg-neutral-700 text-white text-sm font-medium rounded-lg transition-colors"

@@ -27,6 +27,7 @@ export interface PosStaff {
   name: string;
   email: string;
   status: PosStaffStatus;
+  canManageInventory?: boolean;
   createdAt: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -78,6 +79,10 @@ export async function getAllPosStaff(): Promise<PosStaff[]> {
 
 export async function updatePosStaffStatus(docId: string, status: PosStaffStatus): Promise<void> {
   await updateDoc(doc(firestore, 'pos_staff', docId), { status, updatedAt: serverTimestamp() });
+}
+
+export async function updatePosStaffInventoryPermission(docId: string, canManageInventory: boolean): Promise<void> {
+  await updateDoc(doc(firestore, 'pos_staff', docId), { canManageInventory, updatedAt: serverTimestamp() });
 }
 
 export function subscribeToPosStaff(callback: (staff: PosStaff[]) => void) {

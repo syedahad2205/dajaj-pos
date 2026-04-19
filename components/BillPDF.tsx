@@ -140,7 +140,8 @@ const BillDocument = ({ bill }: { bill: Bill }) => {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Background Watermark */}
+        {/* Background Watermark — @react-pdf/renderer's Image has no `alt` prop */}
+        {/* eslint-disable-next-line jsx-a11y/alt-text */}
         <Image
           src={logo}
           style={styles.watermark}

@@ -24,6 +24,11 @@ const adminLinks = [
     title: "Order Management",
     description: "View and manage customer orders",
   },
+  {
+    href: "/admin/inventory",
+    title: "Inventory Logs",
+    description: "Review inventory updates and audit history",
+  },
 ];
 
 export default function AdminDashboardPage() {

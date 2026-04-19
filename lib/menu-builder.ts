@@ -4,6 +4,7 @@ import {
   getDocs,
   onSnapshot,
   serverTimestamp,
+  type Firestore,
   setDoc,
   updateDoc,
   writeBatch,
@@ -13,6 +14,7 @@ import { firestore } from "@/lib/firebase";
 
 export type MenuNodeType = "category" | "variant" | "modifierGroup" | "modifier";
 export type SelectionType = "single" | "multiple" | "";
+export type InventoryTrackingMode = "aggregate" | "items";
 
 export interface MenuNode {
   id: string;
@@ -26,6 +28,9 @@ export interface MenuNode {
   description: string;
   imageUrl: string;
   isAvailable: boolean;
+  trackInventory: boolean;
+  inventoryMultiplier: number | null;
+  inventoryTrackingMode: InventoryTrackingMode | null;
   order: number;
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -46,11 +51,14 @@ export interface MenuNodeInput {
   description: string;
   imageUrl: string;
   isAvailable: boolean;
+  trackInventory: boolean;
+  inventoryMultiplier: number | null;
+  inventoryTrackingMode: InventoryTrackingMode | null;
   order: number;
 }
 
-function menusCollection() {
-  return collection(firestore, "menus");
+function menusCollection(db: Firestore = firestore) {
+  return collection(db, "menus");
 }
 
 function normalizeMenuNode(data: Partial<MenuNode>, fallbackId: string): MenuNode {
@@ -62,11 +70,26 @@ function normalizeMenuNode(data: Partial<MenuNode>, fallbackId: string): MenuNod
       : rawType === "item"
         ? "variant"
         : "category";
+  const normalizedParentId = data.parentId ?? null;
+  const supportsInventory = normalizedType === "variant" || (normalizedType === "category" && normalizedParentId === null);
+  const legacyTrackInventory = normalizedType === "variant" || (normalizedType === "category" && normalizedParentId === null);
+  const supportsInventoryMode = normalizedType === "category" && normalizedParentId === null;
+  const normalizedMultiplier =
+    typeof data.inventoryMultiplier === "number"
+      ? data.inventoryMultiplier
+      : supportsInventory
+        ? 1
+        : null;
+  const normalizedTrackingMode: InventoryTrackingMode | null = supportsInventoryMode
+    ? data.inventoryTrackingMode === "aggregate" || data.inventoryTrackingMode === "items"
+      ? data.inventoryTrackingMode
+      : "items"
+    : null;
 
   return {
     id: data.id ?? fallbackId,
     name: data.name ?? "",
-    parentId: data.parentId ?? null,
+    parentId: normalizedParentId,
     type: normalizedType,
     price: typeof data.price === "number" ? data.price : 0,
     selectionType: (data.selectionType as SelectionType) ?? "",
@@ -75,6 +98,9 @@ function normalizeMenuNode(data: Partial<MenuNode>, fallbackId: string): MenuNod
     description: data.description ?? "",
     imageUrl: data.imageUrl ?? legacyImage,
     isAvailable: data.isAvailable ?? true,
+    trackInventory: typeof data.trackInventory === "boolean" ? data.trackInventory : legacyTrackInventory,
+    inventoryMultiplier: normalizedMultiplier,
+    inventoryTrackingMode: normalizedTrackingMode,
     order: typeof data.order === "number" ? data.order : 0,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
@@ -100,8 +126,8 @@ export function subscribeToMenuNodes(
   );
 }
 
-export async function getMenuNodes() {
-  const snapshot = await getDocs(menusCollection());
+export async function getMenuNodes(db: Firestore = firestore) {
+  const snapshot = await getDocs(menusCollection(db));
   return snapshot.docs
     .map((menuDoc) => normalizeMenuNode(menuDoc.data() as Partial<MenuNode>, menuDoc.id))
     .sort((a, b) => sortNodes(a, b));
@@ -182,6 +208,24 @@ export function sanitizeMenuNodeInput(input: MenuNodeInput): MenuNodeInput {
   const minSelection = behavior.supportsSelection ? Math.max(0, input.minSelection) : 0;
   const rawMaxSelection = behavior.supportsSelection ? Math.max(0, input.maxSelection) : 0;
   const maxSelection = rawMaxSelection > 0 && rawMaxSelection < minSelection ? minSelection : rawMaxSelection;
+  const supportsInventory = input.type === "variant" || (input.type === "category" && input.parentId === null);
+  const supportsModifierStock = input.type === "modifier";
+  const supportsInventoryMode = input.type === "category" && input.parentId === null;
+  const numericMultiplier = typeof input.inventoryMultiplier === "number" && Number.isFinite(input.inventoryMultiplier)
+    ? Math.max(0, input.inventoryMultiplier)
+    : null;
+  const inventoryMultiplier = supportsInventory
+    ? input.type === "category"
+      ? numericMultiplier && numericMultiplier > 0 ? numericMultiplier : 1
+      : numericMultiplier && numericMultiplier > 0
+        ? numericMultiplier
+        : null
+    : supportsModifierStock
+      ? numericMultiplier && numericMultiplier > 0
+        ? numericMultiplier
+        : null
+      : null;
+  const inventoryTrackingMode = supportsInventoryMode ? input.inventoryTrackingMode ?? "items" : null;
 
   return {
     ...input,
@@ -189,6 +233,9 @@ export function sanitizeMenuNodeInput(input: MenuNodeInput): MenuNodeInput {
     selectionType: behavior.supportsSelection ? input.selectionType || "single" : "",
     minSelection,
     maxSelection,
+    trackInventory: supportsInventory ? input.trackInventory : false,
+    inventoryMultiplier,
+    inventoryTrackingMode,
   };
 }
 
@@ -220,6 +267,9 @@ export async function updateMenuNode(id: string, input: Partial<MenuNodeInput>) 
     "description" in input &&
     "imageUrl" in input &&
     "isAvailable" in input &&
+    "trackInventory" in input &&
+    "inventoryMultiplier" in input &&
+    "inventoryTrackingMode" in input &&
     "order" in input
       ? sanitizeMenuNodeInput(input as MenuNodeInput)
       : input),
