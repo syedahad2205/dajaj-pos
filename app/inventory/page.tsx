@@ -35,6 +35,8 @@ function stockToDraft(value: number | null) {
 }
 
 type StockDrafts = Record<string, { opening: string; closing: string }>;
+type EditedFields = Record<string, { opening: boolean; closing: boolean }>;
+type OriginalStocks = Record<string, { opening: number | null; closing: number | null }>;
 
 export default function InventoryPage() {
   const { authenticated, loading, role } = requirePosStaff();
@@ -42,7 +44,10 @@ export default function InventoryPage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [drafts, setDrafts] = useState<StockDrafts>({});
-  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [originalStocks, setOriginalStocks] = useState<OriginalStocks>({});
+  const [editedFields, setEditedFields] = useState<EditedFields>({});
+  const [saving, setSaving] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
   const [status, setStatus] = useState("Loading inventory…");
 
   useEffect(() => {
@@ -98,14 +103,22 @@ export default function InventoryPage() {
           variance: item.variance,
         }));
         setRows(mapped);
-        setDrafts(
+        const initialDrafts = Object.fromEntries(
+          mapped.map((r) => [
+            r.itemId,
+            { opening: stockToDraft(r.openingStock), closing: stockToDraft(r.closingStock) },
+          ]),
+        );
+        setDrafts(initialDrafts);
+        setOriginalStocks(
           Object.fromEntries(
             mapped.map((r) => [
               r.itemId,
-              { opening: stockToDraft(r.openingStock), closing: stockToDraft(r.closingStock) },
+              { opening: r.openingStock, closing: r.closingStock },
             ]),
           ),
         );
+        setEditedFields({});
         setStatus("");
       })
       .catch((error: Error) => {
@@ -121,68 +134,86 @@ export default function InventoryPage() {
         closing: part === "closing" ? value : (current[itemId]?.closing ?? ""),
       },
     }));
+    const original = originalStocks[itemId]?.[part];
+    const newValue = parseStockValue(value);
+    const isEdited = newValue !== original;
+    setEditedFields((current) => ({
+      ...current,
+      [itemId]: {
+        opening: part === "opening" ? isEdited : (current[itemId]?.opening ?? false),
+        closing: part === "closing" ? isEdited : (current[itemId]?.closing ?? false),
+      },
+    }));
   };
 
-  const handleSave = async (itemId: string, field: "openingStock" | "closingStock") => {
-    const draft = drafts[itemId];
-    const rawValue = field === "openingStock" ? (draft?.opening ?? "") : (draft?.closing ?? "");
-    const trimmed = rawValue.trim();
-    if (trimmed === "") {
-      setStatus("Enter a number before saving.");
+  const handleSaveAll = async () => {
+    const changes: Array<{ itemId: string; field: "openingStock" | "closingStock"; value: number }> = [];
+    for (const [itemId, edited] of Object.entries(editedFields)) {
+      if (edited.opening) {
+        const value = parseStockValue(drafts[itemId]?.opening ?? "");
+        if (value !== null) changes.push({ itemId, field: "openingStock", value });
+      }
+      if (edited.closing) {
+        const value = parseStockValue(drafts[itemId]?.closing ?? "");
+        if (value !== null) changes.push({ itemId, field: "closingStock", value });
+      }
+    }
+    if (changes.length === 0) {
+      setStatus("No changes to save.");
       return;
     }
-    const value = parseStockValue(rawValue);
-    if (value === null) {
-      setStatus("That is not a valid number.");
-      return;
-    }
-
-    const key = `${itemId}:${field}`;
-    setSavingKey(key);
+    setSaving(true);
     setStatus("");
     try {
-      const response = await firebaseAuthedFetch(`/api/inventory/${field === "openingStock" ? "opening" : "closing"}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date,
-          itemId,
-          [field]: value,
-        }),
+      // Save all changes
+      const promises = changes.map(({ itemId, field, value }) =>
+        firebaseAuthedFetch(`/api/inventory/${field === "openingStock" ? "opening" : "closing"}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date, itemId, [field]: value }),
+        }).then(async (response) => {
+          if (!response.ok) {
+            const body = await response.json().catch(() => null);
+            throw new Error(body?.message || `Failed to save ${field} for ${itemId}.`);
+          }
+          return response.json();
+        })
+      );
+      await Promise.all(promises);
+      // Update rows
+      setRows((current) =>
+        current.map((row) => {
+          const itemChanges = changes.filter((c) => c.itemId === row.itemId);
+          let updatedRow = { ...row };
+          for (const change of itemChanges) {
+            if (change.field === "openingStock") {
+              updatedRow.openingStock = change.value;
+              updatedRow.expectedClosing = Number((change.value - row.sold).toFixed(3));
+              updatedRow.variance = row.closingStock !== null ? Number((updatedRow.expectedClosing - row.closingStock).toFixed(3)) : null;
+            } else if (change.field === "closingStock") {
+              updatedRow.closingStock = change.value;
+              updatedRow.variance = updatedRow.expectedClosing !== null ? Number((updatedRow.expectedClosing - change.value).toFixed(3)) : null;
+            }
+          }
+          return updatedRow;
+        })
+      );
+      // Update originals and reset edited
+      setOriginalStocks((current) => {
+        const newOriginals = { ...current };
+        for (const change of changes) {
+          if (!newOriginals[change.itemId]) newOriginals[change.itemId] = { opening: null, closing: null };
+          newOriginals[change.itemId][change.field === "openingStock" ? "opening" : "closing"] = change.value;
+        }
+        return newOriginals;
       });
-
-      const payload = await response.json();
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.message || "Failed to save inventory.");
-      }
-
-      setRows((current) => current.map((row) => {
-        if (row.itemId !== itemId) return row;
-        if (field === "openingStock") {
-          const openingStock = value;
-          const expectedClosing = Number((openingStock - row.sold).toFixed(3));
-          const variance = row.closingStock !== null ? Number((expectedClosing - row.closingStock).toFixed(3)) : null;
-          return { ...row, openingStock, expectedClosing, variance };
-        }
-        if (field === "closingStock") {
-          const closingStock = value;
-          const variance = row.expectedClosing !== null ? Number((row.expectedClosing - closingStock).toFixed(3)) : null;
-          return { ...row, closingStock, variance };
-        }
-        return row;
-      }));
-      setDrafts((current) => ({
-        ...current,
-        [itemId]: {
-          opening: field === "openingStock" ? String(value) : (current[itemId]?.opening ?? ""),
-          closing: field === "closingStock" ? String(value) : (current[itemId]?.closing ?? ""),
-        },
-      }));
-      setStatus("Saved successfully.");
+      setEditedFields({});
+      setStatus("All changes saved successfully.");
+      setShowReviewModal(false);
     } catch (error: unknown) {
       setStatus(error instanceof Error ? error.message : "Failed to save inventory.");
     } finally {
-      setSavingKey(null);
+      setSaving(false);
     }
   };
 
@@ -241,10 +272,19 @@ export default function InventoryPage() {
               <div>
                 <h2 className="text-2xl font-black">Stock entries</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Enter opening and closing stock, then use <strong>Save</strong> for each field. Nothing is sent until you save.
+                  Enter opening and closing stock. Changes are retained until you save all at once.
                 </p>
               </div>
-              <p className="text-sm text-slate-500">Current date: {activeDate.toLocaleDateString()}</p>
+              <div className="flex gap-2">
+                <p className="text-sm text-slate-500">Current date: {activeDate.toLocaleDateString()}</p>
+                <button
+                  onClick={() => setShowReviewModal(true)}
+                  disabled={Object.keys(editedFields).length === 0 || saving}
+                  className="rounded-2xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Save All Changes"}
+                </button>
+              </div>
             </div>
 
             {status ? (
@@ -259,7 +299,6 @@ export default function InventoryPage() {
                   No inventory items found for this date. Enable inventory tracking on top-level categories in Menu Builder.
                 </div>
               ) : rows.map((row) => {
-                const rowSaving = savingKey?.startsWith(`${row.itemId}:`) ?? false;
                 return (
                 <div key={row.itemId} className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 p-4">
                   <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] xl:items-start">
@@ -295,16 +334,10 @@ export default function InventoryPage() {
                           step="0.25"
                           value={drafts[row.itemId]?.opening ?? ""}
                           onChange={(event) => updateDraft(row.itemId, "opening", event.target.value)}
-                          className="w-full min-w-0 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500"
+                          className={`w-full min-w-0 rounded-2xl border px-4 py-3 text-sm outline-none focus:border-orange-500 ${
+                            editedFields[row.itemId]?.opening ? "border-orange-400 bg-orange-50" : "border-slate-300 bg-white"
+                          }`}
                         />
-                        <button
-                          type="button"
-                          disabled={rowSaving}
-                          onClick={() => void handleSave(row.itemId, "openingStock")}
-                          className="rounded-2xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {savingKey === `${row.itemId}:openingStock` ? "Saving…" : "Save opening"}
-                        </button>
                       </div>
                       <div className="grid gap-2">
                         <label className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Closing stock</label>
@@ -313,16 +346,10 @@ export default function InventoryPage() {
                           step="0.25"
                           value={drafts[row.itemId]?.closing ?? ""}
                           onChange={(event) => updateDraft(row.itemId, "closing", event.target.value)}
-                          className="w-full min-w-0 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500"
+                          className={`w-full min-w-0 rounded-2xl border px-4 py-3 text-sm outline-none focus:border-orange-500 ${
+                            editedFields[row.itemId]?.closing ? "border-orange-400 bg-orange-50" : "border-slate-300 bg-white"
+                          }`}
                         />
-                        <button
-                          type="button"
-                          disabled={rowSaving}
-                          onClick={() => void handleSave(row.itemId, "closingStock")}
-                          className="rounded-2xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {savingKey === `${row.itemId}:closingStock` ? "Saving…" : "Save closing"}
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -364,10 +391,70 @@ export default function InventoryPage() {
               <p><strong>Individual items</strong> mode lets you choose which child items count, what multiplier each uses, and gives each tracked item its own opening and closing row.</p>
               <p>Sales are calculated from billed POS orders for the selected date. Modifier choices (e.g. Half) can use their own stock factor in Menu Builder.</p>
               <p>Expected closing = opening stock − sold. Variance = expected closing − actual closing.</p>
-              <p>Use <strong>Save opening</strong> and <strong>Save closing</strong> on each row; edits are not stored until you press them.</p>
+              <p>Use <strong>Save All Changes</strong> to commit all edits at once; nothing is sent until you confirm.</p>
             </div>
           </aside>
         </div>
+
+        {/* Review Modal */}
+        {showReviewModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="max-h-[80vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+              <div className="mb-6">
+                <h2 className="text-2xl font-black">Review Changes</h2>
+                <p className="mt-2 text-sm text-slate-600">Confirm the following stock updates before saving.</p>
+              </div>
+              <div className="space-y-4">
+                {Object.entries(editedFields).map(([itemId, edited]) => {
+                  const row = rows.find((r) => r.itemId === itemId);
+                  if (!row) return null;
+                  const original = originalStocks[itemId];
+                  const draft = drafts[itemId];
+                  return (
+                    <div key={itemId} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <h3 className="font-bold text-slate-900">{row.name}</h3>
+                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                        {edited.opening && (
+                          <div>
+                            <p className="text-sm font-semibold text-slate-700">Opening Stock</p>
+                            <div className="mt-1 flex gap-2 text-sm">
+                              <span className="text-slate-500">From: {formatQuantity(original?.opening)}</span>
+                              <span className="text-orange-600">To: {draft?.opening || "—"}</span>
+                            </div>
+                          </div>
+                        )}
+                        {edited.closing && (
+                          <div>
+                            <p className="text-sm font-semibold text-slate-700">Closing Stock</p>
+                            <div className="mt-1 flex gap-2 text-sm">
+                              <span className="text-slate-500">From: {formatQuantity(original?.closing)}</span>
+                              <span className="text-orange-600">To: {draft?.closing || "—"}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowReviewModal(false)}
+                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => void handleSaveAll()}
+                  disabled={saving}
+                  className="rounded-2xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Confirm & Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
