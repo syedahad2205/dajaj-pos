@@ -33,16 +33,45 @@ function readBearerToken(request: Request) {
 }
 
 async function waitForServerAuth(auth: ReturnType<typeof getAuth>) {
-  await new Promise<void>((resolve) => {
+  // Token-based server apps often hydrate the user synchronously; avoid waiting on a listener.
+  await Promise.resolve();
+  if (auth.currentUser) {
+    return;
+  }
+
+  const ready = (auth as { authStateReady?: () => Promise<void> }).authStateReady;
+  if (typeof ready === "function") {
+    await ready.call(auth);
+    if (auth.currentUser) {
+      return;
+    }
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let done = false;
+    const timeoutMs = 12_000;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      unsubscribe();
+      reject(new FirebaseRouteAuthError("Auth did not become ready in time."));
+    }, timeoutMs);
+
     const unsubscribe = onAuthStateChanged(
       auth,
-      () => {
+      (user) => {
+        if (!user || done) return;
+        done = true;
+        clearTimeout(timer);
         unsubscribe();
         resolve();
       },
-      () => {
+      (error) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
         unsubscribe();
-        resolve();
+        reject(error);
       },
     );
   });

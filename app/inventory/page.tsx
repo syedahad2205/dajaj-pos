@@ -246,27 +246,29 @@ export default function InventoryPage() {
     <main className="min-h-screen bg-[#fff8ed] px-4 py-8 text-slate-900">
       <div className="mx-auto max-w-6xl space-y-6">
         <header className="rounded-[28px] border border-orange-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div>
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-4">
               <p className="text-sm font-semibold uppercase tracking-[0.28em] text-orange-600">Inventory</p>
-              <h1 className="mt-2 text-4xl font-black">Menu-Based Inventory</h1>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Track opening and closing stock for menu items with sales derived from billed POS orders.
-              </p>
+              <div className="space-y-2">
+                <h1 className="text-4xl font-black tracking-tight text-slate-900">Menu-Based Inventory</h1>
+                <p className="max-w-2xl text-sm leading-6 text-slate-600">
+                  Track opening and closing stock for menu items with sales derived from billed POS orders.
+                </p>
+              </div>
             </div>
-            <div className="space-y-2 text-right">
-              <label className="block text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Date</label>
+            <div className="flex max-w-[320px] flex-col gap-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Date</label>
               <input
                 type="date"
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
-                className="rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-orange-500"
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500"
               />
             </div>
           </div>
         </header>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="grid gap-4">
           <section className="rounded-[28px] border border-orange-200 bg-white p-6 shadow-sm">
             <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -275,16 +277,13 @@ export default function InventoryPage() {
                   Enter opening and closing stock. Changes are retained until you save all at once.
                 </p>
               </div>
-              <div className="flex gap-2">
-                <p className="text-sm text-slate-500">Current date: {activeDate.toLocaleDateString()}</p>
-                <button
-                  onClick={() => setShowReviewModal(true)}
-                  disabled={Object.keys(editedFields).length === 0 || saving}
-                  className="rounded-2xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {saving ? "Saving…" : "Save All Changes"}
-                </button>
-              </div>
+              <button
+                onClick={() => setShowReviewModal(true)}
+                disabled={Object.keys(editedFields).length === 0 || saving}
+                className="rounded-2xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save All Changes"}
+              </button>
             </div>
 
             {status ? (
@@ -306,24 +305,6 @@ export default function InventoryPage() {
                       <h3 className="text-lg font-black text-slate-900">{row.name}</h3>
                       <p className="mt-1 text-sm text-slate-600">{row.description || "Menu item"}</p>
 
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {row.trackingMode === "aggregate" ? (
-                          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-slate-600">
-                            Whole category × {row.variants[0]?.multiplier ?? 1}
-                          </span>
-                        ) : row.variants.length === 0 ? (
-                          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                            No tracked items mapped yet
-                          </span>
-                        ) : row.variants.map((variant) => (
-                          <span
-                            key={variant.variantId}
-                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-slate-600"
-                          >
-                            {variant.name} × {variant.multiplier}
-                          </span>
-                        ))}
-                      </div>
                     </div>
 
                     <div className="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -353,7 +334,7 @@ export default function InventoryPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <div className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
                       <p className="font-semibold text-slate-900">Sold</p>
                       <p className="mt-2 text-lg font-black">{formatQuantity(row.sold)}</p>
@@ -362,38 +343,12 @@ export default function InventoryPage() {
                       <p className="font-semibold text-slate-900">Expected closing</p>
                       <p className="mt-2 text-lg font-black">{formatQuantity(row.expectedClosing)}</p>
                     </div>
-                    <div className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
-                      <p className="font-semibold text-slate-900">Variance</p>
-                      <p className="mt-2 text-lg font-black">{formatQuantity(row.variance)}</p>
-                    </div>
-                    <div className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
-                      <p className="font-semibold text-slate-900">Tracking mode</p>
-                      <p className="mt-2 text-lg font-black">
-                        {row.trackingMode === "aggregate"
-                          ? "Whole category"
-                          : row.variants.length <= 1
-                            ? "Individual item"
-                            : `${row.variants.length} items`}
-                      </p>
-                    </div>
                   </div>
                 </div>
                 );
               })}
             </div>
           </section>
-
-          <aside className="rounded-[28px] border border-orange-200 bg-white p-6 shadow-sm">
-            <h2 className="text-2xl font-black">How it works</h2>
-            <div className="mt-4 space-y-4 text-sm leading-6 text-slate-600">
-              <p><strong>Top-level categories</strong> become stock rows only when Track Inventory is enabled in Menu Builder, the category is available, and child items you track are available.</p>
-              <p><strong>Whole category</strong> mode counts every child item sale against one shared stock bucket.</p>
-              <p><strong>Individual items</strong> mode lets you choose which child items count, what multiplier each uses, and gives each tracked item its own opening and closing row.</p>
-              <p>Sales are calculated from billed POS orders for the selected date. Modifier choices (e.g. Half) can use their own stock factor in Menu Builder.</p>
-              <p>Expected closing = opening stock − sold. Variance = expected closing − actual closing.</p>
-              <p>Use <strong>Save All Changes</strong> to commit all edits at once; nothing is sent until you confirm.</p>
-            </div>
-          </aside>
         </div>
 
         {/* Review Modal */}

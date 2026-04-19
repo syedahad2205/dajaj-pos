@@ -1,5 +1,4 @@
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
@@ -10,8 +9,8 @@ import {
   setDoc,
   Timestamp,
   type Firestore,
-  updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { firestore as defaultFirestore } from "@/lib/firebase";
 import { getMenuNodes, type InventoryTrackingMode, type MenuNode } from "@/lib/menu-builder";
@@ -226,29 +225,24 @@ export async function saveInventoryOpening(
     updatedAt: serverTimestamp(),
   };
 
-  await updateDoc(ref, {
-    itemId,
-    date,
-    openingStock,
-    closingStock: existing?.closingStock ?? null,
-    createdBy: existing?.createdBy ?? userId,
-    updatedBy: userId,
-    updatedAt: serverTimestamp(),
-    createdAt: existing?.createdAt ?? serverTimestamp(),
-  }).catch(async () => {
-    await setDoc(ref, {
+  const batch = writeBatch(db);
+  batch.set(
+    ref,
+    {
       itemId,
       date,
       openingStock,
       closingStock: existing?.closingStock ?? null,
       createdBy: existing?.createdBy ?? userId,
       updatedBy: userId,
-      createdAt: serverTimestamp(),
+      createdAt: existing?.createdAt ?? serverTimestamp(),
       updatedAt: serverTimestamp(),
-    });
-  });
+    },
+    { merge: true },
+  );
 
-  await addDoc(inventoryLogsCollection(db), {
+  const logRef = doc(inventoryLogsCollection(db));
+  batch.set(logRef, {
     itemId,
     date,
     userId,
@@ -259,6 +253,8 @@ export async function saveInventoryOpening(
     newValue: openingStock,
     timestamp: serverTimestamp(),
   });
+
+  await batch.commit();
 
   return entry;
 }
@@ -290,29 +286,24 @@ export async function saveInventoryClosing(
     updatedAt: serverTimestamp(),
   };
 
-  await updateDoc(ref, {
-    itemId,
-    date,
-    openingStock: existing?.openingStock ?? null,
-    closingStock,
-    createdBy: existing?.createdBy ?? null,
-    updatedBy: userId,
-    updatedAt: serverTimestamp(),
-    createdAt: existing?.createdAt ?? serverTimestamp(),
-  }).catch(async () => {
-    await setDoc(ref, {
+  const batch = writeBatch(db);
+  batch.set(
+    ref,
+    {
       itemId,
       date,
       openingStock: existing?.openingStock ?? null,
       closingStock,
       createdBy: existing?.createdBy ?? null,
       updatedBy: userId,
-      createdAt: serverTimestamp(),
+      createdAt: existing?.createdAt ?? serverTimestamp(),
       updatedAt: serverTimestamp(),
-    });
-  });
+    },
+    { merge: true },
+  );
 
-  await addDoc(inventoryLogsCollection(db), {
+  const logRef = doc(inventoryLogsCollection(db));
+  batch.set(logRef, {
     itemId,
     date,
     userId,
@@ -324,7 +315,84 @@ export async function saveInventoryClosing(
     timestamp: serverTimestamp(),
   });
 
+  await batch.commit();
+
   return entry;
+}
+
+export async function saveInventoryChangesBulk(
+  date: string,
+  changes: Array<{ itemId: string; field: "openingStock" | "closingStock"; value: number | null }>,
+  userId: string,
+  userName: string,
+  db: Firestore = defaultFirestore,
+): Promise<InventoryEntry[]> {
+  const itemIds = Array.from(new Set(changes.map((change) => change.itemId)));
+  const refs = itemIds.map((itemId) => doc(inventoryEntriesCollection(db), `${date}_${itemId}`));
+  const snapshots = await Promise.all(refs.map((ref) => getDoc(ref)));
+
+  const batch = writeBatch(db);
+  const entries: InventoryEntry[] = [];
+
+  const timestamp = serverTimestamp();
+
+  for (const itemId of itemIds) {
+    const existingSnapshot = snapshots.find((snap) => snap.id === `${date}_${itemId}`);
+    const existing = existingSnapshot?.exists() ? (existingSnapshot.data() as Partial<InventoryEntry>) : null;
+    const entryChanges = changes.filter((change) => change.itemId === itemId);
+
+    const openingStock =
+      entryChanges.find((change) => change.field === "openingStock")?.value ?? existing?.openingStock ?? null;
+    const closingStock =
+      entryChanges.find((change) => change.field === "closingStock")?.value ?? existing?.closingStock ?? null;
+
+    const docId = `${date}_${itemId}`;
+    const ref = doc(inventoryEntriesCollection(db), docId);
+    const entry: InventoryEntry = {
+      id: docId,
+      itemId,
+      date,
+      openingStock,
+      closingStock,
+      createdBy: existing?.createdBy ?? userId,
+      updatedBy: userId,
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+    };
+
+    batch.set(ref, {
+      itemId,
+      date,
+      openingStock,
+      closingStock,
+      createdBy: existing?.createdBy ?? userId,
+      updatedBy: userId,
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+    }, { merge: true });
+
+    for (const change of entryChanges) {
+      const oldValue = existing?.[change.field] ?? null;
+      const actionType: InventoryActionType = existing ? "EDIT" : change.field === "openingStock" ? "OPENING" : "CLOSING";
+      const logRef = doc(inventoryLogsCollection(db));
+      batch.set(logRef, {
+        itemId,
+        date,
+        userId,
+        userName,
+        actionType,
+        field: change.field,
+        oldValue,
+        newValue: change.value,
+        timestamp,
+      });
+    }
+
+    entries.push(entry);
+  }
+
+  await batch.commit();
+  return entries;
 }
 
 export async function getInventoryLogs(db: Firestore = defaultFirestore): Promise<InventoryAuditLog[]> {
