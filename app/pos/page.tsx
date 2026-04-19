@@ -455,7 +455,7 @@ export default function POSPage() {
           {(canManageInventory || role === 'admin') && (
             <button
               onClick={() => void handleGoToInventory()}
-              className="hidden sm:block px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors"
+              className="inline-flex items-center justify-center px-2.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium rounded-lg transition-colors"
             >
               Update Inventory
             </button>
