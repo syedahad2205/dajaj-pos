@@ -8,6 +8,8 @@ export default function VariantGrid({
   categoryName,
   variants,
   cartItems,
+  showCategory,
+  categoryNames,
   onAdd,
   onIncrement,
   onDecrement,
@@ -15,6 +17,8 @@ export default function VariantGrid({
   categoryName: string;
   variants: MenuTreeNode[];
   cartItems: CartItem[];
+  showCategory?: boolean;
+  categoryNames?: Map<string, string>;
   onAdd: (variant: MenuTreeNode) => void;
   onIncrement: (variantId: string) => void;
   onDecrement: (variantId: string) => void;
@@ -22,7 +26,7 @@ export default function VariantGrid({
   if (variants.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-400">
-        No items available in {categoryName} right now.
+        No items available{categoryName ? ` in ${categoryName}` : ""} right now.
       </div>
     );
   }
@@ -34,12 +38,15 @@ export default function VariantGrid({
           .filter((item) => item.variantId === variant.id)
           .reduce((sum, item) => sum + item.quantity, 0);
 
+        const catName = categoryNames?.get(variant.id) ?? categoryName;
+
         return (
           <VariantCard
             key={variant.id}
-            categoryName={categoryName}
+            categoryName={catName}
             variant={variant}
             quantity={qty}
+            showCategory={showCategory}
             onAdd={() => onAdd(variant)}
             onIncrement={() => onIncrement(variant.id)}
             onDecrement={() => onDecrement(variant.id)}
