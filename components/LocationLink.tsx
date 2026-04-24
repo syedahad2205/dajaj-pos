@@ -7,7 +7,7 @@ import type { CSSProperties, ReactNode } from 'react';
 interface LocationLinkProps {
   href: string;
   className: string;
-  style: CSSProperties;
+  style?: CSSProperties;
   children: ReactNode;
 }
 

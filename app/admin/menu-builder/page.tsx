@@ -266,6 +266,7 @@ function NodeRow({
   onCopy,
   onToggleAvailability,
   onQuickPriceSave,
+  onQuickDescriptionSave,
   onQuickModifierStockSave,
   onQuickInventorySave,
   onDragStart,
@@ -281,6 +282,7 @@ function NodeRow({
   onCopy: (node: MenuNode) => void;
   onToggleAvailability: (node: MenuNode) => void;
   onQuickPriceSave: (node: MenuNode, value: string) => void;
+  onQuickDescriptionSave: (node: MenuNode, value: string) => void;
   onQuickModifierStockSave: (node: MenuNode, value: string) => void;
   onQuickInventorySave: (
     node: MenuNode,
@@ -292,6 +294,8 @@ function NodeRow({
   onDrop: (targetId: string, position: DropPosition) => void;
 }) {
   const [priceDraft, setPriceDraft] = useState(String(node.price));
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState(node.description);
   const [modifierStockDraft, setModifierStockDraft] = useState(() =>
     node.type === "modifier" ? formatModifierStockMultiplier(node) : "",
   );
@@ -334,6 +338,10 @@ function NodeRow({
   useEffect(() => {
     setPriceDraft(String(node.price));
   }, [node.price]);
+
+  useEffect(() => {
+    setDescriptionDraft(node.description);
+  }, [node.description]);
 
   useEffect(() => {
     if (node.type === "modifier") {
@@ -451,6 +459,40 @@ function NodeRow({
             </div>
 
             {node.description ? <p className="mt-2 text-sm text-slate-600">{node.description}</p> : null}
+
+            {descriptionOpen ? (
+              <div className="mt-2 flex items-start gap-2">
+                <textarea
+                  rows={2}
+                  value={descriptionDraft}
+                  onChange={(event) => setDescriptionDraft(event.target.value)}
+                  placeholder="Add a short description..."
+                  className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-orange-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => { onQuickDescriptionSave(node, descriptionDraft); setDescriptionOpen(false); }}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setDescriptionDraft(node.description); setDescriptionOpen(false); }}
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-500"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setDescriptionOpen(true)}
+                className="mt-2 text-sm font-semibold text-orange-600 hover:text-orange-700"
+              >
+                {node.description ? "Edit description" : "+ Add description"}
+              </button>
+            )}
 
             {node.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -640,6 +682,7 @@ function NodeRow({
               onCopy={onCopy}
               onToggleAvailability={onToggleAvailability}
               onQuickPriceSave={onQuickPriceSave}
+              onQuickDescriptionSave={onQuickDescriptionSave}
               onQuickModifierStockSave={onQuickModifierStockSave}
               onQuickInventorySave={onQuickInventorySave}
               onDragStart={onDragStart}
@@ -840,6 +883,19 @@ export default function AdminMenuBuilderPage() {
         setStatus("Firebase denied price update access. Check Firestore rules for authenticated admins.");
       } else {
         setStatus(error instanceof Error ? error.message : "Failed to update price.");
+      }
+    }
+  };
+
+  const handleQuickDescriptionSave = async (node: MenuNode, value: string) => {
+    try {
+      await updateMenuNode(node.id, { description: value.trim() });
+      setStatus(`Updated description for ${node.name}.`);
+    } catch (error) {
+      if (getFirebaseErrorCode(error) === "permission-denied") {
+        setStatus("Firebase denied description update access. Check Firestore rules for authenticated admins.");
+      } else {
+        setStatus(error instanceof Error ? error.message : "Failed to update description.");
       }
     }
   };
@@ -1326,6 +1382,7 @@ export default function AdminMenuBuilderPage() {
                   onCopy={handleCopy}
                   onToggleAvailability={handleToggleAvailability}
                   onQuickPriceSave={handleQuickPriceSave}
+                  onQuickDescriptionSave={handleQuickDescriptionSave}
                   onQuickModifierStockSave={handleQuickModifierStockSave}
                   onQuickInventorySave={handleQuickInventorySave}
                   onDragStart={(id) => setDraggedId(id)}
