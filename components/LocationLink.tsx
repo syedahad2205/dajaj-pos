@@ -8,10 +8,11 @@ interface LocationLinkProps {
   href: string;
   className: string;
   style?: CSSProperties;
+  onClick?: () => void;
   children: ReactNode;
 }
 
-export default function LocationLink({ href, className, style, children }: LocationLinkProps) {
+export default function LocationLink({ href, className, style, onClick, children }: LocationLinkProps) {
   return (
     <Link
       href={href}
@@ -21,6 +22,7 @@ export default function LocationLink({ href, className, style, children }: Locat
       style={style}
       onClick={() => {
         void trackEvent('location_click');
+        onClick?.();
       }}
     >
       {children}

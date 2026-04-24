@@ -16,44 +16,42 @@ export default function CartItem({
   onRemove: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm">
       <button type="button" onClick={onEdit} className="w-full text-left">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="space-y-1">
-              <h3 className="text-lg font-bold text-slate-900">{item.categoryName}</h3>
-              <p className="text-sm text-slate-500">{item.variantName}</p>
-            </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-slate-900">{item.variantName}</h3>
+            <p className="text-xs text-slate-400">{item.categoryName}</p>
             {item.modifiers.length > 0 ? (
-              <p className="mt-3 text-xs text-slate-400">
-                {item.modifiers.map((modifier) => modifier.name).join(" • ")}
+              <p className="mt-1 text-[11px] text-slate-400">
+                {item.modifiers.map((modifier) => modifier.name).join(" · ")}
               </p>
             ) : null}
           </div>
-          <span className="text-base font-black text-slate-900">₹{item.totalPrice}</span>
+          <span className="text-sm font-extrabold text-slate-900">₹{item.totalPrice}</span>
         </div>
       </button>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div className="mt-2.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={onDecrement}
-            className="h-10 w-10 rounded-full border border-slate-300 text-lg font-bold text-slate-700"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 text-sm font-bold text-slate-700"
           >
             −
           </button>
-          <span className="w-8 text-center text-base font-bold text-slate-900">{item.quantity}</span>
+          <span className="w-6 text-center text-sm font-bold text-slate-900">{item.quantity}</span>
           <button
             type="button"
             onClick={onIncrement}
-            className="h-10 w-10 rounded-full border border-slate-300 text-lg font-bold text-slate-700"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 text-sm font-bold text-slate-700"
           >
             +
           </button>
         </div>
 
-        <button type="button" onClick={onRemove} className="text-sm font-semibold text-rose-600">
+        <button type="button" onClick={onRemove} className="text-xs font-semibold text-rose-600">
           Remove
         </button>
       </div>
