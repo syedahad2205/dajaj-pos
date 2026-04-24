@@ -3,45 +3,64 @@
 import type { MenuTreeNode } from "@/lib/menu-builder";
 
 export default function VariantCard({
-  categoryName,
   variant,
+  quantity,
   onAdd,
+  onIncrement,
+  onDecrement,
 }: {
-  categoryName: string;
+  categoryName?: string;
   variant: MenuTreeNode;
+  quantity: number;
   onAdd: () => void;
+  onIncrement: () => void;
+  onDecrement: () => void;
 }) {
+  const hasModifiers = variant.children.some((c) => c.type === "modifierGroup");
+  const showStepper = !hasModifiers && quantity > 0;
+
   return (
-    <article className="flex w-full flex-col gap-3 overflow-hidden rounded-2xl border border-orange-100 bg-white p-4 shadow transition hover:shadow-lg">
-      <div className="relative h-36 w-full overflow-hidden rounded-xl bg-gradient-to-br from-orange-100 via-amber-50 to-white">
-        {variant.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={variant.imageUrl} alt={variant.name} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm font-bold uppercase tracking-[0.3em] text-orange-500">
-            No Image
-          </div>
-        )}
+    <article className="group flex items-start gap-4 rounded-2xl border border-orange-100/80 bg-white px-5 py-4 transition hover:border-orange-200 hover:shadow-[0_4px_24px_rgba(194,65,12,0.08)]">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-base font-bold text-slate-900">{variant.name}</h3>
+          <span className="shrink-0 text-base font-extrabold text-slate-900">₹{variant.price}</span>
+        </div>
+        {variant.description ? (
+          <p className="mt-1.5 text-sm leading-relaxed text-slate-500">{variant.description}</p>
+        ) : null}
+        {hasModifiers ? (
+          <p className="mt-1.5 text-xs font-medium text-orange-500">Customisable</p>
+        ) : null}
       </div>
 
-      <div className="space-y-3">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">{categoryName}</p>
-            <h3 className="break-words text-lg font-black text-slate-900">{variant.name}</h3>
-            {variant.description ? <p className="mt-1 text-sm leading-6 text-slate-600">{variant.description}</p> : null}
-          </div>
-          <span className="whitespace-nowrap text-lg font-black text-slate-900">₹{variant.price}</span>
+      {showStepper ? (
+        <div className="mt-0.5 flex shrink-0 items-center gap-1 rounded-xl border-2 border-orange-600 overflow-hidden">
+          <button
+            type="button"
+            onClick={onDecrement}
+            className="px-3 py-2 text-sm font-bold text-orange-600 transition hover:bg-orange-50 active:scale-95"
+          >
+            −
+          </button>
+          <span className="min-w-[1.5rem] text-center text-sm font-extrabold text-orange-600">{quantity}</span>
+          <button
+            type="button"
+            onClick={onIncrement}
+            className="px-3 py-2 text-sm font-bold text-orange-600 transition hover:bg-orange-50 active:scale-95"
+          >
+            +
+          </button>
         </div>
-
+      ) : (
         <button
           type="button"
           onClick={onAdd}
-          className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+          className="mt-0.5 shrink-0 rounded-xl border-2 border-orange-600 px-4 py-2 text-sm font-bold text-orange-600 transition hover:bg-orange-600 hover:text-white active:scale-95"
         >
-          Add
+          ADD
         </button>
-      </div>
+      )}
     </article>
   );
 }
