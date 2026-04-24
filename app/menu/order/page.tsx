@@ -26,7 +26,7 @@ function collectVariants(node: MenuTreeNode): MenuTreeNode[] {
 function DeliveryMenuExperience() {
   const router = useRouter();
   const { authenticated, loading, role } = requireCustomer();
-  const { items, itemCount, subtotal, addItem, updateItem } = useCart();
+  const { items, itemCount, subtotal, addItem, updateItem, incrementItem, decrementItem } = useCart();
   const { selectedAddress } = useAddresses();
   const [menuTree, setMenuTree] = useState<MenuTreeNode[]>([]);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
@@ -157,7 +157,20 @@ function DeliveryMenuExperience() {
                   </button>
                   {isExpanded ? (
                     <div className="border-t border-orange-100 px-5 py-5">
-                      <VariantGrid categoryName={category.name} variants={visibleVariants} onAdd={handleAddVariant} />
+                      <VariantGrid
+                        categoryName={category.name}
+                        variants={visibleVariants}
+                        cartItems={items}
+                        onAdd={handleAddVariant}
+                        onIncrement={(variantId) => {
+                          const cartItem = items.find((i) => i.variantId === variantId);
+                          if (cartItem) incrementItem(cartItem.id);
+                        }}
+                        onDecrement={(variantId) => {
+                          const cartItem = items.find((i) => i.variantId === variantId);
+                          if (cartItem) decrementItem(cartItem.id);
+                        }}
+                      />
                     </div>
                   ) : null}
                 </section>

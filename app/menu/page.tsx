@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import CartDrawer from "@/components/cart/CartDrawer";
 import { useCart } from "@/components/cart/CartProvider";
 import VariantGrid from "@/components/menu/VariantGrid";
-import VariantModal, { getInstantAddModifiers } from "@/components/menu/VariantModal";
+import VariantModal from "@/components/menu/VariantModal";
 import type { MenuTreeNode } from "@/lib/menu-builder";
 import { getAvailableMenuTree } from "@/services/menuService";
 
@@ -16,6 +16,10 @@ function collectVariants(node: MenuTreeNode): MenuTreeNode[] {
     variants.push(...collectVariants(child));
   }
   return variants;
+}
+
+function hasModifierGroups(variant: MenuTreeNode) {
+  return variant.children.some((c) => c.type === "modifierGroup");
 }
 
 const WHATSAPP_NUMBER = "917019044480";
@@ -111,15 +115,58 @@ function OrderTypeModal({
   );
 }
 
+function CategoryMenuSheet({
+  open,
+  categories,
+  onSelect,
+  onClose,
+}: {
+  open: boolean;
+  categories: MenuTreeNode[];
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <>
+      <button type="button" onClick={onClose} className="fixed inset-0 z-40 bg-black/30" />
+      <div className="fixed inset-x-0 bottom-0 z-50 mx-auto max-w-[480px] rounded-t-3xl bg-white px-5 pb-8 pt-5 shadow-[0_-12px_40px_rgba(0,0,0,0.15)]">
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-300" />
+        <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Browse menu</p>
+        <div className="max-h-[50vh] space-y-1 overflow-y-auto">
+          {categories.map((cat) => {
+            const count = collectVariants(cat).filter((n) => n.type === "variant").length;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => { onSelect(cat.id); onClose(); }}
+                className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100"
+              >
+                <span className="text-sm font-bold text-slate-900">{cat.name}</span>
+                <span className="text-xs font-semibold text-slate-400">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function MenuPage() {
   const { items, itemCount, subtotal, addItem, updateItem, incrementItem, decrementItem } = useCart();
   const [menuTree, setMenuTree] = useState<MenuTreeNode[]>([]);
-  const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(new Set());
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
   const [editingCartItemId, setEditingCartItemId] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [orderTypeOpen, setOrderTypeOpen] = useState(false);
+  const [categorySheetOpen, setCategorySheetOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [status, setStatus] = useState("Loading menu...");
+  const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const isScrollingTo = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +185,27 @@ export default function MenuPage() {
 
   const categories = useMemo(() => menuTree.filter((node) => node.type === "category"), [menuTree]);
 
+  const allVariants = useMemo(() => {
+    const result: { variant: MenuTreeNode; categoryName: string }[] = [];
+    for (const cat of categories) {
+      for (const v of collectVariants(cat).filter((n) => n.type === "variant")) {
+        result.push({ variant: v, categoryName: cat.name });
+      }
+    }
+    return result;
+  }, [categories]);
+
+  const filteredVariants = useMemo(() => {
+    if (!searchQuery.trim()) return null;
+    const q = searchQuery.toLowerCase().trim();
+    return allVariants.filter(
+      ({ variant, categoryName }) =>
+        variant.name.toLowerCase().includes(q) ||
+        categoryName.toLowerCase().includes(q) ||
+        (variant.description && variant.description.toLowerCase().includes(q)),
+    );
+  }, [searchQuery, allVariants]);
+
   const variantLookup = useMemo(() => {
     const map = new Map<string, MenuTreeNode>();
     const walk = (nodes: MenuTreeNode[]) => {
@@ -151,34 +219,33 @@ export default function MenuPage() {
   const editingItem = editingCartItemId ? items.find((item) => item.id === editingCartItemId) ?? null : null;
   const activeCategoryName = editingItem?.categoryName ?? categories.find((category) => collectVariants(category).some((variant) => variant.id === activeVariantId))?.name ?? "";
 
-  const toggleCategory = (id: string) => {
-    setCollapsedCategoryIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  const scrollToCategory = useCallback((id: string) => {
+    const el = sectionRefs.current.get(id);
+    if (!el) return;
+    setSearchQuery("");
+    isScrollingTo.current = true;
+    const top = el.getBoundingClientRect().top + window.scrollY - 80;
+    window.scrollTo({ top, behavior: "smooth" });
+    setTimeout(() => { isScrollingTo.current = false; }, 600);
+  }, []);
 
   const handleAddVariant = (variant: MenuTreeNode) => {
     setEditingCartItemId(null);
-    const instantAddModifiers = getInstantAddModifiers(variant);
-    if (instantAddModifiers) {
-      addItem({
-        categoryName: categories.find((category) => collectVariants(category).some((entry) => entry.id === variant.id))?.name ?? "",
-        variantId: variant.id,
-        variantName: variant.name,
-        basePrice: variant.price,
-        modifiers: instantAddModifiers ?? [],
-        quantity: 1,
-        totalPrice: variant.price + (instantAddModifiers?.reduce((sum, modifier) => sum + modifier.price, 0) ?? 0),
-        imageUrl: variant.imageUrl,
-        description: variant.description,
-      });
-      setCartOpen(true);
+    if (hasModifierGroups(variant)) {
+      setActiveVariantId(variant.id);
       return;
     }
-    setActiveVariantId(variant.id);
+    addItem({
+      categoryName: categories.find((category) => collectVariants(category).some((entry) => entry.id === variant.id))?.name ?? "",
+      variantId: variant.id,
+      variantName: variant.name,
+      basePrice: variant.price,
+      modifiers: [],
+      quantity: 1,
+      totalPrice: variant.price,
+      imageUrl: variant.imageUrl,
+      description: variant.description,
+    });
   };
 
   const handleCheckout = () => {
@@ -193,99 +260,101 @@ export default function MenuPage() {
     setOrderTypeOpen(false);
   };
 
+  const isSearching = Boolean(filteredVariants);
+
   return (
     <main className="min-h-screen w-full overflow-x-hidden bg-[#faf6f1] text-slate-900">
-      {/* Warm gradient header strip */}
-      <div className="bg-[#faf6f1] px-4 pb-6 pt-8 text-center">
+      {/* Header */}
+      <div className="bg-[#faf6f1] px-4 pb-3 pt-8 text-center">
         <Image src="/logo.png" alt="Dajaj logo" width={56} height={56} className="mx-auto mb-2 h-auto w-auto" />
         <h1 className="text-3xl font-black tracking-tight text-slate-900">Our Menu</h1>
-        <p className="mx-auto mt-1.5 max-w-xs text-sm leading-relaxed text-slate-400">
-          Tap a category, customise your dish and build your perfect order.
-        </p>
       </div>
 
-      {/* Content pulls up over the header */}
-      <div className="mx-auto w-full max-w-[600px] px-4 pb-36">
-        {/* Cart summary pill */}
-        {itemCount > 0 && (
-          <button
-            type="button"
-            onClick={() => setCartOpen(true)}
-            className="mb-4 flex w-full items-center justify-between rounded-2xl bg-white px-5 py-4 shadow-[0_2px_16px_rgba(0,0,0,0.06)] transition active:scale-[0.98]"
-          >
-            <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-600 text-sm font-bold text-white">
-                {itemCount}
-              </span>
-              <span className="text-sm font-bold text-slate-900">
-                {itemCount === 1 ? "item" : "items"} in cart
-              </span>
-            </div>
-            <span className="text-lg font-extrabold text-slate-900">₹{subtotal}</span>
-          </button>
-        )}
+      {/* Search bar */}
+      <div className="sticky top-0 z-20 bg-[#faf6f1]/95 px-4 pb-3 pt-2 backdrop-blur-md">
+        <div className="mx-auto max-w-[600px]">
+          <div className="flex items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-[0_1px_8px_rgba(0,0,0,0.06)]">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search for dishes..."
+              className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+            />
+            {searchQuery && (
+              <button type="button" onClick={() => setSearchQuery("")} className="shrink-0 text-slate-400 hover:text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
+      {/* Menu content */}
+      <div className="mx-auto w-full max-w-[600px] px-4 pb-36 pt-2">
         {status ? (
           <div className="rounded-2xl bg-white px-6 py-14 text-center text-sm font-medium text-slate-400 shadow-sm">
             {status}
           </div>
+        ) : isSearching ? (
+          <div>
+            <p className="mb-3 px-1 text-xs font-bold uppercase tracking-[0.15em] text-slate-400">
+              {filteredVariants!.length} {filteredVariants!.length === 1 ? "result" : "results"} for &ldquo;{searchQuery}&rdquo;
+            </p>
+            {filteredVariants!.length === 0 ? (
+              <div className="rounded-2xl bg-white px-6 py-14 text-center text-sm text-slate-400 shadow-sm">
+                No dishes found. Try a different search.
+              </div>
+            ) : (
+              <VariantGrid
+                categoryName=""
+                variants={filteredVariants!.map((f) => f.variant)}
+                cartItems={items}
+                showCategory
+                categoryNames={new Map(filteredVariants!.map((f) => [f.variant.id, f.categoryName]))}
+                onAdd={handleAddVariant}
+                onIncrement={(variantId) => {
+                  const cartItem = items.find((i) => i.variantId === variantId);
+                  if (cartItem) incrementItem(cartItem.id);
+                }}
+                onDecrement={(variantId) => {
+                  const cartItem = items.find((i) => i.variantId === variantId);
+                  if (cartItem) decrementItem(cartItem.id);
+                }}
+              />
+            )}
+          </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-6">
             {categories.map((category) => {
-              const isCollapsed = collapsedCategoryIds.has(category.id);
               const visibleVariants = collectVariants(category).filter((node) => node.type === "variant");
               return (
-                <section key={category.id} className="overflow-hidden rounded-2xl bg-white shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-                  <button
-                    type="button"
-                    onClick={() => toggleCategory(category.id)}
-                    className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-slate-50"
-                  >
-                    <div className="min-w-0">
-                      <h2 className="text-lg font-extrabold text-slate-900">{category.name}</h2>
-                      {category.description ? (
-                        <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{category.description}</p>
-                      ) : null}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600">
-                        {visibleVariants.length}
-                      </span>
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className={`text-slate-400 transition-transform duration-200 ${isCollapsed ? "" : "rotate-180"}`}
-                      >
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </div>
-                  </button>
-
-                  {!isCollapsed && (
-                    <div className="border-t border-slate-100 px-4 py-3">
-                      <VariantGrid
-                        categoryName={category.name}
-                        variants={visibleVariants}
-                        cartItems={items}
-                        onAdd={handleAddVariant}
-                        onIncrement={(variantId) => {
-                          const cartItem = items.find((i) => i.variantId === variantId);
-                          if (cartItem) incrementItem(cartItem.id);
-                        }}
-                        onDecrement={(variantId) => {
-                          const cartItem = items.find((i) => i.variantId === variantId);
-                          if (cartItem) decrementItem(cartItem.id);
-                        }}
-                      />
-                    </div>
-                  )}
+                <section
+                  key={category.id}
+                  ref={(el) => { if (el) sectionRefs.current.set(category.id, el); }}
+                  data-category-id={category.id}
+                >
+                  <div className="mb-2 px-1">
+                    <h2 className="text-lg font-extrabold text-slate-900">{category.name}</h2>
+                    {category.description ? (
+                      <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{category.description}</p>
+                    ) : null}
+                  </div>
+                  <VariantGrid
+                    categoryName={category.name}
+                    variants={visibleVariants}
+                    cartItems={items}
+                    onAdd={handleAddVariant}
+                    onIncrement={(variantId) => {
+                      const cartItem = items.find((i) => i.variantId === variantId);
+                      if (cartItem) incrementItem(cartItem.id);
+                    }}
+                    onDecrement={(variantId) => {
+                      const cartItem = items.find((i) => i.variantId === variantId);
+                      if (cartItem) decrementItem(cartItem.id);
+                    }}
+                  />
                 </section>
               );
             })}
@@ -293,18 +362,40 @@ export default function MenuPage() {
         )}
       </div>
 
-      {/* Cart FAB */}
-      {itemCount > 0 && (
+      {/* Bottom bar: Menu button (left) + Cart FAB (right) */}
+      <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between px-4 pb-6 pt-2 pointer-events-none">
+        {/* Menu floater - thumb level, left side */}
         <button
           type="button"
-          onClick={() => setCartOpen(true)}
-          className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full bg-[#c6533f] px-6 py-4 text-white shadow-[0_8px_32px_rgba(198,83,63,0.45)] transition active:scale-95"
+          onClick={() => setCategorySheetOpen(true)}
+          className="pointer-events-auto flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3.5 text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition active:scale-95"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-          <span className="text-sm font-bold">View Cart</span>
-          <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-bold">{itemCount}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+          <span className="text-sm font-bold">Menu</span>
         </button>
-      )}
+
+        {/* Cart FAB - right side */}
+        {itemCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => setCartOpen(true)}
+            className="pointer-events-auto flex items-center gap-2.5 rounded-full bg-[#c6533f] px-5 py-3.5 text-white shadow-[0_8px_32px_rgba(198,83,63,0.45)] transition active:scale-95"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            <span className="text-sm font-bold">{itemCount}</span>
+            <span className="h-4 w-px bg-white/30" />
+            <span className="text-sm font-extrabold">₹{subtotal}</span>
+          </button>
+        ) : null}
+      </div>
+
+      {/* Category bottom sheet */}
+      <CategoryMenuSheet
+        open={categorySheetOpen}
+        categories={categories}
+        onSelect={scrollToCategory}
+        onClose={() => setCategorySheetOpen(false)}
+      />
 
       <VariantModal
         open={Boolean(activeVariant)}
@@ -314,7 +405,7 @@ export default function MenuPage() {
         onClose={() => { setActiveVariantId(null); setEditingCartItemId(null); }}
         onSubmit={(item, existingId) => {
           if (existingId) updateItem(existingId, item); else addItem(item);
-          setActiveVariantId(null); setEditingCartItemId(null); setCartOpen(true);
+          setActiveVariantId(null); setEditingCartItemId(null);
         }}
       />
 
