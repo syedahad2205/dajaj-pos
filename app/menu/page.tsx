@@ -9,6 +9,7 @@ import VariantModal from "@/components/menu/VariantModal";
 import type { MenuTreeNode } from "@/lib/menu-builder";
 import { getAvailableMenuTree } from "@/services/menuService";
 import { trackEvent } from "@/lib/analytics";
+import { useStock } from "@/components/stock/StockProvider";
 
 function collectVariants(node: MenuTreeNode): MenuTreeNode[] {
   const variants: MenuTreeNode[] = [];
@@ -209,6 +210,9 @@ export default function MenuPage() {
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [status, setStatus] = useState("Loading menu...");
+  const { outOfStockIds, outOfStockModifierMasters, isModifierOutOfStock } = useStock();
+  const [showOnlyAvailable, setShowOnlyAvailable] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
   const isScrollingTo = useRef(false);
 
@@ -251,13 +255,19 @@ export default function MenuPage() {
     return () => window.removeEventListener("focus", handleFocus);
   }, [itemCount]);
 
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
   const categories = useMemo(() => menuTree.filter((node) => node.type === "category"), [menuTree]);
 
   const allVariants = useMemo(() => {
-    const result: { variant: MenuTreeNode; categoryName: string }[] = [];
+    const result: { variant: MenuTreeNode; categoryName: string; categoryId: string }[] = [];
     for (const cat of categories) {
       for (const v of collectVariants(cat).filter((n) => n.type === "variant")) {
-        result.push({ variant: v, categoryName: cat.name });
+        result.push({ variant: v, categoryName: cat.name, categoryId: cat.id });
       }
     }
     return result;
@@ -266,13 +276,20 @@ export default function MenuPage() {
   const filteredVariants = useMemo(() => {
     if (!searchQuery.trim()) return null;
     const q = searchQuery.toLowerCase().trim();
-    return allVariants.filter(
+    let results = allVariants.filter(
       ({ variant, categoryName }) =>
         variant.name.toLowerCase().includes(q) ||
         categoryName.toLowerCase().includes(q) ||
         (variant.description && variant.description.toLowerCase().includes(q)),
     );
-  }, [searchQuery, allVariants]);
+    if (showOnlyAvailable) {
+      results = results.filter(
+        ({ variant, categoryId }) =>
+          !outOfStockIds.has(variant.id) && !outOfStockIds.has(categoryId),
+      );
+    }
+    return results;
+  }, [searchQuery, allVariants, showOnlyAvailable, outOfStockIds]);
 
   const variantLookup = useMemo(() => {
     const map = new Map<string, MenuTreeNode>();
@@ -282,6 +299,20 @@ export default function MenuPage() {
     walk(menuTree);
     return map;
   }, [menuTree]);
+
+  const variantCategoryMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const { variant, categoryId } of allVariants) {
+      map.set(variant.id, categoryId);
+    }
+    return map;
+  }, [allVariants]);
+
+  const isVariantEffectivelyOOS = useCallback((variantId: string) => {
+    if (outOfStockIds.has(variantId)) return true;
+    const categoryId = variantCategoryMap.get(variantId);
+    return categoryId ? outOfStockIds.has(categoryId) : false;
+  }, [outOfStockIds, variantCategoryMap]);
 
   const activeVariant = activeVariantId ? variantLookup.get(activeVariantId) ?? null : null;
   const editingItem = editingCartItemId ? items.find((item) => item.id === editingCartItemId) ?? null : null;
@@ -301,6 +332,10 @@ export default function MenuPage() {
 
   const handleAddVariant = (variant: MenuTreeNode) => {
     setEditingCartItemId(null);
+    if (isVariantEffectivelyOOS(variant.id)) {
+      setToastMessage("This item is currently out of stock");
+      return;
+    }
     if (hasModifierGroups(variant)) {
       void trackEvent("item_customize_open", { item_name: variant.name, item_price: variant.price });
       setActiveVariantId(variant.id);
@@ -378,6 +413,20 @@ export default function MenuPage() {
               </button>
             )}
           </div>
+          {outOfStockIds.size > 0 && (
+            <div className="mt-2 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setShowOnlyAvailable(!showOnlyAvailable)}
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  showOnlyAvailable ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${showOnlyAvailable ? "bg-emerald-500" : "bg-slate-300"}`} />
+                Show only available
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -403,6 +452,7 @@ export default function MenuPage() {
                 cartItems={items}
                 showCategory
                 categoryNames={new Map(filteredVariants!.map((f) => [f.variant.id, f.categoryName]))}
+                isOutOfStock={isVariantEffectivelyOOS}
                 onAdd={handleAddVariant}
                 onIncrement={(variantId) => {
                   const cartItem = items.find((i) => i.variantId === variantId);
@@ -423,43 +473,60 @@ export default function MenuPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {categories.map((category) => {
-              const visibleVariants = collectVariants(category).filter((node) => node.type === "variant");
-              return (
-                <section
-                  key={category.id}
-                  ref={(el) => { if (el) sectionRefs.current.set(category.id, el); }}
-                  data-category-id={category.id}
-                >
-                  <div className="mb-2 px-1">
-                    <h2 className="text-lg font-extrabold text-slate-900">{category.name}</h2>
-                    {category.description ? (
-                      <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{category.description}</p>
-                    ) : null}
-                  </div>
-                  <VariantGrid
-                    categoryName={category.name}
-                    variants={visibleVariants}
-                    cartItems={items}
-                    onAdd={handleAddVariant}
-                    onIncrement={(variantId) => {
-                      const cartItem = items.find((i) => i.variantId === variantId);
-                      if (cartItem) {
-                        void trackEvent("item_increment", { item_name: cartItem.variantName });
-                        incrementItem(cartItem.id);
-                      }
-                    }}
-                    onDecrement={(variantId) => {
-                      const cartItem = items.find((i) => i.variantId === variantId);
-                      if (cartItem) {
-                        void trackEvent(cartItem.quantity <= 1 ? "item_remove_from_cart" : "item_decrement", { item_name: cartItem.variantName });
-                        decrementItem(cartItem.id);
-                      }
-                    }}
-                  />
-                </section>
-              );
-            })}
+            {categories
+              .filter((cat) => !(showOnlyAvailable && outOfStockIds.has(cat.id)))
+              .map((category) => {
+                const categoryOOS = outOfStockIds.has(category.id);
+                let visibleVariants = collectVariants(category).filter((node) => node.type === "variant");
+                if (showOnlyAvailable) {
+                  visibleVariants = visibleVariants.filter((v) => !outOfStockIds.has(v.id));
+                }
+                if (showOnlyAvailable && visibleVariants.length === 0) return null;
+
+                return (
+                  <section
+                    key={category.id}
+                    ref={(el) => { if (el) sectionRefs.current.set(category.id, el); }}
+                    data-category-id={category.id}
+                    className={categoryOOS ? "opacity-60" : ""}
+                  >
+                    <div className="mb-2 px-1">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-extrabold text-slate-900">{category.name}</h2>
+                        {categoryOOS && (
+                          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-600">
+                            Out of Stock
+                          </span>
+                        )}
+                      </div>
+                      {category.description ? (
+                        <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{category.description}</p>
+                      ) : null}
+                    </div>
+                    <VariantGrid
+                      categoryName={category.name}
+                      variants={visibleVariants}
+                      cartItems={items}
+                      isOutOfStock={(id) => categoryOOS || outOfStockIds.has(id)}
+                      onAdd={handleAddVariant}
+                      onIncrement={(variantId) => {
+                        const cartItem = items.find((i) => i.variantId === variantId);
+                        if (cartItem) {
+                          void trackEvent("item_increment", { item_name: cartItem.variantName });
+                          incrementItem(cartItem.id);
+                        }
+                      }}
+                      onDecrement={(variantId) => {
+                        const cartItem = items.find((i) => i.variantId === variantId);
+                        if (cartItem) {
+                          void trackEvent(cartItem.quantity <= 1 ? "item_remove_from_cart" : "item_decrement", { item_name: cartItem.variantName });
+                          decrementItem(cartItem.id);
+                        }
+                      }}
+                    />
+                  </section>
+                );
+              })}
           </div>
         )}
       </div>
@@ -501,11 +568,18 @@ export default function MenuPage() {
         variant={activeVariant}
         categoryName={activeCategoryName}
         cartItem={editingItem}
+        outOfStockIds={outOfStockIds}
+        outOfStockModifierMasters={outOfStockModifierMasters}
         onClose={() => {
           void trackEvent("item_customize_close", { item_name: activeVariant?.name ?? "" });
           setActiveVariantId(null); setEditingCartItemId(null);
         }}
         onSubmit={(item, existingId) => {
+          if (isVariantEffectivelyOOS(item.variantId) || item.modifiers.some((m) => isModifierOutOfStock(m) || outOfStockIds.has(m.groupId))) {
+            setToastMessage("This item or selected options are currently out of stock");
+            setActiveVariantId(null); setEditingCartItemId(null);
+            return;
+          }
           void trackEvent("item_add_to_cart", { item_name: item.variantName, item_price: item.totalPrice, has_modifiers: item.modifiers.length > 0 });
           if (existingId) updateItem(existingId, item); else addItem(item);
           setActiveVariantId(null); setEditingCartItemId(null);
@@ -541,6 +615,14 @@ export default function MenuPage() {
         onClear={handleOrderConfirmClear}
         onKeep={handleOrderConfirmKeep}
       />
+
+      {toastMessage && (
+        <div className="fixed left-1/2 top-5 z-[70] -translate-x-1/2">
+          <div className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white shadow-lg">
+            {toastMessage}
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -4,6 +4,7 @@ import { AddressProvider } from "@/components/address/AddressProvider";
 import { CustomerAuthProvider } from "@/components/auth/CustomerAuthProvider";
 import { RiderAuthProvider } from "@/components/auth/RiderAuthProvider";
 import { CartProvider } from "@/components/cart/CartProvider";
+import { StockProvider } from "@/components/stock/StockProvider";
 import FirebaseAnalytics from "@/components/FirebaseAnalytics";
 import UTMTracker from "@/components/UTMTracker";
 
@@ -28,11 +29,13 @@ export default function RootLayout({
         <RiderAuthProvider>
           <CustomerAuthProvider>
             <AddressProvider>
-              <CartProvider>
-                <FirebaseAnalytics />
-                <UTMTracker />
-                {children}
-              </CartProvider>
+              <StockProvider>
+                <CartProvider>
+                  <FirebaseAnalytics />
+                  <UTMTracker />
+                  {children}
+                </CartProvider>
+              </StockProvider>
             </AddressProvider>
           </CustomerAuthProvider>
         </RiderAuthProvider>

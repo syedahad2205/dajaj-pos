@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CartItem, CartModifier } from "@/components/cart/CartProvider";
 import ModifierGroup from "@/components/menu/ModifierGroup";
 import type { MenuTreeNode } from "@/lib/menu-builder";
@@ -55,6 +55,7 @@ export function toCartModifiers(variant: MenuTreeNode, selectedModifiers: Select
         price: modifier.price,
         groupId: group.id,
         groupName: group.name,
+        modifierMasterId: modifier.modifierMasterId || undefined,
       });
     }
   }
@@ -107,6 +108,8 @@ export default function VariantModal({
   categoryName,
   cartItem,
   open,
+  outOfStockIds,
+  outOfStockModifierMasters,
   onClose,
   onSubmit,
 }: {
@@ -114,11 +117,17 @@ export default function VariantModal({
   categoryName: string;
   cartItem?: CartItem | null;
   open: boolean;
+  outOfStockIds?: Set<string>;
+  outOfStockModifierMasters?: Set<string>;
   onClose: () => void;
   onSubmit: (item: Omit<CartItem, "id">, existingId?: string) => void;
 }) {
   const [selectedModifiers, setSelectedModifiers] = useState<SelectedModifiers>({});
   const [quantity, setQuantity] = useState(1);
+  const outOfStockRef = useRef(outOfStockIds);
+  outOfStockRef.current = outOfStockIds;
+  const outOfStockMastersRef = useRef(outOfStockModifierMasters);
+  outOfStockMastersRef.current = outOfStockModifierMasters;
 
   useEffect(() => {
     if (!open) {
@@ -153,7 +162,24 @@ export default function VariantModal({
       return;
     }
 
-    setSelectedModifiers(buildInitialSelections(variant, cartItem));
+    const initial = buildInitialSelections(variant, cartItem);
+    const oos = outOfStockRef.current;
+    const oosMasters = outOfStockMastersRef.current;
+    const isOOS = (mod: MenuTreeNode) =>
+      (oos?.has(mod.id) ?? false) ||
+      Boolean(mod.modifierMasterId && oosMasters?.has(mod.modifierMasterId));
+
+    for (const group of getModifierGroups(variant)) {
+      if (oos?.has(group.id)) {
+        initial[group.id] = [];
+      } else {
+        initial[group.id] = (initial[group.id] ?? []).filter((id) => {
+          const mod = getModifierOptions(group).find((m) => m.id === id);
+          return mod ? !isOOS(mod) : true;
+        });
+      }
+    }
+    setSelectedModifiers(initial);
     setQuantity(cartItem?.quantity ?? 1);
   }, [variant, cartItem]);
 
@@ -208,6 +234,8 @@ export default function VariantModal({
                 key={group.id}
                 group={group}
                 selectedModifierIds={selectedModifiers[group.id] ?? []}
+                outOfStockIds={outOfStockIds}
+                outOfStockModifierMasters={outOfStockModifierMasters}
                 onToggleModifier={(targetGroup, modifier) => {
                   setSelectedModifiers((current) => {
                     const selectedIds = current[targetGroup.id] ?? [];

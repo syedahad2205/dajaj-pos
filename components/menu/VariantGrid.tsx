@@ -10,6 +10,7 @@ export default function VariantGrid({
   cartItems,
   showCategory,
   categoryNames,
+  isOutOfStock,
   onAdd,
   onIncrement,
   onDecrement,
@@ -19,6 +20,7 @@ export default function VariantGrid({
   cartItems: CartItem[];
   showCategory?: boolean;
   categoryNames?: Map<string, string>;
+  isOutOfStock?: (variantId: string) => boolean;
   onAdd: (variant: MenuTreeNode) => void;
   onIncrement: (variantId: string) => void;
   onDecrement: (variantId: string) => void;
@@ -47,6 +49,7 @@ export default function VariantGrid({
             variant={variant}
             quantity={qty}
             showCategory={showCategory}
+            outOfStock={isOutOfStock?.(variant.id)}
             onAdd={() => onAdd(variant)}
             onIncrement={() => onIncrement(variant.id)}
             onDecrement={() => onDecrement(variant.id)}

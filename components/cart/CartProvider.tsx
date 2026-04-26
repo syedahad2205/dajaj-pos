@@ -8,6 +8,7 @@ export type CartModifier = {
   price: number;
   groupId: string;
   groupName: string;
+  modifierMasterId?: string;
 };
 
 export type CartItem = {
