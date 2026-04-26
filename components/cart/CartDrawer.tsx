@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import CartItem from "@/components/cart/CartItem";
 import { useCart } from "@/components/cart/CartProvider";
+import { useStock } from "@/components/stock/StockProvider";
 import { trackEvent } from "@/lib/analytics";
 
 export default function CartDrawer({
@@ -17,7 +18,15 @@ export default function CartDrawer({
   onCheckout: () => void;
 }) {
   const { items, itemCount, subtotal, incrementItem, decrementItem, removeItem, clearCart } = useCart();
+  const { isOutOfStock, isModifierOutOfStock } = useStock();
   const [confirmClear, setConfirmClear] = useState(false);
+
+  const unavailableItemIds = new Set(
+    items
+      .filter((item) => isOutOfStock(item.variantId) || item.modifiers.some((m) => isModifierOutOfStock(m)))
+      .map((item) => item.id),
+  );
+  const hasUnavailableItems = unavailableItemIds.size > 0;
 
   useEffect(() => {
     if (!open) {
@@ -78,21 +87,37 @@ export default function CartDrawer({
 
           <div className="flex-1 overflow-y-auto px-4 py-3 pb-32">
             <div className="space-y-2">
+              {hasUnavailableItems && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                  <p className="text-sm font-bold text-rose-700">Some items are no longer available</p>
+                  <p className="mt-0.5 text-xs text-rose-600">Remove unavailable items to proceed with checkout.</p>
+                </div>
+              )}
               {items.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
                   Your cart is empty.
                 </div>
               ) : (
-                items.map((item) => (
-                  <CartItem
-                    key={item.id}
-                    item={item}
-                    onEdit={() => onEditItem(item.id)}
-                    onIncrement={() => incrementItem(item.id)}
-                    onDecrement={() => decrementItem(item.id)}
-                    onRemove={() => removeItem(item.id)}
-                  />
-                ))
+                items.map((item) => {
+                  const isUnavailable = unavailableItemIds.has(item.id);
+                  return (
+                    <div key={item.id} className={isUnavailable ? "rounded-xl ring-2 ring-rose-300" : ""}>
+                      {isUnavailable && (
+                        <div className="flex items-center justify-between rounded-t-xl bg-rose-50 px-3 py-1.5">
+                          <span className="text-[10px] font-bold uppercase text-rose-600">Out of Stock</span>
+                          <button type="button" onClick={() => removeItem(item.id)} className="text-[10px] font-bold text-rose-600 underline">Remove</button>
+                        </div>
+                      )}
+                      <CartItem
+                        item={item}
+                        onEdit={() => onEditItem(item.id)}
+                        onIncrement={() => incrementItem(item.id)}
+                        onDecrement={() => decrementItem(item.id)}
+                        onRemove={() => removeItem(item.id)}
+                      />
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
@@ -109,10 +134,10 @@ export default function CartDrawer({
             <button
               type="button"
               onClick={onCheckout}
-              disabled={items.length === 0}
-              className="mt-3 w-full rounded-2xl bg-orange-600 px-5 py-3.5 text-base font-semibold text-white"
+              disabled={items.length === 0 || hasUnavailableItems}
+              className="mt-3 w-full rounded-2xl bg-orange-600 px-5 py-3.5 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Proceed to Checkout
+              {hasUnavailableItems ? "Remove unavailable items first" : "Proceed to Checkout"}
             </button>
           </div>
         </div>

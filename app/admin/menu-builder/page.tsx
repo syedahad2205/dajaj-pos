@@ -21,6 +21,11 @@ import {
   type MenuTreeNode,
 } from "@/lib/menu-builder";
 import { requireAdmin } from "@/lib/roleGuard";
+import {
+  subscribeToModifierMasters,
+  findOrCreateModifierMaster,
+  type ModifierMaster,
+} from "@/services/modifierMasterService";
 
 type FormState = {
   name: string;
@@ -36,6 +41,7 @@ type FormState = {
   trackInventory: boolean;
   inventoryMultiplier: string;
   inventoryTrackingMode: InventoryTrackingMode;
+  modifierMasterId: string;
   order: string;
 };
 
@@ -153,6 +159,7 @@ const emptyForm: FormState = {
   trackInventory: true,
   inventoryMultiplier: "",
   inventoryTrackingMode: "items",
+  modifierMasterId: "",
   order: "0",
 };
 
@@ -411,6 +418,11 @@ function NodeRow({
               >
                 {node.isAvailable ? "Available" : "Unavailable"}
               </span>
+              {node.type === "modifier" && node.modifierMasterId ? (
+                <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700">
+                  Global Modifier
+                </span>
+              ) : null}
               {node.type === "modifier" &&
               typeof node.inventoryMultiplier === "number" &&
               node.inventoryMultiplier > 0 &&
@@ -703,6 +715,7 @@ export default function AdminMenuBuilderPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
+  const [modifierMasters, setModifierMasters] = useState<ModifierMaster[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState<string>("Loading menu nodes...");
 
@@ -711,7 +724,7 @@ export default function AdminMenuBuilderPage() {
       return;
     }
 
-    const unsubscribe = subscribeToMenuNodes(
+    const unsub1 = subscribeToMenuNodes(
       (nextNodes) => {
         setNodes(nextNodes);
         setExpandedByDepth((current) => ({
@@ -729,8 +742,9 @@ export default function AdminMenuBuilderPage() {
         setStatus(error.message || "Failed to load menu nodes.");
       },
     );
+    const unsub2 = subscribeToModifierMasters((masters) => setModifierMasters(masters));
 
-    return unsubscribe;
+    return () => { unsub1(); unsub2(); };
   }, [authenticated]);
 
   const tree = useMemo(() => buildMenuTree(nodes), [nodes]);
@@ -798,6 +812,7 @@ export default function AdminMenuBuilderPage() {
       inventoryMultiplier:
         node.type === "modifier" ? formatModifierStockMultiplier(node) : formatInventoryMultiplierInput(node),
       inventoryTrackingMode: node.inventoryTrackingMode ?? "items",
+      modifierMasterId: node.modifierMasterId ?? "",
       order: String(node.order),
     });
   };
@@ -810,6 +825,18 @@ export default function AdminMenuBuilderPage() {
       const nextParentId = form.parentId || null;
       if (editingId && (nextParentId === editingId || isDescendant(nodes, editingId, nextParentId))) {
         throw new Error("A node cannot be assigned to itself or one of its descendants.");
+      }
+
+      let modifierMasterId: string | null = null;
+      if (form.type === "modifier") {
+        if (form.modifierMasterId === "__auto__" || form.modifierMasterId === "") {
+          modifierMasterId = await findOrCreateModifierMaster(
+            form.name.trim(),
+            modifierMasters,
+          );
+        } else if (form.modifierMasterId) {
+          modifierMasterId = form.modifierMasterId;
+        }
       }
 
       const payload: MenuNodeInput = {
@@ -830,6 +857,7 @@ export default function AdminMenuBuilderPage() {
             ? parseInventoryMultiplierInput(form.inventoryMultiplier, form.type)
             : null,
         inventoryTrackingMode: formSupportsInventoryMode ? form.inventoryTrackingMode : null,
+        modifierMasterId,
         order: Math.max(0, Number(form.order) || 0),
       };
 
@@ -1208,6 +1236,35 @@ export default function AdminMenuBuilderPage() {
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   Bills attach modifier IDs to the line SKU. This number multiplies how much tracked stock the line
                   consumes (times bill quantity and category or item multipliers). Leave empty for a full portion.
+                </p>
+              </div>
+            ) : null}
+
+            {form.type === "modifier" ? (
+              <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Global Modifier Link
+                </label>
+                <select
+                  value={form.modifierMasterId}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      modifierMasterId: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-2xl border border-violet-200 bg-white px-4 py-3 outline-none focus:border-violet-500"
+                >
+                  <option value="">Auto-link by name</option>
+                  {modifierMasters.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  Links this modifier to a global modifier master. &ldquo;Auto-link&rdquo; will match by name or create a
+                  new master. When the global master is marked out of stock, all linked modifiers are disabled everywhere.
                 </p>
               </div>
             ) : null}

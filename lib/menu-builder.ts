@@ -31,6 +31,7 @@ export interface MenuNode {
   trackInventory: boolean;
   inventoryMultiplier: number | null;
   inventoryTrackingMode: InventoryTrackingMode | null;
+  modifierMasterId: string | null;
   order: number;
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -54,6 +55,7 @@ export interface MenuNodeInput {
   trackInventory: boolean;
   inventoryMultiplier: number | null;
   inventoryTrackingMode: InventoryTrackingMode | null;
+  modifierMasterId?: string | null;
   order: number;
 }
 
@@ -101,6 +103,7 @@ function normalizeMenuNode(data: Partial<MenuNode>, fallbackId: string): MenuNod
     trackInventory: typeof data.trackInventory === "boolean" ? data.trackInventory : legacyTrackInventory,
     inventoryMultiplier: normalizedMultiplier,
     inventoryTrackingMode: normalizedTrackingMode,
+    modifierMasterId: typeof (data as Record<string, unknown>).modifierMasterId === "string" ? (data as Record<string, unknown>).modifierMasterId as string : null,
     order: typeof data.order === "number" ? data.order : 0,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,

@@ -173,6 +173,22 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── Stock Control ──────────────────────────────────────────────────────────
+    // Public read so the /menu page can show out-of-stock status.
+    // Only admin or inventory managers can toggle stock availability.
+    match /stock_control/{docId} {
+      allow read:  if true;
+      allow write: if isAdminOrInventoryManager();
+    }
+
+    // ── Modifier Masters ──────────────────────────────────────────────────────
+    // Public read for menu page modifier resolution.
+    // Only admin can create/manage global modifier definitions.
+    match /modifier_masters/{masterId} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
     // ── Delivery Settings ─────────────────────────────────────────────────────
     // Public read for delivery fee calculation on the checkout page.
     // Only admin can configure zones and minimum order.
