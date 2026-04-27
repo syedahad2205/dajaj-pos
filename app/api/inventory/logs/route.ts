@@ -1,8 +1,25 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedFirestoreForRequest, isFirebaseRouteAuthError } from "@/lib/firebaseServerApp";
 import { getInventoryLogs } from "@/services/inventoryService";
+import { Timestamp } from "firebase/firestore";
 
 export const dynamic = "force-dynamic";
+
+function serializeTimestamp(value: unknown): string | null {
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "seconds" in value &&
+    typeof (value as Record<string, unknown>).seconds === "number"
+  ) {
+    return new Date(
+      ((value as { seconds: number }).seconds) * 1000,
+    ).toISOString();
+  }
+  if (typeof value === "string") return value;
+  return null;
+}
 
 export async function GET(request: Request) {
   try {
@@ -10,7 +27,11 @@ export async function GET(request: Request) {
 
     try {
       const logs = await getInventoryLogs(firestore);
-      return NextResponse.json({ success: true, logs });
+      const serialized = logs.map((log) => ({
+        ...log,
+        timestamp: serializeTimestamp(log.timestamp),
+      }));
+      return NextResponse.json({ success: true, logs: serialized });
     } finally {
       await cleanup();
     }

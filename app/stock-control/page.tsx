@@ -19,16 +19,23 @@ import {
   type MenuTreeNode,
 } from "@/lib/menu-builder";
 import { useStock } from "@/components/stock/StockProvider";
-import {
-  subscribeToModifierMasters,
-  migrateExistingModifiers,
-  type ModifierMaster,
-} from "@/services/modifierMasterService";
 import { bulkSetStockStatus } from "@/services/stockService";
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type BulkMode = "disable" | "enable";
+
+interface BulkTarget {
+  keyword: string;
+  matches: MenuTreeNode[];
+  mode: BulkMode;
+}
 
 // ── Bulk OOS context ───────────────────────────────────────────────────────────
 
-const BulkSearchCtx = createContext<((name: string) => void) | null>(null);
+const BulkSearchCtx = createContext<
+  ((name: string, nodeId: string) => void) | null
+>(null);
 
 // ── Shared components ──────────────────────────────────────────────────────────
 
@@ -76,17 +83,28 @@ function OOSBadge({ label = "Out of Stock" }: { label?: string }) {
   );
 }
 
-function BulkButton({ name }: { name: string }) {
+function BulkButton({ name, nodeId }: { name: string; nodeId: string }) {
   const onBulkSearch = useContext(BulkSearchCtx);
+  const { outOfStockIds } = useStock();
+  const isOOS = outOfStockIds.has(nodeId);
+
   return (
     <button
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        onBulkSearch?.(name);
+        onBulkSearch?.(name, nodeId);
       }}
-      className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase text-violet-500 transition hover:bg-violet-50"
-      title={`Disable all items containing "${name}"`}
+      className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase transition ${
+        isOOS
+          ? "text-emerald-500 hover:bg-emerald-50"
+          : "text-violet-500 hover:bg-violet-50"
+      }`}
+      title={
+        isOOS
+          ? `Enable all items containing "${name}"`
+          : `Disable all items containing "${name}"`
+      }
     >
       All
     </button>
@@ -133,7 +151,7 @@ function ModifierRow({
             Parent OOS
           </span>
         )}
-        <BulkButton name={modifier.name} />
+        <BulkButton name={modifier.name} nodeId={modifier.id} />
         <StockToggle
           available={!selfOOS}
           disabled={effectiveDisabled}
@@ -262,7 +280,7 @@ function ItemRow({
               Parent OOS
             </span>
           )}
-          <BulkButton name={item.name} />
+          <BulkButton name={item.name} nodeId={item.id} />
           <StockToggle
             available={!selfOOS}
             disabled={parentDisabled}
@@ -382,98 +400,7 @@ function CategoryAccordion({ category }: { category: MenuTreeNode }) {
   );
 }
 
-// ── Global Modifiers ───────────────────────────────────────────────────────────
-
-function GlobalModifiersSection({
-  masters,
-}: {
-  masters: ModifierMaster[];
-}) {
-  const { outOfStockModifierMasters, toggleModifierMasterStock } = useStock();
-  const [expanded, setExpanded] = useState(true);
-  const oosCount = masters.filter((m) =>
-    outOfStockModifierMasters.has(m.id),
-  ).length;
-
-  if (masters.length === 0) return null;
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-violet-200 bg-white shadow-sm">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between gap-3 bg-violet-50 px-4 py-3 text-left"
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`shrink-0 text-violet-400 transition-transform ${
-                expanded ? "rotate-90" : ""
-              }`}
-            >
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-            <h3 className="text-sm font-bold text-violet-900">
-              Global Modifiers
-            </h3>
-            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-600">
-              {masters.length}
-            </span>
-          </div>
-          <p className="mt-0.5 ml-6 text-xs text-violet-400">
-            Toggle once to disable everywhere
-            {oosCount > 0 && (
-              <span className="ml-1 text-rose-500">
-                &middot; {oosCount} disabled
-              </span>
-            )}
-          </p>
-        </div>
-      </button>
-      {expanded && (
-        <div className="divide-y divide-slate-100 px-3 pb-2 pt-1">
-          {masters.map((master) => {
-            const isOOS = outOfStockModifierMasters.has(master.id);
-            return (
-              <div
-                key={master.id}
-                className="flex items-center justify-between gap-3 py-2.5"
-              >
-                <div className="flex items-center gap-2">
-                  <p
-                    className={`text-sm font-medium ${
-                      isOOS ? "text-slate-400 line-through" : "text-slate-700"
-                    }`}
-                  >
-                    {master.name}
-                  </p>
-                  {isOOS && <OOSBadge label="Global OOS" />}
-                </div>
-                <StockToggle
-                  available={!isOOS}
-                  disabled={false}
-                  size="sm"
-                  onChange={() => toggleModifierMasterStock(master.id, !isOOS)}
-                />
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Bulk Disable Modal ─────────────────────────────────────────────────────────
+// ── Bulk OOS Modal ─────────────────────────────────────────────────────────────
 
 function getTypeLabel(type: string) {
   switch (type) {
@@ -490,22 +417,79 @@ function getTypeLabel(type: string) {
   }
 }
 
-function BulkDisableModal({
+function getParentPath(
+  nodeId: string,
+  nodeMap: Map<string, MenuTreeNode>,
+): string {
+  const parts: string[] = [];
+  const node = nodeMap.get(nodeId);
+  let current = node?.parentId ? nodeMap.get(node.parentId) : undefined;
+  while (current) {
+    parts.unshift(current.name);
+    current = current.parentId ? nodeMap.get(current.parentId) : undefined;
+  }
+  return parts.join(" › ");
+}
+
+function BulkOOSModal({
   keyword,
   matches,
+  mode,
   outOfStockIds,
+  nodeMap,
   onConfirm,
   onClose,
 }: {
   keyword: string;
   matches: MenuTreeNode[];
+  mode: BulkMode;
   outOfStockIds: Set<string>;
-  onConfirm: (nodeIds: string[]) => void;
+  nodeMap: Map<string, MenuTreeNode>;
+  onConfirm: (nodeIds: string[], mode: BulkMode) => void;
   onClose: () => void;
 }) {
-  const toDisable = matches.filter((m) => !outOfStockIds.has(m.id));
-  const alreadyOOS = matches.filter((m) => outOfStockIds.has(m.id));
+  const actionable = useMemo(
+    () =>
+      matches.filter((m) =>
+        mode === "disable" ? !outOfStockIds.has(m.id) : outOfStockIds.has(m.id),
+      ),
+    [matches, mode, outOfStockIds],
+  );
+
+  const nonActionable = useMemo(
+    () =>
+      matches.filter((m) =>
+        mode === "disable" ? outOfStockIds.has(m.id) : !outOfStockIds.has(m.id),
+      ),
+    [matches, mode, outOfStockIds],
+  );
+
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(actionable.map((m) => m.id)),
+  );
   const [loading, setLoading] = useState(false);
+
+  const toggleItem = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected =
+    actionable.length > 0 && selected.size === actionable.length;
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(actionable.map((m) => m.id)));
+    }
+  };
+
+  const isDisable = mode === "disable";
 
   return (
     <>
@@ -515,79 +499,170 @@ function BulkDisableModal({
         className="fixed inset-0 z-40 bg-black/40"
       />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-          <h2 className="text-lg font-black text-slate-900">
-            Disable all &ldquo;{keyword}&rdquo;?
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Found {matches.length} item{matches.length !== 1 ? "s" : ""}{" "}
-            containing this name.
-            {toDisable.length > 0 && (
-              <span className="font-semibold text-rose-600">
-                {" "}
-                {toDisable.length} will be newly disabled.
-              </span>
-            )}
-          </p>
-
-          <div className="mt-4 max-h-60 space-y-1 overflow-y-auto">
-            {toDisable.map((m) => (
-              <div
-                key={m.id}
-                className="flex items-center justify-between rounded-lg bg-rose-50 px-3 py-2"
-              >
-                <div>
-                  <p className="text-sm font-medium text-slate-800">
-                    {m.name}
-                  </p>
-                  <p className="text-[10px] text-slate-400">
-                    {getTypeLabel(m.type)}
-                  </p>
-                </div>
-                <span className="text-[10px] font-bold uppercase text-rose-500">
-                  Will disable
-                </span>
-              </div>
-            ))}
-            {alreadyOOS.map((m) => (
-              <div
-                key={m.id}
-                className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 opacity-50"
-              >
-                <div>
-                  <p className="text-sm font-medium text-slate-500">
-                    {m.name}
-                  </p>
-                  <p className="text-[10px] text-slate-400">
-                    {getTypeLabel(m.type)}
-                  </p>
-                </div>
-                <span className="text-[10px] font-semibold text-slate-400">
-                  Already OOS
-                </span>
-              </div>
-            ))}
+        <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+          {/* Header */}
+          <div className="border-b border-slate-100 px-5 pt-5 pb-3">
+            <h2 className="text-lg font-black text-slate-900">
+              {isDisable ? "Disable" : "Enable"} all &ldquo;{keyword}&rdquo;?
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Found {matches.length} item{matches.length !== 1 ? "s" : ""}{" "}
+              containing this name.
+            </p>
           </div>
 
-          <div className="mt-5 flex gap-2">
-            {toDisable.length > 0 ? (
+          {/* Select all toggle */}
+          {actionable.length > 1 && (
+            <div className="border-b border-slate-100 px-5 py-2">
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                />
+                <span className="text-xs font-semibold text-slate-600">
+                  {allSelected ? "Deselect all" : "Select all"} (
+                  {actionable.length})
+                </span>
+              </label>
+            </div>
+          )}
+
+          {/* Items list */}
+          <div className="max-h-72 overflow-y-auto px-5 py-3">
+            <div className="space-y-1.5">
+              {/* Actionable items */}
+              {actionable.map((m) => {
+                const path = getParentPath(m.id, nodeMap);
+                const checked = selected.has(m.id);
+                return (
+                  <label
+                    key={m.id}
+                    className={`flex cursor-pointer items-start gap-2.5 rounded-lg px-3 py-2.5 transition ${
+                      checked
+                        ? isDisable
+                          ? "bg-rose-50"
+                          : "bg-emerald-50"
+                        : "bg-slate-50"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleItem(m.id)}
+                      className={`mt-0.5 h-4 w-4 rounded border-slate-300 focus:ring-violet-500 ${
+                        isDisable ? "text-rose-600" : "text-emerald-600"
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-800">
+                        {m.name}
+                      </p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                            m.type === "variant"
+                              ? "bg-blue-100 text-blue-600"
+                              : m.type === "modifier"
+                                ? "bg-amber-100 text-amber-600"
+                                : "bg-slate-100 text-slate-500"
+                          }`}
+                        >
+                          {getTypeLabel(m.type)}
+                        </span>
+                        {path && (
+                          <span className="text-[10px] text-slate-400">
+                            {path}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+
+              {/* Non-actionable items */}
+              {nonActionable.length > 0 && (
+                <>
+                  {actionable.length > 0 && (
+                    <div className="py-1.5">
+                      <p className="text-[10px] font-bold uppercase text-slate-300">
+                        {isDisable
+                          ? "Already out of stock"
+                          : "Already available"}
+                      </p>
+                    </div>
+                  )}
+                  {nonActionable.map((m) => {
+                    const path = getParentPath(m.id, nodeMap);
+                    return (
+                      <div
+                        key={m.id}
+                        className="flex items-start gap-2.5 rounded-lg bg-slate-50 px-3 py-2.5 opacity-40"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          disabled
+                          className="mt-0.5 h-4 w-4 rounded border-slate-200 text-slate-300"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-slate-500">
+                            {m.name}
+                          </p>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-400">
+                              {getTypeLabel(m.type)}
+                            </span>
+                            {path && (
+                              <span className="text-[10px] text-slate-400">
+                                {path}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="whitespace-nowrap text-[10px] font-semibold text-slate-400">
+                          {isDisable ? "Already OOS" : "Available"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex gap-2 border-t border-slate-100 px-5 py-4">
+            {selected.size > 0 ? (
               <button
                 type="button"
                 disabled={loading}
                 onClick={async () => {
                   setLoading(true);
-                  await onConfirm(toDisable.map((m) => m.id));
+                  await onConfirm(Array.from(selected), mode);
                   setLoading(false);
                 }}
-                className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                className={`flex-1 rounded-xl py-2.5 text-sm font-bold text-white transition disabled:opacity-50 ${
+                  isDisable
+                    ? "bg-rose-600 hover:bg-rose-700"
+                    : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
               >
                 {loading
-                  ? "Disabling..."
-                  : `Disable ${toDisable.length} item${toDisable.length !== 1 ? "s" : ""}`}
+                  ? isDisable
+                    ? "Disabling..."
+                    : "Enabling..."
+                  : `${isDisable ? "Disable" : "Enable"} ${selected.size} item${selected.size !== 1 ? "s" : ""}`}
               </button>
             ) : (
               <div className="flex-1 rounded-xl bg-slate-100 py-2.5 text-center text-sm font-medium text-slate-500">
-                All already out of stock
+                {actionable.length === 0
+                  ? isDisable
+                    ? "All already out of stock"
+                    : "All already available"
+                  : "Select items to continue"}
               </div>
             )}
             <button
@@ -601,78 +676,6 @@ function BulkDisableModal({
         </div>
       </div>
     </>
-  );
-}
-
-// ── Migration Banner ───────────────────────────────────────────────────────────
-
-function MigrationBanner({
-  menuNodes,
-  onComplete,
-}: {
-  menuNodes: MenuNode[];
-  onComplete: () => void;
-}) {
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<{
-    mastersCreated: number;
-    nodesUpdated: number;
-  } | null>(null);
-
-  const unlinkedCount = menuNodes.filter(
-    (n) => n.type === "modifier" && !n.modifierMasterId,
-  ).length;
-
-  if (unlinkedCount === 0 && !result) return null;
-
-  return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-      {result ? (
-        <div>
-          <p className="text-sm font-bold text-emerald-700">
-            Migration complete
-          </p>
-          <p className="mt-0.5 text-xs text-slate-600">
-            Created {result.mastersCreated} masters, linked{" "}
-            {result.nodesUpdated} modifiers.
-          </p>
-          <button
-            type="button"
-            onClick={onComplete}
-            className="mt-2 text-xs font-semibold text-emerald-700 underline"
-          >
-            Dismiss
-          </button>
-        </div>
-      ) : (
-        <div>
-          <p className="text-sm font-bold text-amber-800">
-            {unlinkedCount} modifier{unlinkedCount !== 1 ? "s" : ""} not linked
-            to global masters
-          </p>
-          <p className="mt-0.5 text-xs text-slate-600">
-            Run migration to auto-create global modifiers from existing names.
-          </p>
-          <button
-            type="button"
-            disabled={running}
-            onClick={async () => {
-              setRunning(true);
-              try {
-                const r = await migrateExistingModifiers(menuNodes);
-                setResult(r);
-              } catch (err) {
-                console.error(err);
-                setRunning(false);
-              }
-            }}
-            className="mt-2 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
-          >
-            {running ? "Migrating..." : "Run Migration"}
-          </button>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -695,18 +698,21 @@ export default function StockControlPage() {
   const { authenticated, loading: authLoading, role } = useRequireAuth("pos");
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);
   const [menuTree, setMenuTree] = useState<MenuTreeNode[]>([]);
-  const [rawNodes, setRawNodes] = useState<MenuNode[]>([]);
-  const [modifierMasters, setModifierMasters] = useState<ModifierMaster[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showOOSOnly, setShowOOSOnly] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [showMigrationBanner, setShowMigrationBanner] = useState(true);
-  const [bulkTarget, setBulkTarget] = useState<{
-    keyword: string;
-    matches: MenuTreeNode[];
-  } | null>(null);
-  const { outOfStockIds, outOfStockModifierMasters, loading: stockLoading } =
-    useStock();
+  const [bulkTarget, setBulkTarget] = useState<BulkTarget | null>(null);
+  const { outOfStockIds, loading: stockLoading } = useStock();
+
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, MenuTreeNode>();
+    const walk = (n: MenuTreeNode) => {
+      map.set(n.id, n);
+      n.children.forEach(walk);
+    };
+    menuTree.forEach(walk);
+    return map;
+  }, [menuTree]);
 
   useEffect(() => {
     if (authLoading || !authenticated) return;
@@ -725,17 +731,9 @@ export default function StockControlPage() {
   }, [authenticated, authLoading, role]);
 
   useEffect(() => {
-    const unsub1 = subscribeToMenuNodes((nodes: MenuNode[]) => {
-      setRawNodes(nodes);
+    return subscribeToMenuNodes((nodes: MenuNode[]) => {
       setMenuTree(buildMenuTree(nodes));
     });
-    const unsub2 = subscribeToModifierMasters((masters) => {
-      setModifierMasters(masters);
-    });
-    return () => {
-      unsub1();
-      unsub2();
-    };
   }, []);
 
   const categories = useMemo(
@@ -772,35 +770,27 @@ export default function StockControlPage() {
     return result;
   }, [categories, selectedCategory, searchQuery, showOOSOnly, outOfStockIds]);
 
-  const filteredMasters = useMemo(() => {
-    if (!searchQuery.trim() && !showOOSOnly) return modifierMasters;
-    let result = modifierMasters;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      result = result.filter((m) => m.name.toLowerCase().includes(q));
-    }
-    if (showOOSOnly) {
-      result = result.filter((m) => outOfStockModifierMasters.has(m.id));
-    }
-    return result;
-  }, [modifierMasters, searchQuery, showOOSOnly, outOfStockModifierMasters]);
-
   const handleBulkSearch = useCallback(
-    (name: string) => {
+    (name: string, nodeId: string) => {
       const keyword = name.toLowerCase().trim();
       const all = flattenTree(menuTree);
       const matches = all.filter((n) =>
         n.name.toLowerCase().trim().includes(keyword),
       );
       if (matches.length === 0) return;
-      setBulkTarget({ keyword: name, matches });
+      const isOOS = outOfStockIds.has(nodeId);
+      setBulkTarget({
+        keyword: name,
+        matches,
+        mode: isOOS ? "enable" : "disable",
+      });
     },
-    [menuTree],
+    [menuTree, outOfStockIds],
   );
 
   const handleBulkConfirm = useCallback(
-    async (nodeIds: string[]) => {
-      await bulkSetStockStatus(nodeIds, true);
+    async (nodeIds: string[], mode: BulkMode) => {
+      await bulkSetStockStatus(nodeIds, mode === "disable");
       setBulkTarget(null);
     },
     [],
@@ -855,7 +845,7 @@ export default function StockControlPage() {
     );
   }
 
-  const totalOOS = outOfStockIds.size + outOfStockModifierMasters.size;
+  const totalOOS = outOfStockIds.size;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -973,18 +963,6 @@ export default function StockControlPage() {
       <div className="mx-auto max-w-lg px-4 py-4 pb-20">
         <BulkSearchCtx.Provider value={handleBulkSearch}>
           <div className="space-y-3">
-            {/* Migration banner */}
-            {role === "admin" && showMigrationBanner && (
-              <MigrationBanner
-                menuNodes={rawNodes}
-                onComplete={() => setShowMigrationBanner(false)}
-              />
-            )}
-
-            {/* Global Modifiers */}
-            <GlobalModifiersSection masters={filteredMasters} />
-
-            {/* Categories */}
             {stockLoading ? (
               <div className="rounded-xl bg-white px-6 py-10 text-center text-sm font-medium text-slate-400 shadow-sm">
                 Loading stock status...
@@ -1004,12 +982,14 @@ export default function StockControlPage() {
         </BulkSearchCtx.Provider>
       </div>
 
-      {/* Bulk Disable Modal */}
+      {/* Bulk OOS Modal */}
       {bulkTarget && (
-        <BulkDisableModal
+        <BulkOOSModal
           keyword={bulkTarget.keyword}
           matches={bulkTarget.matches}
+          mode={bulkTarget.mode}
           outOfStockIds={outOfStockIds}
+          nodeMap={nodeMap}
           onConfirm={handleBulkConfirm}
           onClose={() => setBulkTarget(null)}
         />
