@@ -36,9 +36,9 @@ export default function AdminInventoryLogsPage() {
       })
       .then((payload) => {
         if (!payload.success) throw new Error(payload.message || "Failed to load logs.");
-        setLogs(payload.logs.map((log: any) => ({
+        setLogs(payload.logs.map((log: InventoryLogRow) => ({
           ...log,
-          timestamp: log.timestamp?.toDate ? log.timestamp.toDate().toISOString() : log.timestamp || "",
+          timestamp: log.timestamp || "",
         })));
         setStatus("");
       })
@@ -94,7 +94,7 @@ export default function AdminInventoryLogsPage() {
                     <td className="px-4 py-3 text-right text-slate-700">{log.newValue ?? "—"}</td>
                     <td className="px-4 py-3 text-slate-700">{log.actionType}</td>
                     <td className="px-4 py-3 text-slate-700">{log.userName || log.userId}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-500">{new Date(log.timestamp).toLocaleString()}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-500">{log.timestamp ? new Date(log.timestamp).toLocaleString() : "—"}</td>
                   </tr>
                 ))}
               </tbody>
