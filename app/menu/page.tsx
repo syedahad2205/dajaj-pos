@@ -27,6 +27,11 @@ function hasModifierGroups(variant: MenuTreeNode) {
 const WHATSAPP_NUMBER = "917019044480";
 const ORDER_PENDING_KEY = "dajaj-order-pending";
 
+function isFlavourGroup(groupName: string): boolean {
+  const lower = groupName.toLowerCase();
+  return lower.includes("flavour") || lower.includes("flavor");
+}
+
 function formatOrderMessage(
   items: ReturnType<typeof useCart>["items"],
   subtotal: number,
@@ -35,35 +40,60 @@ function formatOrderMessage(
   const lines: string[] = [
     "Hi, I would like to place an order from Dajaj!",
     "",
-    `*Order Type:* ${orderType === "pickup" ? "Pickup" : "Delivery"}`,
+    `Order Type: ${orderType === "pickup" ? "Pickup" : "Delivery"}`,
     "",
-    "--- *ORDER DETAILS* ---",
+    "--- ORDER DETAILS ---",
   ];
 
-  const grouped = new Map<string, typeof items>();
+  const byCategory = new Map<string, typeof items>();
   for (const item of items) {
     const key = item.categoryName || "Other";
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push(item);
+    if (!byCategory.has(key)) byCategory.set(key, []);
+    byCategory.get(key)!.push(item);
   }
 
-  for (const [category, categoryItems] of grouped) {
-    lines.push("", `*${category}*`);
+  for (const [category, categoryItems] of byCategory) {
+    lines.push("", category);
+
+    const byItem = new Map<string, typeof items>();
     for (const item of categoryItems) {
-      const perUnit = item.basePrice + item.modifiers.reduce((s, m) => s + m.price, 0);
-      lines.push(`• ${item.variantName} x${item.quantity} — ₹${perUnit * item.quantity}`);
-      if (item.modifiers.length > 0) {
-        const modText = item.modifiers.map((m) => `${m.groupName}: ${m.name}${m.price > 0 ? ` (+₹${m.price})` : ""}`).join(", ");
-        lines.push(`  ${modText}`);
+      if (!byItem.has(item.variantName)) byItem.set(item.variantName, []);
+      byItem.get(item.variantName)!.push(item);
+    }
+
+    for (const [itemName, variants] of byItem) {
+      lines.push("", itemName);
+
+      for (const item of variants) {
+        const flavourMods = item.modifiers.filter((m) => isFlavourGroup(m.groupName));
+        const variantMods = item.modifiers.filter((m) => !isFlavourGroup(m.groupName));
+
+        const variantLabel = variantMods.map((m) => m.name).join(", ");
+        if (variantLabel) {
+          lines.push(`${variantLabel} x${item.quantity} — ₹${item.totalPrice}`);
+        } else {
+          lines.push(`x${item.quantity} — ₹${item.totalPrice}`);
+        }
+
+        const hasGarlicMayo = flavourMods.some((m) => m.name.toLowerCase() === "garlic mayo");
+        const otherFlavours = flavourMods.filter((m) => m.name.toLowerCase() !== "garlic mayo");
+
+        if (!hasGarlicMayo && otherFlavours.length > 0) {
+          lines.push("  No Garlic Mayo");
+        }
+
+        for (const flavour of otherFlavours) {
+          lines.push(`  Flavour: ${flavour.name}`);
+        }
       }
     }
   }
 
   const totalItems = items.reduce((s, i) => s + i.quantity, 0);
-  lines.push("", "--- *TOTAL* ---", `Items: ${totalItems}`, `Subtotal: ₹${subtotal}`);
+  lines.push("", "---", "", `Items: ${totalItems}`, `Total: ₹${subtotal}`);
 
   if (orderType === "delivery") {
-    lines.push("", "_Note: Delivery charges will be applied separately and collected by the delivery partner._");
+    lines.push("", "Note: Delivery charges will be applied separately and collected by the delivery partner.");
   }
 
   return lines.join("\n");
