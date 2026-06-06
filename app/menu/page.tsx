@@ -24,7 +24,7 @@ function hasModifierGroups(variant: MenuTreeNode) {
   return variant.children.some((c) => c.type === "modifierGroup");
 }
 
-const WHATSAPP_NUMBER = "917019044480";
+const WHATSAPP_NUMBER = "918971563534";
 const ORDER_PENDING_KEY = "dajaj-order-pending";
 
 function isFlavourGroup(groupName: string): boolean {

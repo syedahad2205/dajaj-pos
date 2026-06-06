@@ -12,7 +12,7 @@ export const displayMenu = {
   brand: {
     name: "DAJAJ",
     tagline: "The Spice of Spices",
-    cateringContact: "+91 7019044480",
+    cateringContact: "+91 8971563534",
   },
   alfaham: {
     headers: ["Qtr", "Half", "Full"],
