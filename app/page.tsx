@@ -7,7 +7,7 @@ import styles from "./menu/menu.module.css";
 import LocationLink from "@/components/LocationLink";
 import { trackEvent } from "@/lib/analytics";
 
-const ZOMATO_URL = "http://zoma.to/r/22768463";
+const ZOMATO_URL = "https://zomato.onelink.me/xqzv/9rjiq535";
 
 const MAPS_URL = "https://maps.app.goo.gl/NGaUPwQMD8P2UDbk9?g_st=ic";
 

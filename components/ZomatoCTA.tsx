@@ -8,7 +8,7 @@ interface ZomatoCTAProps {
   variant?: "primary" | "compact";
 }
 
-const ZOMATO_URL = "http://zoma.to/r/22768463";
+const ZOMATO_URL = "https://zomato.onelink.me/xqzv/9rjiq535";
 const ZOMATO_RED = "#E23744";
 
 export default function ZomatoCTA({
