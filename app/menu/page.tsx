@@ -10,6 +10,7 @@ import type { MenuTreeNode } from "@/lib/menu-builder";
 import { getAvailableMenuTree } from "@/services/menuService";
 import { trackEvent } from "@/lib/analytics";
 import { useStock } from "@/components/stock/StockProvider";
+import ZomatoBanner from "@/components/ZomatoBanner";
 
 function collectVariants(node: MenuTreeNode): MenuTreeNode[] {
   const variants: MenuTreeNode[] = [];
@@ -35,12 +36,11 @@ function isFlavourGroup(groupName: string): boolean {
 function formatOrderMessage(
   items: ReturnType<typeof useCart>["items"],
   subtotal: number,
-  orderType: "pickup" | "delivery",
 ) {
   const lines: string[] = [
     "Hi, I would like to place an order from Dajaj!",
     "",
-    `Order Type: ${orderType === "pickup" ? "Pickup" : "Delivery"}`,
+    "Order Type: Pickup",
     "",
     "--- ORDER DETAILS ---",
   ];
@@ -92,61 +92,10 @@ function formatOrderMessage(
   const totalItems = items.reduce((s, i) => s + i.quantity, 0);
   lines.push("", "---", "", `Items: ${totalItems}`, `Total: ₹${subtotal}`);
 
-  if (orderType === "delivery") {
-    lines.push("", "Note: Delivery charges will be applied separately and collected by the delivery partner.");
-  }
-
   return lines.join("\n");
 }
 
-function OrderTypeModal({
-  open,
-  onClose,
-  onConfirm,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onConfirm: (type: "pickup" | "delivery") => void;
-}) {
-  if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
-        <h2 className="text-2xl font-black text-slate-900">How would you like your order?</h2>
-        <p className="mt-2 text-sm text-slate-500">Choose pickup or delivery before placing your order.</p>
-
-        <div className="mt-6 space-y-3">
-          <button
-            type="button"
-            onClick={() => onConfirm("pickup")}
-            className="w-full rounded-2xl border-2 border-slate-900 bg-slate-900 px-5 py-4 text-left text-white transition hover:bg-slate-800"
-          >
-            <p className="text-lg font-bold">Pickup</p>
-            <p className="mt-1 text-sm text-slate-300">No extra charges — collect from store</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onConfirm("delivery")}
-            className="w-full rounded-2xl border-2 border-orange-200 bg-orange-50 px-5 py-4 text-left text-slate-900 transition hover:border-orange-300 hover:bg-orange-100"
-          >
-            <p className="text-lg font-bold">Delivery</p>
-            <p className="mt-1 text-sm text-slate-500">Extra delivery charges will be applied by the delivery partner</p>
-          </button>
-        </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-4 w-full rounded-xl px-4 py-3 text-sm font-semibold text-slate-500 transition hover:text-slate-700"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function OrderConfirmModal({
   open,
@@ -235,7 +184,7 @@ export default function MenuPage() {
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
   const [editingCartItemId, setEditingCartItemId] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
-  const [orderTypeOpen, setOrderTypeOpen] = useState(false);
+
   const [orderConfirmOpen, setOrderConfirmOpen] = useState(false);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -388,17 +337,11 @@ export default function MenuPage() {
   const handleCheckout = () => {
     void trackEvent("checkout_start", { item_count: itemCount, cart_value: subtotal });
     setCartOpen(false);
-    setOrderTypeOpen(true);
-  };
-
-  const handleOrderTypeConfirm = (type: "pickup" | "delivery") => {
-    void trackEvent("order_type_selected", { order_type: type, item_count: itemCount, cart_value: subtotal });
-    const message = formatOrderMessage(items, subtotal, type);
+    const message = formatOrderMessage(items, subtotal);
     const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
     window.localStorage.setItem(ORDER_PENDING_KEY, Date.now().toString());
-    void trackEvent("whatsapp_order_sent", { order_type: type, item_count: itemCount, cart_value: subtotal });
+    void trackEvent("whatsapp_order_sent", { order_type: "pickup", item_count: itemCount, cart_value: subtotal });
     window.open(url, "_blank");
-    setOrderTypeOpen(false);
   };
 
   const handleOrderConfirmClear = () => {
@@ -421,6 +364,9 @@ export default function MenuPage() {
         <Image src="/logo.png" alt="Dajaj logo" width={56} height={56} className="mx-auto mb-2 h-auto w-auto" />
         <h1 className="text-3xl font-black tracking-tight text-slate-900">Our Menu</h1>
       </div>
+
+      {/* Zomato delivery banner */}
+      <ZomatoBanner />
 
       {/* Search bar */}
       <div className="sticky top-0 z-20 bg-[#faf6f1]/95 px-4 pb-3 pt-2 backdrop-blur-md">
@@ -631,14 +577,7 @@ export default function MenuPage() {
         }}
       />
 
-      <OrderTypeModal
-        open={orderTypeOpen}
-        onClose={() => {
-          void trackEvent("checkout_abandon", { item_count: itemCount, cart_value: subtotal });
-          setOrderTypeOpen(false);
-        }}
-        onConfirm={handleOrderTypeConfirm}
-      />
+
 
       <OrderConfirmModal
         open={orderConfirmOpen}

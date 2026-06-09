@@ -7,6 +7,8 @@ import styles from "./menu/menu.module.css";
 import LocationLink from "@/components/LocationLink";
 import { trackEvent } from "@/lib/analytics";
 
+const ZOMATO_URL = "http://zoma.to/r/22768463";
+
 const MAPS_URL = "https://maps.app.goo.gl/NGaUPwQMD8P2UDbk9?g_st=ic";
 
 export default function Home() {
@@ -43,21 +45,49 @@ export default function Home() {
           <span className="h-px w-12 bg-[#c6533f]/25" />
         </div>
 
-        <div className="mt-10 grid w-full max-w-md grid-cols-1 gap-4">
+        {/* Order cards — symmetrical 2-column grid */}
+        <div className="mt-10 grid w-full max-w-md grid-cols-2 gap-4">
           <Link
             href="/menu"
-            onClick={() => void trackEvent("cta_order_now")}
-            className="group relative overflow-hidden rounded-2xl bg-[#c6533f] px-6 py-7 text-center text-white shadow-[0_8px_32px_rgba(198,83,63,0.35)] transition-all hover:shadow-[0_12px_40px_rgba(198,83,63,0.45)] active:scale-[0.98]"
+            onClick={() => void trackEvent("cta_pickup")}
+            className="group relative flex flex-col items-center justify-between overflow-hidden rounded-2xl bg-[#c6533f] px-5 py-8 text-center text-white shadow-[0_8px_32px_rgba(198,83,63,0.35)] transition-all hover:shadow-[0_12px_40px_rgba(198,83,63,0.45)] active:scale-[0.98]"
           >
             <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
             <div className="pointer-events-none absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-white/[0.07]" />
-            <p className={`relative text-2xl tracking-wide ${styles.sectionTitle}`}>ORDER NOW</p>
-            <p className="relative mt-1.5 text-sm text-white/60">Browse menu &amp; place your order</p>
+            <div className="relative">
+              <p className={`text-2xl tracking-wide ${styles.sectionTitle}`}>PICKUP</p>
+              <p className="mt-2 text-sm leading-snug text-white/70">Order online and pick up fresh from our store</p>
+            </div>
+            <span className="relative mt-5 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-white/20 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/30">
+              Order Pickup
+            </span>
           </Link>
 
+          <a
+            href={ZOMATO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => void trackEvent("cta_delivery_zomato")}
+            className="group relative flex flex-col items-center justify-between overflow-hidden rounded-2xl px-5 py-8 text-center text-white shadow-[0_8px_32px_rgba(226,55,68,0.35)] transition-all hover:shadow-[0_12px_40px_rgba(226,55,68,0.45)] active:scale-[0.98]"
+            style={{ backgroundColor: "#E23744" }}
+          >
+            <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+            <div className="pointer-events-none absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-white/[0.07]" />
+            <div className="relative">
+              <p className={`text-2xl tracking-wide ${styles.sectionTitle}`}>DELIVERY</p>
+              <p className="mt-2 text-sm leading-snug text-white/70">Home delivery available through Zomato</p>
+            </div>
+            <span className="relative mt-5 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-white/20 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/30">
+              Order on Zomato ↗
+            </span>
+          </a>
+        </div>
+
+        {/* Find Us — full width, aligned with grid */}
+        <div className="mt-4 w-full max-w-md">
           <LocationLink
             href={MAPS_URL}
-            className="group flex items-center gap-4 rounded-2xl border-2 border-[#c6533f]/15 bg-white/80 px-6 py-5 text-left shadow-sm backdrop-blur transition-all hover:border-[#c6533f]/30 hover:shadow-md active:scale-[0.98]"
+            className="group flex w-full items-center gap-4 rounded-2xl border-2 border-[#c6533f]/15 bg-white/80 px-6 py-5 text-left shadow-sm backdrop-blur transition-all hover:border-[#c6533f]/30 hover:shadow-md active:scale-[0.98]"
             style={{}}
             onClick={() => void trackEvent("cta_find_us")}
           >
