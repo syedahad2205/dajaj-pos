@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reusable error/warning banner.
+     Yellow for warnings (connectivity), red for errors.
+     Minimum touch target: 48dp height.
+     Usage: <include layout="@layout/layout_error_banner" />
+     Toggle visibility and set background/text programmatically.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/errorBannerRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/banner_warning_background"
+    android:gravity="center_vertical"
+    android:minHeight="@dimen/banner_min_height"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/padding_md"
+    android:paddingTop="@dimen/padding_sm"
+    android:paddingEnd="@dimen/padding_md"
+    android:paddingBottom="@dimen/padding_sm"
+    android:visibility="gone"
+    tools:visibility="visible">
+
+    <!-- Warning/error icon -->
+    <ImageView
+        android:id="@+id/bannerIcon"
+        android:layout_width="@dimen/banner_icon_size"
+        android:layout_height="@dimen/banner_icon_size"
+        android:contentDescription="@string/content_desc_banner_icon"
+        android:importantForAccessibility="yes"
+        app:tint="@color/banner_warning_icon"
+        tools:src="@android:drawable/ic_dialog_alert" />
+
+    <!-- Banner message -->
+    <TextView
+        android:id="@+id/bannerMessage"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/margin_sm"
+        android:layout_weight="1"
+        android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+        android:textColor="@color/banner_warning_text"
+        tools:text="Internet connection lost. Reconnecting..." />
+
+    <!-- Dismiss button (optional) -->
+    <ImageButton
+        android:id="@+id/bannerDismiss"
+        android:layout_width="@dimen/touch_target_min"
+        android:layout_height="@dimen/touch_target_min"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/content_desc_dismiss_banner"
+        android:src="@android:drawable/ic_menu_close_clear_cancel"
+        android:visibility="gone"
+        app:tint="@color/banner_warning_text"
+        tools:visibility="visible" />
+
+</LinearLayout>

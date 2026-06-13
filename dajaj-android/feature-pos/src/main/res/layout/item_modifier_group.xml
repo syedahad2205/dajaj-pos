@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_marginBottom="@dimen/margin_md">
+
+    <!-- Group header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="@dimen/margin_sm">
+
+        <!-- Group name -->
+        <TextView
+            android:id="@+id/tvGroupName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
+            android:textStyle="bold"
+            tools:text="Spice Level" />
+
+        <!-- Selection type indicator -->
+        <TextView
+            android:id="@+id/tvSelectionType"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            tools:text="Choose 1" />
+
+    </LinearLayout>
+
+    <!-- Validation hint (e.g., "Select at least 1") -->
+    <TextView
+        android:id="@+id/tvGroupValidation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="@dimen/margin_xs"
+        android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+        android:textColor="?attr/colorError"
+        android:visibility="gone"
+        tools:text="Select at least 1"
+        tools:visibility="visible" />
+
+    <!-- Container for RadioGroup (single) or CheckBoxes (multiple) -->
+    <LinearLayout
+        android:id="@+id/llModifierOptions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+</LinearLayout>

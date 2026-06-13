@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cardKitchenOrder"
+    style="@style/Widget.DajajPOS.Card.Outlined"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="@dimen/margin_sm">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="@dimen/padding_md">
+
+        <!-- Order number -->
+        <TextView
+            android:id="@+id/tvOrderNumber"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@id/layoutTimer"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="Order #1045" />
+
+        <!-- Elapsed timer + Overdue badge -->
+        <LinearLayout
+            android:id="@+id/layoutTimer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <!-- Overdue badge (hidden by default) -->
+            <TextView
+                android:id="@+id/tvOverdueBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="@dimen/margin_sm"
+                android:background="@drawable/bg_overdue_badge"
+                android:paddingHorizontal="@dimen/padding_sm"
+                android:paddingVertical="@dimen/padding_xs"
+                android:text="@string/kitchen_overdue"
+                android:textColor="@android:color/white"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <!-- Elapsed time display -->
+            <TextView
+                android:id="@+id/tvElapsedTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:drawablePadding="@dimen/margin_xs"
+                android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge"
+                app:drawableStartCompat="@android:drawable/ic_menu_recent_history"
+                tools:text="12:34" />
+
+        </LinearLayout>
+
+        <!-- Divider -->
+        <View
+            android:id="@+id/divider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="@dimen/margin_sm"
+            android:background="?attr/colorOutline"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvOrderNumber" />
+
+        <!-- Items list (linear layout for simplicity, items added programmatically) -->
+        <LinearLayout
+            android:id="@+id/layoutItems"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_sm"
+            android:orientation="vertical"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/divider"
+            tools:ignore="DisableBaselineAlignment">
+
+            <!-- Items will be added dynamically -->
+
+        </LinearLayout>
+
+        <!-- Special notes -->
+        <TextView
+            android:id="@+id/tvNotes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_sm"
+            android:drawablePadding="@dimen/margin_xs"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+            android:textStyle="italic"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/layoutItems"
+            tools:text="Notes: Extra spicy, no onion"
+            tools:visibility="visible" />
+
+        <!-- Mark Ready button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnMarkReady"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_md"
+            android:backgroundTint="@color/kitchen_ready_button_background"
+            android:minHeight="@dimen/touch_target_min"
+            android:text="@string/kitchen_btn_mark_ready"
+            android:textColor="@android:color/white"
+            app:icon="@android:drawable/checkbox_on_background"
+            app:iconGravity="textStart"
+            app:iconTint="@android:color/white"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvNotes" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>

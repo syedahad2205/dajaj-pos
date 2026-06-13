@@ -1,0 +1,415 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="@dimen/padding_md">
+
+        <!-- ===== Header Area ===== -->
+
+        <TextView
+            android:id="@+id/tvRestaurantName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/dashboard_restaurant_name"
+            android:textAppearance="@style/TextAppearance.DajajPOS.HeadlineLarge"
+            android:textStyle="bold"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/tvCashierName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_xs"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvRestaurantName"
+            tools:text="Cashier: Ahmed" />
+
+        <TextView
+            android:id="@+id/tvDateTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="15 Jan 2024, 02:30 PM" />
+
+        <!-- ===== Status Bar ===== -->
+
+        <LinearLayout
+            android:id="@+id/statusBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_md"
+            android:background="?attr/colorSurfaceVariant"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/touch_target_min"
+            android:orientation="horizontal"
+            android:paddingHorizontal="@dimen/padding_md"
+            android:paddingVertical="@dimen/padding_sm"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvCashierName">
+
+            <!-- Internet Status Indicator -->
+            <View
+                android:id="@+id/dotInternet"
+                android:layout_width="@dimen/status_dot_size"
+                android:layout_height="@dimen/status_dot_size"
+                android:background="@drawable/shape_status_dot"
+                android:contentDescription="@string/content_desc_internet_status" />
+
+            <TextView
+                android:id="@+id/tvInternetStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/margin_sm"
+                android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge"
+                tools:text="Online" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="24dp"
+                android:layout_marginHorizontal="@dimen/margin_md"
+                android:background="?attr/colorOutline" />
+
+            <!-- Printer Status Indicator -->
+            <View
+                android:id="@+id/dotPrinter"
+                android:layout_width="@dimen/status_dot_size"
+                android:layout_height="@dimen/status_dot_size"
+                android:background="@drawable/shape_status_dot"
+                android:contentDescription="@string/content_desc_printer_status" />
+
+            <TextView
+                android:id="@+id/tvPrinterStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/margin_sm"
+                android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge"
+                tools:text="Printer Connected" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="24dp"
+                android:layout_marginHorizontal="@dimen/margin_md"
+                android:background="?attr/colorOutline" />
+
+            <!-- Device Name -->
+            <TextView
+                android:id="@+id/tvDeviceName"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+                tools:text="POS Terminal 1" />
+
+        </LinearLayout>
+
+        <!-- ===== Navigation Grid (2 columns x 3 rows) ===== -->
+
+        <GridLayout
+            android:id="@+id/navigationGrid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_lg"
+            android:columnCount="2"
+            android:rowCount="3"
+            android:useDefaultMargins="true"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/statusBar">
+
+            <!-- Row 1, Col 1: New Order -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardNewOrder"
+                style="@style/Widget.DajajPOS.Card"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="@dimen/margin_sm"
+                android:clickable="true"
+                android:contentDescription="@string/content_desc_new_order"
+                android:focusable="true"
+                android:minHeight="120dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="@dimen/padding_md">
+
+                    <ImageView
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:importantForAccessibility="no"
+                        android:src="@android:drawable/ic_menu_add"
+                        app:tint="?attr/colorPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/margin_sm"
+                        android:text="@string/dashboard_new_order"
+                        android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Row 1, Col 2: Pending Orders -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardPendingOrders"
+                style="@style/Widget.DajajPOS.Card"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="@dimen/margin_sm"
+                android:clickable="true"
+                android:contentDescription="@string/content_desc_pending_orders"
+                android:focusable="true"
+                android:minHeight="120dp">
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="@dimen/padding_md">
+
+                        <ImageView
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:importantForAccessibility="no"
+                            android:src="@android:drawable/ic_menu_agenda"
+                            app:tint="?attr/colorPrimary" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/margin_sm"
+                            android:text="@string/dashboard_pending_orders"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                    </LinearLayout>
+
+                    <!-- Badge for pending order count -->
+                    <TextView
+                        android:id="@+id/badgePendingOrders"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_gravity="top|end"
+                        android:layout_margin="@dimen/margin_sm"
+                        android:background="@drawable/shape_badge"
+                        android:gravity="center"
+                        android:textColor="@android:color/white"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:visibility="gone"
+                        tools:text="3"
+                        tools:visibility="visible" />
+
+                </FrameLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Row 2, Col 1: Kitchen -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardKitchen"
+                style="@style/Widget.DajajPOS.Card"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="@dimen/margin_sm"
+                android:clickable="true"
+                android:contentDescription="@string/content_desc_kitchen"
+                android:focusable="true"
+                android:minHeight="120dp">
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="@dimen/padding_md">
+
+                        <ImageView
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:importantForAccessibility="no"
+                            android:src="@android:drawable/ic_menu_manage"
+                            app:tint="?attr/colorPrimary" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/margin_sm"
+                            android:text="@string/dashboard_kitchen"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                    </LinearLayout>
+
+                    <!-- Badge for kitchen preparing count -->
+                    <TextView
+                        android:id="@+id/badgeKitchen"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_gravity="top|end"
+                        android:layout_margin="@dimen/margin_sm"
+                        android:background="@drawable/shape_badge"
+                        android:gravity="center"
+                        android:textColor="@android:color/white"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:visibility="gone"
+                        tools:text="2"
+                        tools:visibility="visible" />
+
+                </FrameLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Row 2, Col 2: Reports -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardReports"
+                style="@style/Widget.DajajPOS.Card"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="@dimen/margin_sm"
+                android:clickable="true"
+                android:contentDescription="@string/content_desc_reports"
+                android:focusable="true"
+                android:minHeight="120dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="@dimen/padding_md">
+
+                    <ImageView
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:importantForAccessibility="no"
+                        android:src="@android:drawable/ic_menu_recent_history"
+                        app:tint="?attr/colorPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/margin_sm"
+                        android:text="@string/dashboard_reports"
+                        android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Row 3, Col 1: Settings -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardSettings"
+                style="@style/Widget.DajajPOS.Card"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="@dimen/margin_sm"
+                android:clickable="true"
+                android:contentDescription="@string/content_desc_settings"
+                android:focusable="true"
+                android:minHeight="120dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="@dimen/padding_md">
+
+                    <ImageView
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:importantForAccessibility="no"
+                        android:src="@android:drawable/ic_menu_preferences"
+                        app:tint="?attr/colorPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/margin_sm"
+                        android:text="@string/dashboard_settings"
+                        android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Row 3, Col 2: Bills -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardBills"
+                style="@style/Widget.DajajPOS.Card"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="@dimen/margin_sm"
+                android:clickable="true"
+                android:contentDescription="@string/content_desc_bills"
+                android:focusable="true"
+                android:minHeight="120dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="@dimen/padding_md">
+
+                    <ImageView
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:importantForAccessibility="no"
+                        android:src="@android:drawable/ic_menu_my_calendar"
+                        app:tint="?attr/colorPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/margin_sm"
+                        android:text="@string/dashboard_bills"
+                        android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+        </GridLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</ScrollView>

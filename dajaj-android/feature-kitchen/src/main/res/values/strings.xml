@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Kitchen Screen -->
+    <string name="kitchen_title">Kitchen</string>
+    <string name="kitchen_preparing_count">%1$d orders preparing</string>
+    <string name="kitchen_preparing_count_single">1 order preparing</string>
+    <string name="kitchen_btn_mark_ready">Mark Ready</string>
+    <string name="kitchen_overdue">OVERDUE</string>
+    <string name="kitchen_empty_state">Kitchen is clear. New orders will appear when accepted.</string>
+
+    <!-- Order card -->
+    <string name="kitchen_order_number">Order #%1$s</string>
+    <string name="kitchen_item_line">%1$dx %2$s</string>
+    <string name="kitchen_notes">Notes: %1$s</string>
+    <string name="kitchen_elapsed_format">%1$d:%2$02d</string>
+
+    <!-- Events / Snackbar -->
+    <string name="kitchen_mark_ready_success">Order #%1$s marked ready</string>
+    <string name="kitchen_mark_ready_error">Failed to mark order ready: %1$s</string>
+
+    <!-- Accessibility -->
+    <string name="kitchen_content_desc_mark_ready">Mark order %1$s as ready</string>
+    <string name="kitchen_content_desc_overdue">Order %1$s is overdue</string>
+    <string name="kitchen_content_desc_elapsed_time">Elapsed time: %1$s</string>
+</resources>

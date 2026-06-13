@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:minHeight="@dimen/touch_target_min"
+    android:gravity="center_vertical"
+    android:paddingStart="@dimen/padding_md"
+    android:paddingEnd="@dimen/padding_md"
+    android:paddingTop="@dimen/padding_sm"
+    android:paddingBottom="@dimen/padding_sm"
+    android:background="@drawable/selector_category_item"
+    android:focusable="true"
+    android:clickable="true">
+
+    <!-- Category Icon/Indicator (optional selected state) -->
+    <View
+        android:id="@+id/viewSelectedIndicator"
+        android:layout_width="4dp"
+        android:layout_height="32dp"
+        android:layout_marginEnd="@dimen/margin_sm"
+        android:background="?attr/colorPrimary"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+    <!-- Category Name -->
+    <TextView
+        android:id="@+id/tvCategoryName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+        android:textColor="?attr/colorOnSurface"
+        android:ellipsize="end"
+        android:maxLines="2"
+        tools:text="★ Favorites" />
+
+</LinearLayout>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dajaj POS</string>
+
+    <!-- Screen titles -->
+    <string name="login_title">DAJAJ POS</string>
+    <string name="dashboard_title">Dashboard</string>
+    <string name="pos_title">POS</string>
+    <string name="pending_orders_title">Pending Orders</string>
+    <string name="kitchen_title">Kitchen</string>
+    <string name="reports_title">Reports</string>
+    <string name="settings_title">Settings</string>
+    <string name="bills_title">Bills</string>
+
+    <!-- Login -->
+    <string name="login_app_logo_desc">Dajaj POS application logo</string>
+    <string name="login_email_hint">Email</string>
+    <string name="login_password_hint">Password</string>
+    <string name="login_sign_in">Sign In</string>
+    <string name="login_forgot_password">Forgot Password?</string>
+    <string name="login_error_invalid_email">Please enter a valid email address</string>
+    <string name="login_error_password_short">Password must be at least 6 characters</string>
+    <string name="login_error_invalid_credentials">Invalid email or password</string>
+    <string name="login_error_pending_account">Your account is pending approval</string>
+    <string name="login_error_rejected_account">Access denied. Your account has been rejected</string>
+    <string name="login_error_network">Network error. Please check your connection</string>
+    <string name="login_error_generic">An unexpected error occurred. Please try again</string>
+    <string name="login_reset_password_success">Password reset email sent</string>
+    <string name="login_reset_password_error">Unable to send reset email. Please try again</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_restaurant_name">DAJAJ</string>
+    <string name="dashboard_cashier_label">Cashier: %1$s</string>
+    <string name="dashboard_new_order">New Order</string>
+    <string name="dashboard_pending_orders">Pending Orders</string>
+    <string name="dashboard_kitchen">Kitchen</string>
+    <string name="dashboard_reports">Reports</string>
+    <string name="dashboard_settings">Settings</string>
+    <string name="dashboard_bills">Bills</string>
+
+    <!-- Dashboard Accessibility -->
+    <string name="content_desc_internet_status">Internet connection status indicator</string>
+    <string name="content_desc_printer_status">Printer connection status indicator</string>
+    <string name="content_desc_new_order">New Order. Opens POS screen to create a new order</string>
+    <string name="content_desc_pending_orders">Pending Orders. View incoming orders from all channels</string>
+    <string name="content_desc_pending_orders_with_count">Pending Orders. %1$d orders waiting</string>
+    <string name="content_desc_kitchen">Kitchen. View orders in preparation</string>
+    <string name="content_desc_kitchen_with_count">Kitchen. %1$d orders being prepared</string>
+    <string name="content_desc_reports">Reports. View daily sales summary</string>
+    <string name="content_desc_settings">Settings. Manage printers, device, and account</string>
+    <string name="content_desc_bills">Bills. View today\'s completed bills</string>
+</resources>

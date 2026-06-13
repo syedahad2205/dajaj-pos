@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accept button (green) -->
+    <color name="accept_button_background">#FF2E7D32</color>
+
+    <!-- Reject button (red) -->
+    <color name="reject_button_text">#FFC62828</color>
+
+    <!-- Connectivity warning banner -->
+    <color name="banner_warning_background">#FFFFF3E0</color>
+    <color name="banner_warning_icon">#FFF57C00</color>
+    <color name="banner_warning_text">#FFE65100</color>
+</resources>

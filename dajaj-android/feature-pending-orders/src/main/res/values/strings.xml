@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pending Orders Screen -->
+    <string name="pending_tab_all">All</string>
+    <string name="pending_tab_whatsapp">WhatsApp</string>
+    <string name="pending_tab_website">Website</string>
+    <string name="pending_tab_qr">QR</string>
+
+    <string name="pending_btn_accept">Accept</string>
+    <string name="pending_btn_reject">Reject</string>
+
+    <string name="pending_empty_state">No pending orders. Orders from all channels will appear here.</string>
+    <string name="pending_connectivity_warning">Connection lost. Reconnecting…</string>
+    <string name="pending_realtime_connected">● Live</string>
+
+    <string name="pending_order_number">Order #%1$s</string>
+    <string name="pending_customer_name">Customer: %1$s</string>
+    <string name="pending_items_and_total">%1$d items • ₹%2$s</string>
+    <string name="pending_elapsed_just_now">just now</string>
+    <string name="pending_elapsed_minutes">%1$dm ago</string>
+    <string name="pending_elapsed_hours">%1$dh ago</string>
+
+    <!-- Rejection dialog -->
+    <string name="pending_rejection_dialog_title">Rejection Reason</string>
+    <string name="pending_rejection_dialog_message">Please provide a reason for rejecting this order.</string>
+    <string name="pending_rejection_reason_hint">Reason for rejection</string>
+    <string name="pending_rejection_error_empty">Please enter a rejection reason</string>
+    <string name="pending_rejection_confirm">Reject Order</string>
+    <string name="pending_rejection_cancel">Cancel</string>
+
+    <!-- Accessibility -->
+    <string name="pending_content_desc_channel_icon">Order source channel</string>
+    <string name="pending_content_desc_accept_order">Accept order %1$s</string>
+    <string name="pending_content_desc_reject_order">Reject order %1$s</string>
+
+    <!-- Errors / Snackbar -->
+    <string name="pending_accept_success">Order #%1$s accepted</string>
+    <string name="pending_accept_error">Failed to accept order: %1$s</string>
+    <string name="pending_reject_success">Order #%1$s rejected</string>
+    <string name="pending_reject_error">Failed to reject order: %1$s</string>
+</resources>

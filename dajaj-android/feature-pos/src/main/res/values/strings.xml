@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pos_categories_header">Categories</string>
+    <string name="pos_new_order">New Order</string>
+    <string name="pos_subtotal">Subtotal</string>
+    <string name="pos_tax_label">Tax (CGST + SGST)</string>
+    <string name="pos_total">Total</string>
+    <string name="pos_walk_in">Walk-in</string>
+    <string name="pos_takeaway">Takeaway</string>
+    <string name="pos_dine_in">Dine-in</string>
+    <string name="pos_confirm_order">Confirm Order</string>
+    <string name="pos_clear_cart">Clear Cart</string>
+    <string name="pos_creating_order">Creating order…</string>
+    <string name="pos_empty_cart">Tap items to add to your order</string>
+    <string name="pos_search_hint">Search menu items</string>
+</resources>

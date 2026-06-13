@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="@dimen/margin_xs"
+    android:minHeight="@dimen/touch_target_min"
+    android:clickable="true"
+    android:focusable="true"
+    app:cardCornerRadius="@dimen/card_corner_radius"
+    app:cardElevation="@dimen/card_elevation"
+    app:contentPadding="@dimen/padding_md">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Item Name -->
+        <TextView
+            android:id="@+id/tvItemName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
+            android:maxLines="2"
+            android:ellipsize="end"
+            tools:text="Regular Alfaham" />
+
+        <!-- Variant Label -->
+        <TextView
+            android:id="@+id/tvVariantLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_xs"
+            android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:maxLines="1"
+            android:ellipsize="end"
+            tools:text="Quarter" />
+
+        <!-- Price and Availability Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_sm"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- Price -->
+            <TextView
+                android:id="@+id/tvPrice"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+                android:textColor="?attr/colorPrimary"
+                tools:text="₹120" />
+
+            <!-- Availability Badge -->
+            <TextView
+                android:id="@+id/tvAvailability"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="@dimen/padding_sm"
+                android:paddingEnd="@dimen/padding_sm"
+                android:paddingTop="@dimen/padding_xs"
+                android:paddingBottom="@dimen/padding_xs"
+                android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+                android:textColor="?attr/colorOnErrorContainer"
+                android:background="@drawable/bg_availability_badge"
+                android:visibility="gone"
+                tools:text="Sold Out"
+                tools:visibility="visible" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

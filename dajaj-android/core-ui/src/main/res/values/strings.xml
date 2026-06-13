@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accessibility Content Descriptions -->
+    <string name="content_desc_status_dot">Connection status indicator</string>
+    <string name="content_desc_banner_icon">Alert icon</string>
+    <string name="content_desc_dismiss_banner">Dismiss notification</string>
+    <string name="content_desc_loading">Loading, please wait</string>
+
+    <!-- Status Labels -->
+    <string name="status_online">Online</string>
+    <string name="status_offline">Offline</string>
+    <string name="status_reconnecting">Reconnecting</string>
+    <string name="status_printer_connected">Printer Connected</string>
+    <string name="status_printer_disconnected">Printer Disconnected</string>
+    <string name="status_printer_reconnecting">Printer Reconnecting</string>
+
+    <!-- Banner Messages -->
+    <string name="banner_no_internet">Internet connection lost. Operating in offline mode.</string>
+    <string name="banner_reconnecting">Reconnecting to server…</string>
+    <string name="banner_printer_error">Printer disconnected. Print jobs are queued.</string>
+
+    <!-- Loading Messages -->
+    <string name="loading_creating_order">Creating order…</string>
+    <string name="loading_syncing">Syncing data…</string>
+    <string name="loading_printing">Printing…</string>
+    <string name="loading_generic">Please wait…</string>
+</resources>

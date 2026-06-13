@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Tab bar: All / WhatsApp / Website / QR -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="@dimen/touch_target_min"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tabGravity="fill"
+        app:tabMode="fixed">
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pending_tab_all" />
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pending_tab_whatsapp" />
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pending_tab_website" />
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pending_tab_qr" />
+
+    </com.google.android.material.tabs.TabLayout>
+
+    <!-- Connectivity warning banner (initially gone) -->
+    <LinearLayout
+        android:id="@+id/bannerConnectivity"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/banner_warning_background"
+        android:gravity="center_vertical"
+        android:minHeight="@dimen/banner_min_height"
+        android:orientation="horizontal"
+        android:paddingHorizontal="@dimen/padding_md"
+        android:paddingVertical="@dimen/padding_sm"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tabLayout"
+        tools:visibility="visible">
+
+        <ImageView
+            android:layout_width="@dimen/banner_icon_size"
+            android:layout_height="@dimen/banner_icon_size"
+            android:importantForAccessibility="no"
+            android:src="@android:drawable/ic_dialog_alert"
+            app:tint="@color/banner_warning_icon" />
+
+        <TextView
+            android:id="@+id/tvConnectivityWarning"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/margin_sm"
+            android:layout_weight="1"
+            android:text="@string/pending_connectivity_warning"
+            android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge"
+            android:textColor="@color/banner_warning_text" />
+
+    </LinearLayout>
+
+    <!-- Real-time update indicator -->
+    <TextView
+        android:id="@+id/tvRealtimeIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="@dimen/margin_md"
+        android:layout_marginTop="@dimen/margin_sm"
+        android:drawablePadding="@dimen/margin_xs"
+        android:text="@string/pending_realtime_connected"
+        android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/bannerConnectivity"
+        tools:visibility="visible" />
+
+    <!-- Pull-to-refresh + RecyclerView -->
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefresh"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="@dimen/margin_sm"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvRealtimeIndicator">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <!-- RecyclerView for order cards -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvPendingOrders"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingHorizontal="@dimen/padding_md"
+                android:paddingTop="@dimen/padding_sm"
+                android:paddingBottom="@dimen/padding_md"
+                tools:listitem="@layout/item_pending_order" />
+
+            <!-- Empty state -->
+            <TextView
+                android:id="@+id/tvEmptyState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:paddingHorizontal="@dimen/padding_xl"
+                android:text="@string/pending_empty_state"
+                android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+        </FrameLayout>
+
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

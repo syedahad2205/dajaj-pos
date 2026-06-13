@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:minHeight="@dimen/touch_target_min"
+    android:gravity="center_vertical"
+    android:paddingTop="@dimen/padding_sm"
+    android:paddingBottom="@dimen/padding_sm">
+
+    <!-- Quantity Controls -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- Decrease Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDecrease"
+            style="@style/Widget.DajajPOS.Button.Icon"
+            android:layout_width="@dimen/touch_target_min"
+            android:layout_height="@dimen/touch_target_min"
+            android:contentDescription="Decrease quantity"
+            app:icon="@android:drawable/btn_minus"
+            app:iconGravity="textStart"
+            app:iconSize="18dp" />
+
+        <!-- Quantity -->
+        <TextView
+            android:id="@+id/tvQuantity"
+            android:layout_width="32dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
+            tools:text="2" />
+
+        <!-- Increase Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnIncrease"
+            style="@style/Widget.DajajPOS.Button.Icon"
+            android:layout_width="@dimen/touch_target_min"
+            android:layout_height="@dimen/touch_target_min"
+            android:contentDescription="Increase quantity"
+            app:icon="@android:drawable/btn_plus"
+            app:iconGravity="textStart"
+            app:iconSize="18dp" />
+
+    </LinearLayout>
+
+    <!-- Item Details -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginStart="@dimen/margin_sm"
+        android:layout_marginEnd="@dimen/margin_sm">
+
+        <!-- Item Name -->
+        <TextView
+            android:id="@+id/tvCartItemName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
+            android:maxLines="1"
+            android:ellipsize="end"
+            tools:text="Regular Alfaham Qtr" />
+
+        <!-- Modifiers (if any) -->
+        <TextView
+            android:id="@+id/tvCartItemModifiers"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:visibility="gone"
+            tools:text="Extra Spicy"
+            tools:visibility="visible" />
+
+    </LinearLayout>
+
+    <!-- Line Total -->
+    <TextView
+        android:id="@+id/tvCartItemTotal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+        android:textColor="?attr/colorOnSurface"
+        tools:text="₹240" />
+
+</LinearLayout>

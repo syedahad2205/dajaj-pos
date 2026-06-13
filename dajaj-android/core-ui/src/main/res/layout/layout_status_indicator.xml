@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reusable status indicator: colored dot + text label
+     Shows internet/printer connection status.
+     Minimum touch target: 48dp height.
+     Usage: <include layout="@layout/layout_status_indicator" />
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/statusIndicatorRoot"
+    android:layout_width="wrap_content"
+    android:layout_height="@dimen/status_indicator_height"
+    android:gravity="center_vertical"
+    android:minHeight="@dimen/touch_target_min"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/status_indicator_padding"
+    android:paddingEnd="@dimen/status_indicator_padding">
+
+    <!-- Status dot -->
+    <View
+        android:id="@+id/statusDot"
+        android:layout_width="@dimen/status_dot_size"
+        android:layout_height="@dimen/status_dot_size"
+        android:background="@drawable/shape_status_dot"
+        android:contentDescription="@string/content_desc_status_dot"
+        tools:backgroundTint="@color/status_dot_online" />
+
+    <!-- Status label -->
+    <TextView
+        android:id="@+id/statusLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/margin_sm"
+        android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge"
+        tools:text="Online" />
+
+</LinearLayout>

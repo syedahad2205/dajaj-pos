@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reports_title">Reports</string>
+    <string name="reports_select_date">Select Date</string>
+    <string name="reports_summary">Daily Summary</string>
+    <string name="reports_total_orders">Orders</string>
+    <string name="reports_total_revenue">Revenue</string>
+    <string name="reports_avg_order_value">Avg. Value</string>
+    <string name="reports_channel_breakdown">Channel Breakdown</string>
+    <string name="reports_channel_walkin">Walk-in</string>
+    <string name="reports_channel_whatsapp">WhatsApp</string>
+    <string name="reports_channel_website">Website</string>
+    <string name="reports_peak_hour">Peak Hour</string>
+    <string name="reports_orders">orders</string>
+    <string name="reports_order_count">%d orders</string>
+    <string name="reports_bills_today">Bills</string>
+    <string name="reports_empty_state">No data available for the selected date.\nAll metrics are at zero.</string>
+    <string name="reports_empty_icon_desc">No reports data</string>
+</resources>

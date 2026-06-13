@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Kitchen screen colors -->
+
+    <!-- Mark Ready button (green) -->
+    <color name="kitchen_ready_button_background">#FF2E7D32</color>
+
+    <!-- Overdue indicator (red) -->
+    <color name="kitchen_overdue_red">#FFC62828</color>
+    <color name="kitchen_overdue_border">#FFC62828</color>
+</resources>

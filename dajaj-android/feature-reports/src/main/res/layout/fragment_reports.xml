@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Header with title and date picker -->
+    <LinearLayout
+        android:id="@+id/layoutHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurface"
+        android:elevation="2dp"
+        android:gravity="center_vertical"
+        android:minHeight="@dimen/touch_target_min"
+        android:orientation="horizontal"
+        android:paddingHorizontal="@dimen/padding_md"
+        android:paddingVertical="@dimen/padding_sm"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/tvReportsTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/reports_title"
+            android:textAppearance="@style/TextAppearance.DajajPOS.HeadlineSmall" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDatePicker"
+            style="@style/Widget.DajajPOS.Button.Secondary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/touch_target_min"
+            app:icon="@android:drawable/ic_menu_my_calendar"
+            app:iconGravity="start"
+            tools:text="15 Jan 2024" />
+
+    </LinearLayout>
+
+    <!-- Scrollable content -->
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scrollContent"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:paddingHorizontal="@dimen/padding_md"
+        android:paddingTop="@dimen/padding_md"
+        android:paddingBottom="@dimen/padding_md"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layoutHeader">
+
+        <LinearLayout
+            android:id="@+id/layoutContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Summary Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardSummary"
+                style="@style/Widget.DajajPOS.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/margin_md">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/padding_md">
+
+                    <TextView
+                        android:id="@+id/tvSummaryLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/margin_sm"
+                        android:text="@string/reports_summary"
+                        android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                    <!-- Summary metrics row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <!-- Total Orders -->
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvTotalOrders"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.DajajPOS.HeadlineMedium"
+                                tools:text="24" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/reports_total_orders"
+                                android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium" />
+
+                        </LinearLayout>
+
+                        <!-- Total Revenue -->
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvTotalRevenue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.DajajPOS.HeadlineMedium"
+                                tools:text="₹12,450" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/reports_total_revenue"
+                                android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium" />
+
+                        </LinearLayout>
+
+                        <!-- Average Order Value -->
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvAvgOrderValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.DajajPOS.HeadlineMedium"
+                                tools:text="₹519" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/reports_avg_order_value"
+                                android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Channel Breakdown Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardChannelBreakdown"
+                style="@style/Widget.DajajPOS.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/margin_md">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/padding_md">
+
+                    <TextView
+                        android:id="@+id/tvChannelBreakdownLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/margin_sm"
+                        android:text="@string/reports_channel_breakdown"
+                        android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                    <!-- Walk-in row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:minHeight="@dimen/touch_target_min"
+                        android:orientation="horizontal"
+                        android:paddingVertical="@dimen/padding_xs">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/reports_channel_walkin"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge" />
+
+                        <TextView
+                            android:id="@+id/tvWalkinCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="@dimen/margin_md"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+                            tools:text="18 orders" />
+
+                        <TextView
+                            android:id="@+id/tvWalkinRevenue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+                            tools:text="₹8,200" />
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="?attr/colorOutlineVariant" />
+
+                    <!-- WhatsApp row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:minHeight="@dimen/touch_target_min"
+                        android:orientation="horizontal"
+                        android:paddingVertical="@dimen/padding_xs">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/reports_channel_whatsapp"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge" />
+
+                        <TextView
+                            android:id="@+id/tvWhatsappCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="@dimen/margin_md"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+                            tools:text="4 orders" />
+
+                        <TextView
+                            android:id="@+id/tvWhatsappRevenue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+                            tools:text="₹2,800" />
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="?attr/colorOutlineVariant" />
+
+                    <!-- Website row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:minHeight="@dimen/touch_target_min"
+                        android:orientation="horizontal"
+                        android:paddingVertical="@dimen/padding_xs">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/reports_channel_website"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge" />
+
+                        <TextView
+                            android:id="@+id/tvWebsiteCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="@dimen/margin_md"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+                            tools:text="2 orders" />
+
+                        <TextView
+                            android:id="@+id/tvWebsiteRevenue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+                            tools:text="₹1,450" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Peak Hour Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardPeakHour"
+                style="@style/Widget.DajajPOS.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/margin_md">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="@dimen/padding_md">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/reports_peak_hour"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                        <TextView
+                            android:id="@+id/tvPeakHourSlot"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/margin_xs"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.HeadlineSmall"
+                            tools:text="1:00 PM – 2:00 PM" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvPeakHourCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.HeadlineMedium"
+                            tools:text="8" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/reports_orders"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Bill List (minimal) -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardBillList"
+                style="@style/Widget.DajajPOS.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/padding_md">
+
+                    <TextView
+                        android:id="@+id/tvBillListLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/margin_sm"
+                        android:text="@string/reports_bills_today"
+                        android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rvBills"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:nestedScrollingEnabled="false"
+                        tools:itemCount="3"
+                        tools:listitem="@android:layout/simple_list_item_2" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- Empty state -->
+    <LinearLayout
+        android:id="@+id/layoutEmptyState"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingHorizontal="@dimen/padding_xl"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layoutHeader"
+        tools:visibility="visible">
+
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:alpha="0.5"
+            android:contentDescription="@string/reports_empty_icon_desc"
+            android:src="@android:drawable/ic_menu_info_details" />
+
+        <TextView
+            android:id="@+id/tvEmptyState"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_md"
+            android:gravity="center"
+            android:text="@string/reports_empty_state"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge" />
+
+    </LinearLayout>
+
+    <!-- Loading indicator -->
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+        android:id="@+id/progressLoading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layoutHeader"
+        tools:visibility="visible" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

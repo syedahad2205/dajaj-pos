@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/Widget.DajajPOS.Card.Outlined"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="@dimen/margin_sm">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="@dimen/padding_md">
+
+        <!-- Printer Name -->
+        <TextView
+            android:id="@+id/tvPrinterName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@id/viewStatusDot"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="Thermal Printer" />
+
+        <!-- MAC Address -->
+        <TextView
+            android:id="@+id/tvMacAddress"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_xs"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+            app:layout_constraintEnd_toStartOf="@id/viewStatusDot"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvPrinterName"
+            tools:text="AA:BB:CC:DD:EE:FF" />
+
+        <!-- Status Dot Indicator -->
+        <View
+            android:id="@+id/viewStatusDot"
+            android:layout_width="@dimen/status_dot_size"
+            android:layout_height="@dimen/status_dot_size"
+            android:layout_marginEnd="@dimen/margin_sm"
+            android:background="@drawable/bg_status_dot"
+            android:contentDescription="Printer status indicator"
+            app:layout_constraintBottom_toBottomOf="@id/tvStatusText"
+            app:layout_constraintEnd_toStartOf="@id/tvStatusText"
+            app:layout_constraintTop_toTopOf="@id/tvStatusText" />
+
+        <!-- Status Text -->
+        <TextView
+            android:id="@+id/tvStatusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="Connected" />
+
+        <!-- Role Chips -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chipGroupRoles"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_sm"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvMacAddress">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipKotPrinter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checkable="true"
+                android:minHeight="@dimen/touch_target_min"
+                android:text="KOT Printer"
+                android:contentDescription="Assign as KOT printer"
+                app:chipMinTouchTargetSize="@dimen/touch_target_min" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipBillPrinter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checkable="true"
+                android:minHeight="@dimen/touch_target_min"
+                android:text="Bill Printer"
+                android:contentDescription="Assign as Bill printer"
+                app:chipMinTouchTargetSize="@dimen/touch_target_min" />
+        </com.google.android.material.chip.ChipGroup>
+
+        <!-- Action Buttons Row -->
+        <LinearLayout
+            android:id="@+id/layoutActions"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_sm"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/chipGroupRoles">
+
+            <!-- Connect / Disconnect Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnConnectDisconnect"
+                style="@style/Widget.DajajPOS.Button.Secondary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="@dimen/margin_sm"
+                android:layout_weight="1"
+                android:text="Connect"
+                android:contentDescription="Connect to this printer" />
+
+            <!-- Test Print Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTestPrint"
+                style="@style/Widget.DajajPOS.Button.Secondary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Test Print"
+                android:contentDescription="Send a test print to this printer" />
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</com.google.android.material.card.MaterialCardView>

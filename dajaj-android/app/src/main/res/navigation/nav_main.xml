@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_main"
+    app:startDestination="@id/dashboardFragment">
+
+    <fragment
+        android:id="@+id/dashboardFragment"
+        android:name="com.dajaj.pos.ui.main.dashboard.DashboardFragment"
+        android:label="Dashboard"
+        tools:layout="@layout/fragment_dashboard">
+
+        <action
+            android:id="@+id/action_dashboard_to_pos"
+            app:destination="@id/posFragment" />
+
+        <action
+            android:id="@+id/action_dashboard_to_pendingOrders"
+            app:destination="@id/pendingOrdersFragment" />
+
+        <action
+            android:id="@+id/action_dashboard_to_kitchen"
+            app:destination="@id/kitchenFragment" />
+
+        <action
+            android:id="@+id/action_dashboard_to_reports"
+            app:destination="@id/reportsFragment" />
+
+        <action
+            android:id="@+id/action_dashboard_to_settings"
+            app:destination="@id/settingsFragment" />
+
+        <action
+            android:id="@+id/action_dashboard_to_bills"
+            app:destination="@id/billsFragment" />
+
+        <deepLink app:uri="dajaj://dashboard" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/posFragment"
+        android:name="com.dajaj.pos.ui.main.pos.PosFragment"
+        android:label="POS"
+        tools:layout="@layout/fragment_pos">
+
+        <deepLink app:uri="dajaj://pos" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/pendingOrdersFragment"
+        android:name="com.dajaj.pos.ui.main.pendingorders.PendingOrdersFragment"
+        android:label="Pending Orders"
+        tools:layout="@layout/fragment_pending_orders">
+
+        <deepLink app:uri="dajaj://pending-orders" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/kitchenFragment"
+        android:name="com.dajaj.pos.ui.main.kitchen.KitchenFragment"
+        android:label="Kitchen"
+        tools:layout="@layout/fragment_kitchen">
+
+        <deepLink app:uri="dajaj://kitchen" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/reportsFragment"
+        android:name="com.dajaj.pos.ui.main.reports.ReportsFragment"
+        android:label="Reports"
+        tools:layout="@layout/fragment_reports">
+
+        <deepLink app:uri="dajaj://reports" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.dajaj.pos.ui.main.settings.SettingsFragment"
+        android:label="Settings"
+        tools:layout="@layout/fragment_settings">
+
+        <deepLink app:uri="dajaj://settings" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/billsFragment"
+        android:name="com.dajaj.pos.ui.main.bills.BillsFragment"
+        android:label="Bills"
+        tools:layout="@layout/fragment_bills">
+
+        <deepLink app:uri="dajaj://bills" />
+    </fragment>
+
+</navigation>

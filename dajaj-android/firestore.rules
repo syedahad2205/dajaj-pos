@@ -1,0 +1,95 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function hasRole(role) {
+      return isAuthenticated() && getUserRole() == role;
+    }
+
+    function hasAnyRole(roles) {
+      return isAuthenticated() && getUserRole() in roles;
+    }
+
+    function isStaff() {
+      return hasAnyRole(['cashier', 'manager', 'admin']);
+    }
+
+    function isManagerOrAdmin() {
+      return hasAnyRole(['manager', 'admin']);
+    }
+
+    // Menu collection - public read, manager/admin write
+    match /menus/{menuId} {
+      allow read: if true;
+      allow write: if isManagerOrAdmin();
+    }
+
+    // Orders collection - authenticated read, staff write
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isStaff();
+      allow delete: if hasRole('admin');
+    }
+
+    // Pending orders - authenticated read, public create, staff update
+    match /pending_orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if true;
+      allow update: if isStaff();
+      allow delete: if isManagerOrAdmin();
+    }
+
+    // Print jobs - staff only
+    match /print_jobs/{jobId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    // Devices - staff only
+    match /devices/{deviceId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    // Users collection - self read, manager read all, admin write
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId || isManagerOrAdmin()
+      );
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if hasRole('admin') || (
+        isAuthenticated() && request.auth.uid == userId
+      );
+      allow delete: if hasRole('admin');
+    }
+
+    // Bills collection - public read by token, staff write
+    match /bills/{billId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // Counters collection - staff read/write for atomic sequences
+    match /counters/{counterId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    // Reports collection - manager/admin access
+    match /reports/{reportId} {
+      allow read: if isManagerOrAdmin();
+      allow write: if isManagerOrAdmin();
+    }
+  }
+}

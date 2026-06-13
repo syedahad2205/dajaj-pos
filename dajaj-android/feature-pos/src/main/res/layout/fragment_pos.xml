@@ -1,0 +1,369 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="com.dajaj.pos.feature.pos.PosFragment">
+
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="?attr/colorSurface">
+
+    <!-- Left Panel — Categories (200dp fixed width) -->
+    <LinearLayout
+        android:id="@+id/panelCategories"
+        android:layout_width="@dimen/pos_category_width"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="?attr/colorSurfaceVariant"
+        android:elevation="2dp">
+
+        <TextView
+            android:id="@+id/tvCategoriesHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/pos_categories_header"
+            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+            android:padding="@dimen/padding_md"
+            android:importantForAccessibility="yes"
+            android:contentDescription="Categories panel" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvCategories"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingBottom="@dimen/padding_sm"
+            tools:listitem="@layout/item_category" />
+
+    </LinearLayout>
+
+    <!-- Center Panel — Menu Items (flexible width) -->
+    <LinearLayout
+        android:id="@+id/panelMenuItems"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:padding="@dimen/padding_sm">
+
+        <!-- Search Bar -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilSearch"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/margin_sm"
+            android:minHeight="@dimen/touch_target_min"
+            app:startIconDrawable="@android:drawable/ic_menu_search"
+            app:endIconMode="clear_text"
+            android:hint="@string/pos_search_hint">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etSearch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:imeOptions="actionSearch"
+                android:importantForAccessibility="yes"
+                android:contentDescription="Search menu items" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Menu Items Grid with pull-to-refresh -->
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/swipeRefreshMenu"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvMenuItems"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingBottom="@dimen/padding_sm"
+                tools:listitem="@layout/item_menu_card" />
+
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    </LinearLayout>
+
+    <!-- Right Panel — Cart (320dp fixed width) -->
+    <LinearLayout
+        android:id="@+id/panelCart"
+        android:layout_width="@dimen/pos_cart_width"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="?attr/colorSurface"
+        android:elevation="4dp"
+        android:padding="@dimen/padding_md">
+
+        <!-- Order Label -->
+        <TextView
+            android:id="@+id/tvOrderLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+            android:text="@string/pos_new_order"
+            android:layout_marginBottom="@dimen/margin_sm"
+            tools:text="Order #1104260001" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorOutlineVariant" />
+
+        <!-- Cart Items ScrollView -->
+        <ScrollView
+            android:id="@+id/svCartItems"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="@dimen/margin_sm"
+            android:layout_marginBottom="@dimen/margin_sm"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- Cart Items RecyclerView (nested scroll disabled) -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvCartItems"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    tools:listitem="@layout/item_cart_entry" />
+
+                <!-- Empty Cart State -->
+                <TextView
+                    android:id="@+id/tvEmptyCart"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/pos_empty_cart"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+                    android:gravity="center"
+                    android:padding="@dimen/padding_lg"
+                    android:visibility="visible" />
+
+            </LinearLayout>
+
+        </ScrollView>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorOutlineVariant" />
+
+        <!-- Totals Section -->
+        <LinearLayout
+            android:id="@+id/layoutTotals"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="@dimen/padding_sm"
+            android:paddingBottom="@dimen/padding_sm">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/pos_subtotal"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium" />
+
+                <TextView
+                    android:id="@+id/tvSubtotal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+                    tools:text="₹360" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="@dimen/margin_xs">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/pos_tax_label"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium" />
+
+                <TextView
+                    android:id="@+id/tvTax"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+                    tools:text="₹36" />
+
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="@dimen/margin_sm"
+                android:layout_marginBottom="@dimen/margin_sm"
+                android:background="?attr/colorOutline" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/pos_total"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+                <TextView
+                    android:id="@+id/tvTotal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+                    tools:text="₹396" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorOutlineVariant" />
+
+        <!-- Order Type Selector -->
+        <RadioGroup
+            android:id="@+id/rgOrderType"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="@dimen/padding_sm"
+            android:paddingBottom="@dimen/padding_sm"
+            android:gravity="center">
+
+            <RadioButton
+                android:id="@+id/rbWalkIn"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/touch_target_min"
+                android:layout_weight="1"
+                android:text="@string/pos_walk_in"
+                android:textSize="@dimen/text_size_label_large"
+                android:button="@null"
+                android:gravity="center"
+                android:background="@drawable/selector_order_type"
+                android:textColor="?attr/colorOnSurface"
+                android:contentDescription="Walk-in order type" />
+
+            <RadioButton
+                android:id="@+id/rbTakeaway"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/touch_target_min"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/margin_xs"
+                android:layout_marginEnd="@dimen/margin_xs"
+                android:text="@string/pos_takeaway"
+                android:textSize="@dimen/text_size_label_large"
+                android:button="@null"
+                android:gravity="center"
+                android:background="@drawable/selector_order_type"
+                android:textColor="?attr/colorOnSurface"
+                android:contentDescription="Takeaway order type" />
+
+            <RadioButton
+                android:id="@+id/rbDineIn"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/touch_target_min"
+                android:layout_weight="1"
+                android:text="@string/pos_dine_in"
+                android:textSize="@dimen/text_size_label_large"
+                android:button="@null"
+                android:gravity="center"
+                android:background="@drawable/selector_order_type"
+                android:textColor="?attr/colorOnSurface"
+                android:contentDescription="Dine-in order type" />
+
+        </RadioGroup>
+
+        <!-- Action Buttons -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnConfirmOrder"
+            style="@style/Widget.DajajPOS.Button.Primary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/pos_confirm_order"
+            android:enabled="false"
+            android:contentDescription="Confirm order button"
+            app:icon="@android:drawable/ic_menu_send"
+            app:iconGravity="textStart" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnClearCart"
+            style="@style/Widget.DajajPOS.Button.Secondary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_sm"
+            android:text="@string/pos_clear_cart"
+            android:contentDescription="Clear cart button" />
+
+    </LinearLayout>
+
+</LinearLayout>
+
+    <!-- Full-screen Loading Overlay -->
+    <FrameLayout
+        android:id="@+id/layoutLoadingOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#B3000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone"
+        android:contentDescription="Order being created, please wait">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="@dimen/padding_lg">
+
+            <com.google.android.material.progressindicator.CircularProgressIndicator
+                android:id="@+id/progressConfirmOrder"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:indeterminate="true"
+                app:indicatorColor="@android:color/white" />
+
+            <TextView
+                android:id="@+id/tvLoadingMessage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/margin_md"
+                android:text="@string/pos_creating_order"
+                android:textColor="@android:color/white"
+                android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium" />
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+</FrameLayout>

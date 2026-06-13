@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Modifier bottom sheet corner radius -->
+    <dimen name="modifier_sheet_corner_radius">16dp</dimen>
+
+    <!-- Modifier item vertical spacing -->
+    <dimen name="modifier_item_spacing">4dp</dimen>
+</resources>

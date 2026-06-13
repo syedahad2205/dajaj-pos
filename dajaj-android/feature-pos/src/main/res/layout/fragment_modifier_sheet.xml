@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingBottom="@dimen/padding_md">
+
+    <!-- Drag handle indicator -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="@dimen/margin_sm"
+        android:layout_marginBottom="@dimen/margin_md"
+        android:background="?attr/colorOutline" />
+
+    <!-- Title: Item name being modified -->
+    <TextView
+        android:id="@+id/tvModifierTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="@dimen/padding_md"
+        android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+        android:textColor="?attr/colorOnSurface"
+        tools:text="Regular Alfaham Quarter" />
+
+    <!-- Subtitle hint -->
+    <TextView
+        android:id="@+id/tvModifierSubtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="@dimen/padding_md"
+        android:layout_marginTop="@dimen/margin_xs"
+        android:text="Customize your order"
+        android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+        android:textColor="?attr/colorOnSurfaceVariant" />
+
+    <!-- Scrollable modifier groups -->
+    <ScrollView
+        android:id="@+id/scrollModifierGroups"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="@dimen/margin_md"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:id="@+id/llModifierGroups"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="@dimen/padding_md" />
+
+    </ScrollView>
+
+    <!-- Bottom action area -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="@dimen/padding_md"
+        android:paddingTop="@dimen/padding_md">
+
+        <!-- Validation message -->
+        <TextView
+            android:id="@+id/tvValidationMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/margin_sm"
+            android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+            android:textColor="?attr/colorError"
+            android:visibility="gone"
+            tools:text="Select at least 1 option in Spice Level"
+            tools:visibility="visible" />
+
+        <!-- Add to Cart button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAddToCart"
+            style="@style/Widget.DajajPOS.Button.Primary"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/button_min_height"
+            android:enabled="false"
+            android:text="Add to Cart"
+            android:contentDescription="Add item with selected modifiers to cart" />
+
+    </LinearLayout>
+
+</LinearLayout>

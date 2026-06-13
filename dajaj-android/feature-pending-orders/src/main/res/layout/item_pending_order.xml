@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/Widget.DajajPOS.Card.Outlined"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="@dimen/margin_sm"
+    android:clickable="true"
+    android:focusable="true">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="@dimen/padding_md">
+
+        <!-- Channel icon -->
+        <ImageView
+            android:id="@+id/ivChannelIcon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:contentDescription="@string/pending_content_desc_channel_icon"
+            android:src="@android:drawable/ic_dialog_info"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Order number -->
+        <TextView
+            android:id="@+id/tvOrderNumber"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/margin_sm"
+            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="@id/ivChannelIcon"
+            app:layout_constraintStart_toEndOf="@id/ivChannelIcon"
+            app:layout_constraintTop_toTopOf="@id/ivChannelIcon"
+            tools:text="Order #1045" />
+
+        <!-- Elapsed time -->
+        <TextView
+            android:id="@+id/tvElapsedTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+            app:layout_constraintBottom_toBottomOf="@id/tvOrderNumber"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/tvOrderNumber"
+            tools:text="2m ago" />
+
+        <!-- Customer name -->
+        <TextView
+            android:id="@+id/tvCustomerName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_sm"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/ivChannelIcon"
+            tools:text="Customer: Ahmed" />
+
+        <!-- Item count + Total -->
+        <TextView
+            android:id="@+id/tvItemsAndTotal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_xs"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvCustomerName"
+            tools:text="3 items • ₹450" />
+
+        <!-- Button container -->
+        <LinearLayout
+            android:id="@+id/layoutButtons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_md"
+            android:gravity="end"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvItemsAndTotal">
+
+            <!-- Reject button (red outlined) -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnReject"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="@dimen/margin_sm"
+                android:layout_weight="1"
+                android:minHeight="@dimen/touch_target_min"
+                android:text="@string/pending_btn_reject"
+                android:textColor="@color/reject_button_text"
+                app:icon="@android:drawable/ic_delete"
+                app:iconGravity="textStart"
+                app:iconTint="@color/reject_button_text"
+                app:strokeColor="@color/reject_button_text" />
+
+            <!-- Accept button (green filled) -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAccept"
+                style="@style/Widget.Material3.Button"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:backgroundTint="@color/accept_button_background"
+                android:minHeight="@dimen/touch_target_min"
+                android:text="@string/pending_btn_accept"
+                android:textColor="@android:color/white"
+                app:icon="@android:drawable/checkbox_on_background"
+                app:iconGravity="textStart"
+                app:iconTint="@android:color/white" />
+
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>
