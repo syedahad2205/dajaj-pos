@@ -5,8 +5,6 @@
  */
 export const FEATURES = {
   // ─── ENABLED ───────────────────────────────────────────
-  POS: true,
-  BILLS: true,
   ADMIN_MENU_BUILDER: true,
 
   // ─── DISABLED (enable when ready to launch) ────────────

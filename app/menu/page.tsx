@@ -11,6 +11,7 @@ import { getAvailableMenuTree } from "@/services/menuService";
 import { trackEvent } from "@/lib/analytics";
 import { useStock } from "@/components/stock/StockProvider";
 import ZomatoBanner from "@/components/ZomatoBanner";
+import { submitOrderViaWhatsApp } from "@/lib/whatsapp-bridge";
 
 function collectVariants(node: MenuTreeNode): MenuTreeNode[] {
   const variants: MenuTreeNode[] = [];
@@ -192,6 +193,8 @@ export default function MenuPage() {
   const { outOfStockIds, outOfStockModifierMasters, isModifierOutOfStock } = useStock();
   const [showOnlyAvailable, setShowOnlyAvailable] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [placingOrder, setPlacingOrder] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
   const isScrollingTo = useRef(false);
 
@@ -334,14 +337,32 @@ export default function MenuPage() {
     });
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
+    if (items.length === 0) return;
+    if (placingOrder) return;
+
     void trackEvent("checkout_start", { item_count: itemCount, cart_value: subtotal });
     setCartOpen(false);
-    const message = formatOrderMessage(items, subtotal);
-    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-    window.localStorage.setItem(ORDER_PENDING_KEY, Date.now().toString());
-    void trackEvent("whatsapp_order_sent", { order_type: "pickup", item_count: itemCount, cart_value: subtotal });
-    window.open(url, "_blank");
+    setPlacingOrder(true);
+    setOrderError(null);
+
+    try {
+      await submitOrderViaWhatsApp(
+        items,
+        { name: "Customer", phone: "" },
+        WHATSAPP_NUMBER,
+      );
+      // WhatsApp opened successfully after Firestore save
+      window.localStorage.setItem(ORDER_PENDING_KEY, Date.now().toString());
+      void trackEvent("whatsapp_order_sent", { order_type: "pickup", item_count: itemCount, cart_value: subtotal });
+    } catch (error) {
+      // Save failed — display error, preserve cart, do NOT open WhatsApp
+      const message = error instanceof Error ? error.message : "Failed to place your order. Please try again.";
+      setOrderError(message);
+      setToastMessage(message);
+    } finally {
+      setPlacingOrder(false);
+    }
   };
 
   const handleOrderConfirmClear = () => {
@@ -589,6 +610,16 @@ export default function MenuPage() {
         <div className="fixed left-1/2 top-5 z-[70] -translate-x-1/2">
           <div className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white shadow-lg">
             {toastMessage}
+          </div>
+        </div>
+      )}
+
+      {placingOrder && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40">
+          <div className="rounded-3xl bg-white px-8 py-6 text-center shadow-2xl">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-orange-200 border-t-orange-600" />
+            <p className="text-sm font-bold text-slate-900">Saving your order...</p>
+            <p className="mt-1 text-xs text-slate-500">WhatsApp will open once saved.</p>
           </div>
         </div>
       )}

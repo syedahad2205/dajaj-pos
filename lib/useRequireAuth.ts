@@ -30,7 +30,7 @@ export function useRequireAuth(requiredRole?: UserRole) {
         setRole(null);
         const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
         if (requiredRole === "admin") router.push(`/admin/login${next}`);
-        else if (requiredRole === "pos") router.push(`/pos/login`);
+        else if (requiredRole === "pos") router.push(`/admin/login`);
         else router.push(`/login${next}`);
         setLoading(false);
         return;
@@ -47,7 +47,7 @@ export function useRequireAuth(requiredRole?: UserRole) {
         }
         if (!user.email) {
           await signOut(auth);
-          router.push("/pos/login");
+          router.push("/admin/login");
           setLoading(false);
           return;
         }
@@ -57,7 +57,7 @@ export function useRequireAuth(requiredRole?: UserRole) {
           setAuthenticated(false);
           setRole(null);
           await signOut(auth);
-          router.push("/pos/login");
+          router.push("/admin/login");
           setLoading(false);
           return;
         }

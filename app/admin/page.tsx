@@ -6,8 +6,8 @@ import { requireAdmin } from "@/lib/roleGuard";
 const adminLinks = [
   {
     href: "/admin/pos",
-    title: "POS",
-    description: "Open Point Of Sale",
+    title: "POS Staff",
+    description: "POS has moved to Android app. Manage staff access.",
   },
   {
     href: "/admin/riders",

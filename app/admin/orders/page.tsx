@@ -7,6 +7,7 @@ import { assignOrderToRider, autoAssignOrder, cancelOrder, unassignOrder } from 
 import { subscribeToAllOrders, updateOrderStatus, type OrderRecord, type OrderStatus } from "@/services/orderService";
 import { subscribeToRiders, type RiderProfile } from "@/services/riderService";
 import { subscribeToOrderTracking, type OrderTrackingRecord } from "@/services/trackingService";
+import { RemotePrintButton } from "@/components/RemotePrintButton";
 
 const statusFlow: Record<OrderStatus, { label: string; next: OrderStatus } | null> = {
   pending: { label: "Accept", next: "accepted" },
@@ -154,6 +155,19 @@ export default function AdminOrdersPage() {
                     Cancel Order
                   </button>
                 ) : null}
+
+                <RemotePrintButton
+                  orderId={order.id}
+                  orderNumber={order.orderNumber}
+                  restaurantId="dajaj_main"
+                  jobType="reprint"
+                />
+                <RemotePrintButton
+                  orderId={order.id}
+                  orderNumber={order.orderNumber}
+                  restaurantId="dajaj_main"
+                  jobType="kot"
+                />
               </div>
 
               {expanded ? (

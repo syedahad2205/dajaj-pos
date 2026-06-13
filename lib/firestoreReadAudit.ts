@@ -10,7 +10,6 @@ export const FIRESTORE_READ_AUDIT_SUMMARY = {
     "app/orders/page.tsx",
     "app/admin/riders/page.tsx",
     "app/menu/page.tsx",
-    "app/pos/page.tsx",
     "app/checkout/page.tsx",
     "components/auth/CustomerAuthProvider.tsx",
     "components/auth/RiderAuthProvider.tsx",
