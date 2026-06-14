@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Touch targets (referenced in Kotlin code) -->
+    <dimen name="touch_target_min">48dp</dimen>
+
+    <!-- Padding (referenced in Kotlin code) -->
+    <dimen name="padding_sm">8dp</dimen>
+
     <!-- Modifier bottom sheet corner radius -->
     <dimen name="modifier_sheet_corner_radius">16dp</dimen>
 
