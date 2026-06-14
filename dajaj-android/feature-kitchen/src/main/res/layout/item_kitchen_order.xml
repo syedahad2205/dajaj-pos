@@ -58,7 +58,6 @@
                 android:layout_height="wrap_content"
                 android:drawablePadding="@dimen/margin_xs"
                 android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge"
-                app:drawableStartCompat="@android:drawable/ic_menu_recent_history"
                 tools:text="12:34" />
 
         </LinearLayout>
@@ -117,7 +116,7 @@
             android:minHeight="@dimen/touch_target_min"
             android:text="@string/kitchen_btn_mark_ready"
             android:textColor="@android:color/white"
-            app:icon="@android:drawable/checkbox_on_background"
+            app:icon="@drawable/ic_check_circle"
             app:iconGravity="textStart"
             app:iconTint="@android:color/white"
             app:layout_constraintEnd_toEndOf="parent"

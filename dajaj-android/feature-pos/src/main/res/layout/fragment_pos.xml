@@ -58,7 +58,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="@dimen/margin_sm"
             android:minHeight="@dimen/touch_target_min"
-            app:startIconDrawable="@android:drawable/ic_menu_search"
+            app:startIconDrawable="@drawable/ic_search"
             app:endIconMode="clear_text"
             android:hint="@string/pos_search_hint">
 
@@ -311,7 +311,7 @@
             android:text="@string/pos_confirm_order"
             android:enabled="false"
             android:contentDescription="Confirm order button"
-            app:icon="@android:drawable/ic_menu_send"
+            app:icon="@drawable/ic_send"
             app:iconGravity="textStart" />
 
         <com.google.android.material.button.MaterialButton

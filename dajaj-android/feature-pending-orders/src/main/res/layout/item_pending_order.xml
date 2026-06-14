@@ -20,7 +20,7 @@
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:contentDescription="@string/pending_content_desc_channel_icon"
-            android:src="@android:drawable/ic_dialog_info"
+            android:src="@drawable/ic_inbox"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
@@ -97,7 +97,7 @@
                 android:minHeight="@dimen/touch_target_min"
                 android:text="@string/pending_btn_reject"
                 android:textColor="@color/reject_button_text"
-                app:icon="@android:drawable/ic_delete"
+                app:icon="@drawable/ic_cancel"
                 app:iconGravity="textStart"
                 app:iconTint="@color/reject_button_text"
                 app:strokeColor="@color/reject_button_text" />
@@ -113,7 +113,7 @@
                 android:minHeight="@dimen/touch_target_min"
                 android:text="@string/pending_btn_accept"
                 android:textColor="@android:color/white"
-                app:icon="@android:drawable/checkbox_on_background"
+                app:icon="@drawable/ic_check_circle"
                 app:iconGravity="textStart"
                 app:iconTint="@android:color/white" />
 

@@ -142,7 +142,7 @@
                 android:clickable="true"
                 android:contentDescription="@string/content_desc_new_order"
                 android:focusable="true"
-                android:minHeight="120dp">
+                android:minHeight="140dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -152,10 +152,10 @@
                     android:padding="@dimen/padding_md">
 
                     <ImageView
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
                         android:importantForAccessibility="no"
-                        android:src="@android:drawable/ic_menu_add"
+                        android:src="@drawable/ic_add_circle"
                         app:tint="?attr/colorPrimary" />
 
                     <TextView
@@ -181,7 +181,7 @@
                 android:clickable="true"
                 android:contentDescription="@string/content_desc_pending_orders"
                 android:focusable="true"
-                android:minHeight="120dp">
+                android:minHeight="140dp">
 
                 <FrameLayout
                     android:layout_width="match_parent"
@@ -195,10 +195,10 @@
                         android:padding="@dimen/padding_md">
 
                         <ImageView
-                            android:layout_width="48dp"
-                            android:layout_height="48dp"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
                             android:importantForAccessibility="no"
-                            android:src="@android:drawable/ic_menu_agenda"
+                            android:src="@drawable/ic_inbox"
                             app:tint="?attr/colorPrimary" />
 
                         <TextView
@@ -242,7 +242,7 @@
                 android:clickable="true"
                 android:contentDescription="@string/content_desc_kitchen"
                 android:focusable="true"
-                android:minHeight="120dp">
+                android:minHeight="140dp">
 
                 <FrameLayout
                     android:layout_width="match_parent"
@@ -256,10 +256,10 @@
                         android:padding="@dimen/padding_md">
 
                         <ImageView
-                            android:layout_width="48dp"
-                            android:layout_height="48dp"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
                             android:importantForAccessibility="no"
-                            android:src="@android:drawable/ic_menu_manage"
+                            android:src="@drawable/ic_restaurant"
                             app:tint="?attr/colorPrimary" />
 
                         <TextView
@@ -303,7 +303,7 @@
                 android:clickable="true"
                 android:contentDescription="@string/content_desc_reports"
                 android:focusable="true"
-                android:minHeight="120dp">
+                android:minHeight="140dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -313,10 +313,10 @@
                     android:padding="@dimen/padding_md">
 
                     <ImageView
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
                         android:importantForAccessibility="no"
-                        android:src="@android:drawable/ic_menu_recent_history"
+                        android:src="@drawable/ic_bar_chart"
                         app:tint="?attr/colorPrimary" />
 
                     <TextView
@@ -342,7 +342,7 @@
                 android:clickable="true"
                 android:contentDescription="@string/content_desc_settings"
                 android:focusable="true"
-                android:minHeight="120dp">
+                android:minHeight="140dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -352,10 +352,10 @@
                     android:padding="@dimen/padding_md">
 
                     <ImageView
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
                         android:importantForAccessibility="no"
-                        android:src="@android:drawable/ic_menu_preferences"
+                        android:src="@drawable/ic_settings"
                         app:tint="?attr/colorPrimary" />
 
                     <TextView
@@ -381,7 +381,7 @@
                 android:clickable="true"
                 android:contentDescription="@string/content_desc_bills"
                 android:focusable="true"
-                android:minHeight="120dp">
+                android:minHeight="140dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -391,10 +391,10 @@
                     android:padding="@dimen/padding_md">
 
                     <ImageView
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
                         android:importantForAccessibility="no"
-                        android:src="@android:drawable/ic_menu_my_calendar"
+                        android:src="@drawable/ic_receipt"
                         app:tint="?attr/colorPrimary" />
 
                     <TextView

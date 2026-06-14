@@ -35,7 +35,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:minHeight="@dimen/touch_target_min"
-            app:icon="@android:drawable/ic_menu_my_calendar"
+            app:icon="@drawable/ic_receipt"
             app:iconGravity="start"
             tools:text="15 Jan 2024" />
 
@@ -418,7 +418,7 @@
             android:layout_height="64dp"
             android:alpha="0.5"
             android:contentDescription="@string/reports_empty_icon_desc"
-            android:src="@android:drawable/ic_menu_info_details" />
+            android:src="@drawable/ic_bar_chart" />
 
         <TextView
             android:id="@+id/tvEmptyState"

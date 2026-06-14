@@ -26,7 +26,7 @@
         android:layout_marginTop="@dimen/margin_md"
         android:text="Scan for Printers"
         android:contentDescription="Scan for nearby Bluetooth printers"
-        app:icon="@android:drawable/stat_sys_data_bluetooth"
+        app:icon="@drawable/ic_bluetooth_search"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvHeader" />
