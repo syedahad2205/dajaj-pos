@@ -30,6 +30,12 @@ interface PrintJobDao {
     suspend fun getPendingCount(): Int
 
     /**
+     * Observes the count of pending print jobs as a flow.
+     */
+    @Query("SELECT COUNT(*) FROM print_jobs WHERE status = 'pending'")
+    fun observePendingCount(): Flow<Int>
+
+    /**
      * Returns all jobs by their status.
      * Useful for monitoring processing and failed jobs.
      */
@@ -97,4 +103,10 @@ interface PrintJobDao {
      */
     @Query("UPDATE print_jobs SET status = 'pending', failureReason = NULL, claimedBy = NULL, claimedAt = NULL WHERE id = :jobId")
     suspend fun resetToPending(jobId: String)
+
+    /**
+     * Deletes completed print jobs older than a timestamp.
+     */
+    @Query("DELETE FROM print_jobs WHERE status = 'completed' AND createdAt < :timestamp")
+    suspend fun deleteCompletedBefore(timestamp: Long): Int
 }

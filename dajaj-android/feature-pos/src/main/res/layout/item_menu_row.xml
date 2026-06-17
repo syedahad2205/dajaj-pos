@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    POS menu item — horizontal row layout.
+    Optimised for fast scanning and tapping in a restaurant POS context.
+
+    [Name + modifier hint]  [price]  [ADD / stepper]
+
+    No image, no description, no extra chrome.
+    Touch target: full row height 56dp minimum.
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="56dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="10dp"
+    android:background="@drawable/selector_menu_row">
+
+    <!-- Name + modifier indicator — takes all remaining space -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginEnd="8dp">
+
+        <TextView
+            android:id="@+id/tvItemName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#0F172A"
+            android:maxLines="2"
+            android:ellipsize="end"
+            tools:text="Chicken Shawarma Roll" />
+
+        <!-- "Customisable" shown only when item has modifier groups -->
+        <TextView
+            android:id="@+id/tvCustomisable"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="Customisable ›"
+            android:textSize="11sp"
+            android:textColor="#EA580C"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
+    </LinearLayout>
+
+    <!-- Price — fixed width, right-aligned -->
+    <TextView
+        android:id="@+id/tvPrice"
+        android:layout_width="52dp"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="#0F172A"
+        android:layout_marginEnd="10dp"
+        tools:text="₹120" />
+
+    <!-- ADD button (qty = 0, item available) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnAdd"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="64dp"
+        android:layout_height="36dp"
+        android:text="ADD"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:textColor="#EA580C"
+        android:minHeight="0dp"
+        android:minWidth="0dp"
+        android:paddingHorizontal="0dp"
+        android:paddingVertical="0dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:contentDescription="Add to cart"
+        app:strokeColor="#EA580C"
+        app:strokeWidth="2dp"
+        app:cornerRadius="8dp" />
+
+    <!-- Inline qty stepper (qty > 0, no modifier required) -->
+    <LinearLayout
+        android:id="@+id/layoutStepper"
+        android:layout_width="84dp"
+        android:layout_height="36dp"
+        android:orientation="horizontal"
+        android:background="@drawable/bg_stepper_border"
+        android:gravity="center_vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/btnStepperDecrease"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:text="−"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#EA580C"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="Decrease" />
+
+        <TextView
+            android:id="@+id/tvStepperQty"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="22dp"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#EA580C"
+            android:gravity="center"
+            tools:text="2" />
+
+        <TextView
+            android:id="@+id/btnStepperIncrease"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:text="+"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#EA580C"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="Increase" />
+
+    </LinearLayout>
+
+    <!-- OOS indicator -->
+    <TextView
+        android:id="@+id/tvUnavailable"
+        android:layout_width="64dp"
+        android:layout_height="32dp"
+        android:text="OOS"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:textColor="#94A3B8"
+        android:gravity="center"
+        android:background="@drawable/bg_unavailable_badge"
+        android:visibility="gone" />
+
+</LinearLayout>

@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <!-- Title -->
+    <TextView
+        android:id="@+id/tvPaymentTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/payment_dialog_title"
+        android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+        android:layout_marginBottom="8dp"
+        android:importantForAccessibility="yes"
+        android:contentDescription="Payment method selection" />
+
+    <!-- Grand Total Display -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/payment_grand_total"
+            android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium" />
+
+        <TextView
+            android:id="@+id/tvGrandTotal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+            tools:text="₹396.00" />
+
+    </LinearLayout>
+
+    <!-- Payment Method Selection -->
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/chipGroupPayment"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        app:singleSelection="true"
+        app:selectionRequired="true">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipCash"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/touch_target_min"
+            android:text="@string/payment_cash"
+            android:checked="true"
+            android:contentDescription="Cash payment method" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipCard"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/touch_target_min"
+            android:text="@string/payment_card"
+            android:contentDescription="Card payment method" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipUpi"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/touch_target_min"
+            android:text="@string/payment_upi"
+            android:contentDescription="UPI payment method" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipMixed"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/touch_target_min"
+            android:text="@string/payment_mixed"
+            android:contentDescription="Mixed payment method" />
+
+    </com.google.android.material.chip.ChipGroup>
+
+    <!-- Cash Payment Section (visible when Cash selected) -->
+    <LinearLayout
+        android:id="@+id/layoutCashPayment"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="visible">
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilCashCollected"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/payment_cash_collected"
+            app:prefixText="₹"
+            app:suffixText=".00">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etCashCollected"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="numberDecimal"
+                android:importantForAccessibility="yes"
+                android:contentDescription="Enter cash collected amount" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Change Display -->
+        <LinearLayout
+            android:id="@+id/layoutChange"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/payment_change"
+                android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium" />
+
+            <TextView
+                android:id="@+id/tvChange"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+                android:textColor="?attr/colorPrimary"
+                tools:text="₹4.00" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Mixed Payment Section (visible when Mixed selected) -->
+    <LinearLayout
+        android:id="@+id/layoutMixedPayment"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/payment_mixed_description"
+            android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Split entries container (dynamically added) -->
+        <LinearLayout
+            android:id="@+id/layoutSplitEntries"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <!-- Add Split Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAddSplit"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/payment_add_split"
+            android:contentDescription="Add another payment split"
+            app:icon="@android:drawable/ic_input_add" />
+
+        <!-- Remaining Amount -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/payment_remaining"
+                android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium" />
+
+            <TextView
+                android:id="@+id/tvRemaining"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+                tools:text="₹196.00" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Error Message -->
+    <TextView
+        android:id="@+id/tvPaymentError"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="?attr/colorError"
+        android:textAppearance="@style/TextAppearance.DajajPOS.LabelMedium"
+        android:layout_marginTop="8dp"
+        android:visibility="gone"
+        tools:text="Cash collected must be greater than or equal to the grand total" />
+
+    <!-- Action Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="16dp"
+        android:gravity="end">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCancelPayment"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/payment_cancel"
+            android:contentDescription="Cancel payment" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnConfirmPayment"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/payment_confirm"
+            android:enabled="false"
+            android:contentDescription="Confirm payment and create order" />
+
+    </LinearLayout>
+
+</LinearLayout>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Full content-area empty state component.
+     Shows an icon, message, and optional action button.
+     Use when a list or content area has no data.
+     All touch targets meet ≥48dp minimum.
+     Usage: <include layout="@layout/layout_empty_state" />
+     Set icon, title, message, and button visibility programmatically.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/emptyStateRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="@dimen/padding_xl"
+    android:visibility="gone"
+    tools:visibility="visible">
+
+    <!-- Empty state icon -->
+    <ImageView
+        android:id="@+id/emptyStateIcon"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:contentDescription="@string/content_desc_empty_state"
+        android:importantForAccessibility="yes"
+        app:srcCompat="@drawable/ic_inbox"
+        app:tint="?attr/colorOutline" />
+
+    <!-- Empty state title -->
+    <TextView
+        android:id="@+id/emptyStateTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/margin_md"
+        android:gravity="center"
+        android:textAppearance="@style/TextAppearance.DajajPOS.Title.Medium"
+        android:textColor="?attr/colorOnSurface"
+        tools:text="No orders yet" />
+
+    <!-- Empty state description -->
+    <TextView
+        android:id="@+id/emptyStateMessage"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/margin_sm"
+        android:gravity="center"
+        android:maxWidth="280dp"
+        android:textAppearance="@style/TextAppearance.DajajPOS.Body.Medium"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        tools:text="Orders will appear here when customers place them." />
+
+    <!-- Optional action button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/emptyStateActionButton"
+        style="@style/Widget.DajajPOS.Button.Secondary"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/margin_lg"
+        android:minHeight="@dimen/touch_target_min"
+        android:visibility="gone"
+        tools:text="Create Order"
+        tools:visibility="visible" />
+
+</LinearLayout>

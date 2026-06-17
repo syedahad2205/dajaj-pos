@@ -64,6 +64,14 @@ class OrderStateMachine {
             OrderStatus.COMPLETED -> "completedAt"
             else -> null
         }
+
+        /**
+         * Checks if a transition from [currentStatus] to [targetStatus] is allowed.
+         */
+        fun canTransition(currentStatus: OrderStatus, targetStatus: OrderStatus): Boolean {
+            val allowed = validTransitions[currentStatus] ?: emptySet()
+            return targetStatus in allowed
+        }
     }
 
     /**

@@ -13,4 +13,23 @@
     <string name="pos_creating_order">Creating order…</string>
     <string name="pos_empty_cart">Tap items to add to your order</string>
     <string name="pos_search_hint">Search menu items</string>
+
+    <!-- Payment sheet strings -->
+    <string name="payment_dialog_title">Select Payment Method</string>
+    <string name="payment_grand_total">Grand Total</string>
+    <string name="payment_cash">Cash</string>
+    <string name="payment_card">Card</string>
+    <string name="payment_upi">UPI</string>
+    <string name="payment_mixed">Mixed</string>
+    <string name="payment_cash_collected">Cash Collected</string>
+    <string name="payment_change">Change</string>
+    <string name="payment_mixed_description">Enter split amounts for each payment method</string>
+    <string name="payment_add_split">+ Add Split</string>
+    <string name="payment_remaining">Remaining</string>
+    <string name="payment_cancel">Cancel</string>
+    <string name="payment_confirm">Confirm Payment</string>
+    <string name="payment_order_type_required">Please select an order type before confirming</string>
+    <string name="payment_max_splits_reached">Maximum 3 payment splits allowed</string>
+    <string name="payment_select_method">Select Payment Method</string>
+    <string name="payment_split_amount_hint">Amount</string>
 </resources>

@@ -18,10 +18,19 @@
     <string name="banner_no_internet">Internet connection lost. Operating in offline mode.</string>
     <string name="banner_reconnecting">Reconnecting to server…</string>
     <string name="banner_printer_error">Printer disconnected. Print jobs are queued.</string>
+    <string name="banner_both_offline">Internet and printer offline. Operating in offline mode.</string>
 
     <!-- Loading Messages -->
     <string name="loading_creating_order">Creating order…</string>
     <string name="loading_syncing">Syncing data…</string>
     <string name="loading_printing">Printing…</string>
     <string name="loading_generic">Please wait…</string>
+
+    <!-- Accessibility Content Descriptions (layout files) -->
+    <string name="content_desc_empty_state">Empty state illustration</string>
+    <string name="content_desc_error_icon">Error icon</string>
+    <string name="content_desc_offline_icon">Offline icon</string>
+
+    <!-- Actions -->
+    <string name="action_retry">Retry</string>
 </resources>

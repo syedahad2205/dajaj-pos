@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Persistent offline status banner.
+     Displays when internet or printer is disconnected.
+     Persists at the top of the screen until connectivity restores.
+     Minimum touch target: 48dp height.
+     Usage: Include in Activity/Fragment root layout.
+     Control via OfflineBannerView custom view class.
+-->
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:parentTag="com.google.android.material.card.MaterialCardView">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:minHeight="@dimen/banner_min_height"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/padding_md"
+        android:paddingTop="@dimen/padding_sm"
+        android:paddingEnd="@dimen/padding_md"
+        android:paddingBottom="@dimen/padding_sm">
+
+        <!-- Animated status icon -->
+        <ImageView
+            android:id="@+id/offlineBannerIcon"
+            android:layout_width="@dimen/banner_icon_size"
+            android:layout_height="@dimen/banner_icon_size"
+            android:contentDescription="@string/content_desc_offline_icon"
+            android:importantForAccessibility="yes"
+            app:tint="@color/banner_error_icon"
+            app:srcCompat="@drawable/ic_wifi_off" />
+
+        <!-- Status message container -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/margin_sm"
+            android:layout_marginEnd="@dimen/margin_sm"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <!-- Primary message -->
+            <TextView
+                android:id="@+id/offlineBannerTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.DajajPOS.Label.Large"
+                android:textColor="@color/banner_error_text"
+                tools:text="No Internet Connection" />
+
+            <!-- Secondary message (e.g., queued items count) -->
+            <TextView
+                android:id="@+id/offlineBannerSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textAppearance="@style/TextAppearance.DajajPOS.Body.Small"
+                android:textColor="@color/banner_error_text"
+                android:visibility="gone"
+                tools:text="3 orders queued for sync"
+                tools:visibility="visible" />
+
+        </LinearLayout>
+
+        <!-- Printer status indicator (shown when printer is also disconnected) -->
+        <ImageView
+            android:id="@+id/offlineBannerPrinterIcon"
+            android:layout_width="@dimen/banner_icon_size"
+            android:layout_height="@dimen/banner_icon_size"
+            android:contentDescription="@string/content_desc_printer_status"
+            android:importantForAccessibility="yes"
+            android:visibility="gone"
+            app:srcCompat="@drawable/ic_print_disabled"
+            app:tint="@color/banner_error_icon"
+            tools:visibility="visible" />
+
+    </LinearLayout>
+
+</merge>

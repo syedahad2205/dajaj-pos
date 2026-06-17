@@ -47,4 +47,10 @@ interface MenuRepository {
      * or when sync should be paused.
      */
     fun stopSync()
+
+    /**
+     * Returns a snapshot of the current cached menu items from Room.
+     * Non-reactive — use [observeMenu] for real-time updates.
+     */
+    suspend fun getCachedMenu(): List<MenuItem>
 }

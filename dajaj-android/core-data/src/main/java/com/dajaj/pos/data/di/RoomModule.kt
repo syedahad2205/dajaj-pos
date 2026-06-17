@@ -3,6 +3,7 @@ package com.dajaj.pos.data.di
 import android.content.Context
 import androidx.room.Room
 import com.dajaj.pos.data.local.AppDatabase
+import com.dajaj.pos.data.local.dao.CustomerDao
 import com.dajaj.pos.data.local.dao.MenuDao
 import com.dajaj.pos.data.local.dao.OrderDao
 import com.dajaj.pos.data.local.dao.PrintJobDao
@@ -45,5 +46,11 @@ object RoomModule {
     @Singleton
     fun providePrintJobDao(database: AppDatabase): PrintJobDao {
         return database.printJobDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideCustomerDao(database: AppDatabase): CustomerDao {
+        return database.customerDao()
     }
 }

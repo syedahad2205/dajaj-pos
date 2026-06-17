@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Inline loading state component.
+     Shows a shimmer-like progress indicator with optional message.
+     Use for content area loading (not full-screen overlay).
+     Usage: <include layout="@layout/layout_loading_state" />
+     Toggle visibility and set message programmatically.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/loadingStateRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="@dimen/padding_lg"
+    android:visibility="gone"
+    tools:visibility="visible">
+
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+        android:id="@+id/loadingStateProgress"
+        android:layout_width="@dimen/loading_indicator_size"
+        android:layout_height="@dimen/loading_indicator_size"
+        android:indeterminate="true"
+        app:indicatorColor="?attr/colorPrimary"
+        app:trackColor="?attr/colorSurfaceVariant"
+        app:trackThickness="4dp" />
+
+    <TextView
+        android:id="@+id/loadingStateMessage"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/margin_md"
+        android:gravity="center"
+        android:textAppearance="@style/TextAppearance.DajajPOS.Body.Large"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        tools:text="@string/loading_generic" />
+
+</LinearLayout>

@@ -31,6 +31,12 @@ interface OrderDao {
     suspend fun getUnsyncedCount(): Int
 
     /**
+     * Observes the count of orders pending sync as a flow.
+     */
+    @Query("SELECT COUNT(*) FROM orders WHERE synced = 0")
+    fun observeUnsyncedCount(): Flow<Int>
+
+    /**
      * Returns all orders for a given status, sorted by creation time.
      * Used for kitchen queue (status='preparing') and pending list.
      */
@@ -82,4 +88,10 @@ interface OrderDao {
      */
     @Query("DELETE FROM orders WHERE synced = 1")
     suspend fun deleteSyncedOrders()
+
+    /**
+     * Deletes completed orders older than a timestamp.
+     */
+    @Query("DELETE FROM orders WHERE status = 'completed' AND createdAt < :timestamp")
+    suspend fun deleteCompletedBefore(timestamp: Long): Int
 }

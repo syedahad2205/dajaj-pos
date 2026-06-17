@@ -44,6 +44,10 @@ annotation class BillsCollection
 @Retention(AnnotationRetention.BINARY)
 annotation class CountersCollection
 
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class CustomersCollection
+
 @Module
 @InstallIn(SingletonComponent::class)
 object FirestoreModule {
@@ -108,5 +112,12 @@ object FirestoreModule {
     @CountersCollection
     fun provideCountersCollection(firestore: FirebaseFirestore): CollectionReference {
         return firestore.collection(Constants.COLLECTION_COUNTERS)
+    }
+
+    @Provides
+    @Singleton
+    @CustomersCollection
+    fun provideCustomersCollection(firestore: FirebaseFirestore): CollectionReference {
+        return firestore.collection(Constants.COLLECTION_CUSTOMERS)
     }
 }

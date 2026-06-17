@@ -93,3 +93,12 @@ data class MenuItem(
     val isAvailable: Boolean = true,
     val hasModifiers: Boolean = false
 )
+
+/**
+ * Wraps a [MenuItem] with its current cart quantity for the row adapter.
+ * qty == 0 means the item is not yet in the cart.
+ */
+data class MenuItemWithQty(
+    val item: MenuItem,
+    val qty: Int = 0
+)

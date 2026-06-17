@@ -18,6 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -232,5 +233,12 @@ class MenuRepositoryImpl @Inject constructor(
             createdAt = createdAt,
             updatedAt = updatedAt
         )
+    }
+
+    /**
+     * Returns a one-shot snapshot of all cached menu items from Room.
+     */
+    override suspend fun getCachedMenu(): List<MenuItem> {
+        return localDataSource.getAllMenuItems().first().map { it.toDomainModel() }
     }
 }

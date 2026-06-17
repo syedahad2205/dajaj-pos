@@ -5,13 +5,11 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -54,7 +52,7 @@ class PosFragment : Fragment() {
 
     // Adapters
     private var categoryAdapter: CategoryAdapter? = null
-    private var menuItemAdapter: MenuItemAdapter? = null
+    private var menuRowAdapter: MenuRowAdapter? = null
     private var cartAdapter: CartAdapter? = null
 
     /** Flag to prevent double-tap on confirm button. */
@@ -103,18 +101,19 @@ class PosFragment : Fragment() {
     }
 
     /**
-     * Sets up the center panel RecyclerView for menu items.
-     * Uses a GridLayoutManager with 3-4 columns depending on available width.
+     * Sets up the center panel RecyclerView for menu items using the horizontal row layout.
+     * Uses a vertical LinearLayoutManager (one item per row for fast POS scanning).
      * Configures SwipeRefreshLayout for pull-to-refresh sync from Firestore.
      */
     private fun setupMenuItemsRecyclerView() {
-        menuItemAdapter = MenuItemAdapter { menuItem ->
-            onMenuItemTapped(menuItem)
-        }
-        val spanCount = calculateGridSpanCount()
+        menuRowAdapter = MenuRowAdapter(
+            onAddItem = { entry -> onMenuItemTapped(entry.item) },
+            onIncrementItem = { entry -> cartManager.incrementQuantity(entry.item.id) },
+            onDecrementItem = { entry -> cartManager.decrementQuantity(entry.item.id) }
+        )
         binding.rvMenuItems.apply {
-            layoutManager = GridLayoutManager(requireContext(), spanCount)
-            adapter = menuItemAdapter
+            layoutManager = LinearLayoutManager(requireContext())
+            adapter = menuRowAdapter
         }
         // Pull-to-refresh syncs from Firestore
         binding.swipeRefreshMenu.setOnRefreshListener {
@@ -233,9 +232,15 @@ class PosFragment : Fragment() {
      * Case-insensitive filtering across all categories.
      */
     private fun setupSearchBar() {
-        binding.etSearch.doAfterTextChanged { text ->
-            viewModel.search(text?.toString() ?: "")
-        }
+        (binding.etSearch as android.widget.EditText).addTextChangedListener(
+            object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    viewModel.search(s?.toString() ?: "")
+                }
+            }
+        )
     }
 
     /**
@@ -346,10 +351,15 @@ class PosFragment : Fragment() {
                     }
                 }
 
-                // Observe current items for center panel (category items or search results)
+                // Observe current items — map to MenuItemWithQty (qty re-applied from cart)
                 launch {
                     viewModel.currentItems.collect { items ->
-                        menuItemAdapter?.submitList(items)
+                        val cartItems = cartManager.cartState.value.items
+                        val withQty = items.map { menuItem ->
+                            val q = cartItems.firstOrNull { it.menuItem.id == menuItem.id }?.quantity ?: 0
+                            MenuItemWithQty(item = menuItem, qty = q)
+                        }
+                        menuRowAdapter?.submitList(withQty)
                     }
                 }
 
@@ -398,6 +408,15 @@ class PosFragment : Fragment() {
 
         // Update confirm button state
         binding.btnConfirmOrder.isEnabled = state.canConfirm
+
+        // Refresh qty badges on all visible menu rows
+        menuRowAdapter?.currentList?.let { rows ->
+            val updated = rows.map { entry ->
+                val q = state.items.firstOrNull { it.menuItem.id == entry.item.id }?.quantity ?: 0
+                entry.copy(qty = q)
+            }
+            menuRowAdapter?.submitList(updated)
+        }
     }
 
     /**
@@ -418,25 +437,11 @@ class PosFragment : Fragment() {
             .show()
     }
 
-    /**
-     * Calculates the optimal grid span count for the menu items panel.
-     * Returns 3 for narrower displays, 4 for wider ones.
-     */
-    private fun calculateGridSpanCount(): Int {
-        val displayMetrics = resources.displayMetrics
-        val screenWidthDp = displayMetrics.widthPixels / displayMetrics.density
-        // Approximate center panel width: total - 200dp (left) - 320dp (right) - padding
-        val centerPanelWidthDp = screenWidthDp - 200f - 320f - 32f
-        // Target card width ~140dp minimum
-        val columns = (centerPanelWidthDp / 140f).toInt()
-        return columns.coerceIn(3, 4)
-    }
-
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
         categoryAdapter = null
-        menuItemAdapter = null
+        menuRowAdapter = null
         cartAdapter = null
     }
 

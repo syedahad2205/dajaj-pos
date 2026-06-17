@@ -3,9 +3,11 @@ package com.dajaj.pos.data.local
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.dajaj.pos.data.local.dao.CustomerDao
 import com.dajaj.pos.data.local.dao.MenuDao
 import com.dajaj.pos.data.local.dao.OrderDao
 import com.dajaj.pos.data.local.dao.PrintJobDao
+import com.dajaj.pos.data.local.entity.CustomerEntity
 import com.dajaj.pos.data.local.entity.MenuEntity
 import com.dajaj.pos.data.local.entity.OrderEntity
 import com.dajaj.pos.data.local.entity.PrintJobEntity
@@ -18,9 +20,10 @@ import com.dajaj.pos.data.local.entity.PrintJobEntity
     entities = [
         MenuEntity::class,
         OrderEntity::class,
-        PrintJobEntity::class
+        PrintJobEntity::class,
+        CustomerEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -28,4 +31,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun menuDao(): MenuDao
     abstract fun orderDao(): OrderDao
     abstract fun printJobDao(): PrintJobDao
+    abstract fun customerDao(): CustomerDao
 }

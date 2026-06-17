@@ -65,6 +65,18 @@ object Constants {
     // --- Order Numbering ---
     /** Starting value for sequential order numbers. */
     const val ORDER_NUMBER_START = 1000L
+    
+    // --- Billing ---
+    /** Starting value for sequential bill numbers. */
+    const val BILL_NUMBER_START = 1000L
+
+    // --- Purge Tasks ---
+    /** Target hour for background purge tasks (0-23, e.g., 3 for 3 AM). */
+    const val PURGE_TARGET_HOUR = 3
+    /** Age of completed orders to purge (30 days in ms). */
+    const val PURGE_ORDER_AGE_MS = 2592000000L
+    /** Age of completed print jobs to purge (7 days in ms). */
+    const val PURGE_PRINT_JOB_AGE_MS = 604800000L
 
     // --- Firestore Collection Names ---
     const val COLLECTION_MENUS = "menus"
@@ -75,4 +87,5 @@ object Constants {
     const val COLLECTION_USERS = "users"
     const val COLLECTION_BILLS = "bills"
     const val COLLECTION_COUNTERS = "counters"
+    const val COLLECTION_CUSTOMERS = "customers"
 }

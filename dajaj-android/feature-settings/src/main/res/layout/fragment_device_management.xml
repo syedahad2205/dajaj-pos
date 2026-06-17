@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="@dimen/padding_md">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Header -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Device Management"
+            android:textAppearance="@style/TextAppearance.DajajPOS.HeadlineMedium" />
+
+        <!-- Device Info Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/layoutDeviceInfo"
+            style="@style/Widget.DajajPOS.Card.Outlined"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_md"
+            tools:visibility="visible">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/padding_md">
+
+                <!-- Device Name (Display Mode) -->
+                <LinearLayout
+                    android:id="@+id/layoutDisplayName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Device Name"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge" />
+
+                        <TextView
+                            android:id="@+id/tvDeviceName"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/margin_xs"
+                            android:textAppearance="@style/TextAppearance.DajajPOS.TitleMedium"
+                            tools:text="Counter POS 1" />
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnEditName"
+                        style="@style/Widget.DajajPOS.Button.Text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="@dimen/touch_target_min"
+                        android:minHeight="@dimen/touch_target_min"
+                        android:text="Edit"
+                        android:contentDescription="Edit device name" />
+                </LinearLayout>
+
+                <!-- Device Name (Edit Mode) -->
+                <LinearLayout
+                    android:id="@+id/layoutEditName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/tilDeviceName"
+                        style="@style/Widget.DajajPOS.TextInputLayout"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Device Name (max 50 characters)"
+                        app:counterEnabled="true"
+                        app:counterMaxLength="50"
+                        app:errorEnabled="true">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etDeviceName"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="text"
+                            android:maxLength="50" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/margin_sm"
+                        android:gravity="end"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnCancelEdit"
+                            style="@style/Widget.DajajPOS.Button.Text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Cancel"
+                            android:contentDescription="Cancel editing device name" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnSaveName"
+                            style="@style/Widget.DajajPOS.Button.Primary"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/margin_sm"
+                            android:text="Save"
+                            android:contentDescription="Save device name" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Separator -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="@dimen/margin_md"
+                    android:layout_marginBottom="@dimen/margin_md"
+                    android:background="?attr/colorOutline" />
+
+                <!-- Device ID -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Device ID"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge" />
+
+                <TextView
+                    android:id="@+id/tvDeviceId"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_xs"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+                    tools:text="dev_abc123" />
+
+                <!-- Status -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_md"
+                    android:text="Status"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge" />
+
+                <TextView
+                    android:id="@+id/tvDeviceStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_xs"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+                    tools:text="Online" />
+
+                <!-- Last Heartbeat -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_md"
+                    android:text="Last Heartbeat"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge" />
+
+                <TextView
+                    android:id="@+id/tvLastHeartbeat"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_xs"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+                    tools:text="Just now" />
+
+                <!-- Primary Printer Designation -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_md"
+                    android:text="Primary Printer"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.LabelLarge" />
+
+                <TextView
+                    android:id="@+id/tvPrimaryPrinter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_xs"
+                    android:textAppearance="@style/TextAppearance.DajajPOS.BodyMedium"
+                    tools:text="Yes — This device is the primary print node" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- No Device State -->
+        <LinearLayout
+            android:id="@+id/layoutNoDevice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_lg"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone"
+            tools:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Device not registered. Please restart the application."
+                android:textAlignment="center"
+                android:textAppearance="@style/TextAppearance.DajajPOS.BodyLarge" />
+        </LinearLayout>
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

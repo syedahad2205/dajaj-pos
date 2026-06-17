@@ -8,10 +8,18 @@ import com.dajaj.pos.data.di.OrdersCollection
 import com.dajaj.pos.data.di.PrintJobsCollection
 import com.dajaj.pos.data.local.entity.OrderEntity
 import com.dajaj.pos.data.sync.OrderSyncManager
+import com.dajaj.pos.domain.model.OrderChannel
+import com.dajaj.pos.domain.model.OrderStatus
+import com.dajaj.pos.domain.repository.CreatedOrder
+import com.dajaj.pos.domain.repository.NewOrder
 import com.dajaj.pos.domain.repository.OrderRepository
 import com.google.firebase.firestore.CollectionReference
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,11 +29,6 @@ import javax.inject.Singleton
  * Strategy:
  * - If online: writes directly to Firestore
  * - If offline: saves order to Room via [OrderSyncManager] for later sync
- *
- * All Firestore writes go to the appropriate collections:
- * - Orders → `orders` collection
- * - Bills → `bills` collection
- * - Print jobs → `print_jobs` collection
  */
 @Singleton
 class OrderRepositoryImpl @Inject constructor(
@@ -36,19 +39,45 @@ class OrderRepositoryImpl @Inject constructor(
     private val orderSyncManager: OrderSyncManager
 ) : OrderRepository {
 
-    /**
-     * Creates an order in Firestore if online, or saves it locally if offline.
-     *
-     * When online: writes the order document to the `orders` collection.
-     * When offline: delegates to [saveOrderLocally] which persists to Room and
-     * will sync later via [OrderSyncManager].
-     *
-     * @param orderData Map of order fields matching the Firestore orders schema
-     * @return Result containing the order ID on success
-     */
+    /** Daily sequential counter for generating human-readable order numbers. */
+    private val dailyCounter = AtomicInteger(1)
+    private var lastDateString: String = getCurrentDateString()
+
+    // ── Typed overload (used by ConfirmOrderUseCase) ──────────────────────────
+
+    override suspend fun createOrder(order: NewOrder): Result<CreatedOrder> {
+        val orderNumber = generateOrderNumber()
+        val orderData = order.toMap(orderNumber)
+
+        return if (isCurrentlyOnline()) {
+            try {
+                val docRef = ordersCollection.add(orderData).await()
+                Result.Success(CreatedOrder(id = docRef.id, orderNumber = orderNumber))
+            } catch (e: Exception) {
+                // Fallback to local storage on Firestore failure
+                val entity = mapToOrderEntity(orderData)
+                val localResult = orderSyncManager.saveOrderLocally(entity)
+                if (localResult.isSuccess) {
+                    Result.Success(CreatedOrder(id = "local", orderNumber = orderNumber))
+                } else {
+                    Result.Error("Failed to create order: ${e.message}", e)
+                }
+            }
+        } else {
+            val entity = mapToOrderEntity(orderData)
+            val localResult = orderSyncManager.saveOrderLocally(entity)
+            if (localResult.isSuccess) {
+                Result.Success(CreatedOrder(id = "local", orderNumber = orderNumber))
+            } else {
+                (localResult as Result.Error).let { Result.Error(it.message, it.throwable) }
+            }
+        }
+    }
+
+    // ── Raw-map overloads (used by legacy use cases) ──────────────────────────
+
     override suspend fun createOrder(orderData: Map<String, Any?>): Result<String> {
         val isOnline = isCurrentlyOnline()
-
         return if (isOnline) {
             try {
                 val orderId = orderData["id"] as? String
@@ -60,7 +89,6 @@ class OrderRepositoryImpl @Inject constructor(
                     Result.Success(docRef.id)
                 }
             } catch (e: Exception) {
-                // Fallback to local save on Firestore write failure
                 val entity = mapToOrderEntity(orderData)
                 val localResult = orderSyncManager.saveOrderLocally(entity)
                 if (localResult.isSuccess) {
@@ -75,19 +103,11 @@ class OrderRepositoryImpl @Inject constructor(
             if (localResult.isSuccess) {
                 Result.Success(orderData["id"] as? String ?: "local")
             } else {
-                (localResult as Result.Error).let {
-                    Result.Error(it.message, it.throwable)
-                }
+                (localResult as Result.Error).let { Result.Error(it.message, it.throwable) }
             }
         }
     }
 
-    /**
-     * Creates a bill document in the Firestore `bills` collection.
-     *
-     * @param billData Map of bill fields matching the Firestore bills schema
-     * @return Result containing the bill document ID on success
-     */
     override suspend fun createBill(billData: Map<String, Any?>): Result<String> {
         return try {
             val billId = billData["id"] as? String
@@ -103,12 +123,6 @@ class OrderRepositoryImpl @Inject constructor(
         }
     }
 
-    /**
-     * Creates a print job document in the Firestore `print_jobs` collection.
-     *
-     * @param printJobData Map of print job fields matching the Firestore print_jobs schema
-     * @return Result containing the print job document ID on success
-     */
     override suspend fun createPrintJob(printJobData: Map<String, Any?>): Result<String> {
         return try {
             val jobId = printJobData["id"] as? String
@@ -124,15 +138,6 @@ class OrderRepositoryImpl @Inject constructor(
         }
     }
 
-    /**
-     * Saves an order, bill, and print job data locally for offline processing.
-     * Delegates order storage to [OrderSyncManager] which handles capacity limits.
-     *
-     * @param orderData Map of order fields
-     * @param billData Map of bill fields (stored alongside order for later sync)
-     * @param printJobData Map of print job fields (stored for later processing)
-     * @return Result indicating success or failure
-     */
     override suspend fun saveOrderLocally(
         orderData: Map<String, Any?>,
         billData: Map<String, Any?>,
@@ -142,10 +147,8 @@ class OrderRepositoryImpl @Inject constructor(
         return orderSyncManager.saveOrderLocally(entity)
     }
 
-    /**
-     * Checks the current connectivity state.
-     * Returns true if the device has an active internet connection.
-     */
+    // ── Private helpers ───────────────────────────────────────────────────────
+
     private suspend fun isCurrentlyOnline(): Boolean {
         return try {
             connectivityObserver.observe().first() == ConnectivityState.CONNECTED
@@ -154,9 +157,40 @@ class OrderRepositoryImpl @Inject constructor(
         }
     }
 
-    /**
-     * Converts a generic order data map to an [OrderEntity] for Room persistence.
-     */
+    private fun generateOrderNumber(): String {
+        val currentDate = getCurrentDateString()
+        if (currentDate != lastDateString) {
+            dailyCounter.set(1)
+            lastDateString = currentDate
+        }
+        val sequence = dailyCounter.getAndIncrement()
+        return "$currentDate${sequence.toString().padStart(4, '0')}"
+    }
+
+    private fun getCurrentDateString(): String {
+        val dateFormat = SimpleDateFormat("ddMMyy", Locale.getDefault())
+        return dateFormat.format(Date())
+    }
+
+    private fun NewOrder.toMap(orderNumber: String): Map<String, Any?> = mapOf(
+        "orderNumber" to orderNumber,
+        "restaurantId" to restaurantId,
+        "channel" to channel.toFirestoreValue(),
+        "type" to type.name.lowercase(),
+        "status" to OrderStatus.PENDING.name.lowercase(),
+        "customerName" to customerName,
+        "customerPhone" to customerPhone,
+        "subtotal" to subtotal,
+        "discountAmount" to discountAmount,
+        "serviceCharge" to serviceCharge,
+        "cgst" to cgst,
+        "sgst" to sgst,
+        "grandTotal" to grandTotal,
+        "paymentMode" to paymentMode.name.lowercase(),
+        "cashierId" to cashierId,
+        "createdAt" to System.currentTimeMillis()
+    )
+
     private fun mapToOrderEntity(orderData: Map<String, Any?>): OrderEntity {
         return OrderEntity(
             id = orderData["id"] as? String ?: "",
