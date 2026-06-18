@@ -269,15 +269,19 @@ export default function ZomatoImportPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-sm text-neutral-900 truncate">{parsed.fileName}</p>
-                  <p className="text-xs text-neutral-400">{parsed.items.length} items parsed</p>
+                  <p className="text-xs text-neutral-400">
+                    {new Set(parsed.items.map((i) => i.itemName)).size} unique items · {parsed.items.length} daily records
+                  </p>
                 </div>
               </div>
 
               {/* Summary */}
               <div className="grid grid-cols-3 gap-2 pt-1">
                 <div className="rounded-lg bg-neutral-50 p-2.5 text-center">
-                  <p className="text-lg font-bold text-neutral-900">{parsed.items.length}</p>
-                  <p className="text-xs text-neutral-400">Items</p>
+                  <p className="text-lg font-bold text-neutral-900">
+                    {new Set(parsed.items.map((i) => i.itemName)).size}
+                  </p>
+                  <p className="text-xs text-neutral-400">Unique Items</p>
                 </div>
                 <div className="rounded-lg bg-neutral-50 p-2.5 text-center">
                   <p className="text-lg font-bold text-orange-600">
@@ -324,39 +328,55 @@ export default function ZomatoImportPage() {
               </div>
             </div>
 
-            {/* Item preview table */}
-            <div className="rounded-xl bg-white border border-neutral-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-neutral-100">
-                <p className="font-semibold text-sm text-neutral-900">Preview (first 20 rows)</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-neutral-50">
-                    <tr>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-neutral-500">Item</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-neutral-500">Category</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-neutral-500">Qty</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-neutral-500">Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-100">
-                    {parsed.items.slice(0, 20).map((item, i) => (
-                      <tr key={i} className="hover:bg-neutral-50">
-                        <td className="px-4 py-2.5 font-medium text-neutral-900 max-w-[160px] truncate">{item.itemName}</td>
-                        <td className="px-4 py-2.5 text-neutral-500 max-w-[120px] truncate">{item.category || '—'}</td>
-                        <td className="px-4 py-2.5 text-right text-orange-600 font-bold tabular-nums">{item.quantitySold}</td>
-                        <td className="px-4 py-2.5 text-right text-neutral-600 tabular-nums">{fmtRupee(item.revenue)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {parsed.items.length > 20 && (
-                  <p className="px-4 py-2 text-xs text-neutral-400 text-center border-t border-neutral-100">
-                    +{parsed.items.length - 20} more items
-                  </p>
-                )}
-              </div>
-            </div>
+            {/* Item preview table — grouped by item, totals across all days */}
+            {(() => {
+              // Aggregate per-day records into per-item totals for preview
+              const grouped = new Map<string, { category: string; qty: number; revenue: number }>();
+              for (const row of parsed.items) {
+                const cur = grouped.get(row.itemName) ?? { category: row.category, qty: 0, revenue: 0 };
+                grouped.set(row.itemName, { category: row.category, qty: cur.qty + row.quantitySold, revenue: cur.revenue + row.revenue });
+              }
+              const rows = Array.from(grouped.entries())
+                .map(([itemName, d]) => ({ itemName, ...d }))
+                .sort((a, b) => b.revenue - a.revenue);
+              const preview = rows.slice(0, 20);
+
+              return (
+                <div className="rounded-xl bg-white border border-neutral-200 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
+                    <p className="font-semibold text-sm text-neutral-900">Preview — Items (totals for period)</p>
+                    <p className="text-xs text-neutral-400">{rows.length} items</p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-neutral-50">
+                        <tr>
+                          <th className="px-4 py-2.5 text-left text-xs font-semibold text-neutral-500">Item</th>
+                          <th className="px-4 py-2.5 text-left text-xs font-semibold text-neutral-500">Category</th>
+                          <th className="px-4 py-2.5 text-right text-xs font-semibold text-neutral-500">Total Qty</th>
+                          <th className="px-4 py-2.5 text-right text-xs font-semibold text-neutral-500">Total Revenue</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-100">
+                        {preview.map((item) => (
+                          <tr key={item.itemName} className="hover:bg-neutral-50">
+                            <td className="px-4 py-2.5 font-medium text-neutral-900 max-w-[160px] truncate">{item.itemName}</td>
+                            <td className="px-4 py-2.5 text-neutral-500 max-w-[120px] truncate">{item.category || '—'}</td>
+                            <td className="px-4 py-2.5 text-right text-orange-600 font-bold tabular-nums">{item.qty}</td>
+                            <td className="px-4 py-2.5 text-right text-neutral-600 tabular-nums">{fmtRupee(item.revenue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {rows.length > 20 && (
+                      <p className="px-4 py-2 text-xs text-neutral-400 text-center border-t border-neutral-100">
+                        +{rows.length - 20} more items
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {importError && (
               <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700">

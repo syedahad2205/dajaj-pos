@@ -1,125 +1,98 @@
 /**
- * Zomato Item Sales Report CSV Parser
+ * Zomato Item Sales Report CSV Parser — Daily Report (pivot/wide format)
  *
- * Handles the standard Zomato Item Sales Report format:
- *   Row 0: Restaurant name / report title
- *   Row 1: Date range  (e.g. "08 Jun, 2025 - 14 Jun, 2025")
- *   Row 2: (empty or sub-header)
- *   Row 3: Column headers — "Item name", "Category", "Sub category",
- *                            "Unit item price", "Quantity sold", "Item rating",
- *                            "Orders with item", "Item quantity per order"
- *   Row 4+: Data rows
+ * Actual CSV structure (from Zomato):
+ *   Row 0 (header):
+ *     Restaurant ID | Restaurant name | Subzone | City | Item name |
+ *     Item category | Item subcategory | Metric | <date1> | <date2> | … | <dateN>
  *
- * The parser is tolerant of:
- *  - Comma-separated or tab-separated files
- *  - Quoted fields
- *  - BOM characters
- *  - Missing metadata header rows (date range can be supplied externally)
+ *   Rows 1-N (data, 5 rows per item):
+ *     …same fixed cols… | Item quantity sold     | qty_d1 | qty_d2 | …
+ *     …same fixed cols… | Unit cost of item (₹)  | cost_d1| cost_d2| …
+ *     …same fixed cols… | Orders with item        | (ignored)
+ *     …same fixed cols… | Item quantity per order | (ignored)
+ *     …same fixed cols… | Item rating             | (ignored)
+ *
+ * One output record is produced per (item, date) pair where qty > 0.
+ * Revenue = quantitySold * unitCost for that specific date.
  */
 
 export interface ParsedZomatoItem {
   itemName: string;
   category: string;
   subCategory: string;
+  /** ISO date yyyy-MM-dd for this specific day */
+  date: string;
   quantitySold: number;
   unitPrice: number;
-  revenue: number; // quantitySold * unitPrice
+  revenue: number;
 }
 
 export interface ZomatoCsvParseResult {
   items: ParsedZomatoItem[];
-  /** ISO date string yyyy-MM-dd or null if not found in file */
+  /** ISO date string yyyy-MM-dd of the first date column */
   reportStartDate: string | null;
-  /** ISO date string yyyy-MM-dd or null if not found in file */
+  /** ISO date string yyyy-MM-dd of the last date column */
   reportEndDate: string | null;
-  /** Raw lines that were scanned for debugging */
-  rawHeaderLines: string[];
   errors: string[];
 }
 
-// ── Month name → 0-based index ───────────────────────────────────────────────
+// ── Date parsing ──────────────────────────────────────────────────────────────
+
 const MONTH_MAP: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
   jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
 };
 
-function parseMonthName(s: string): number | null {
-  return MONTH_MAP[s.toLowerCase().slice(0, 3)] ?? null;
-}
-
 /**
- * Parse a date token like "08 Jun, 2025", "08 Jun 2025", "2025-06-08", "08/06/2025"
- * Returns an ISO date string (yyyy-MM-dd) or null.
+ * Parse date column headers like "8 Jun 2026", "14 Jun, 2026", "2026-06-08"
+ * Returns ISO yyyy-MM-dd or null.
  */
-function parseFlexDate(raw: string): string | null {
-  const s = raw.trim();
+function parseDateHeader(raw: string): string | null {
+  const s = raw.trim().replace(/,/g, '');
 
-  // ISO format: 2025-06-08
-  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (isoMatch) return s;
+  // ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
-  // DD/MM/YYYY
-  const dmyMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (dmyMatch) {
-    const [, d, m, y] = dmyMatch;
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-  }
-
-  // "08 Jun, 2025" or "08 Jun 2025"
-  const namedMatch = s.match(/^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$/);
-  if (namedMatch) {
-    const [, d, mon, y] = namedMatch;
-    const m = parseMonthName(mon);
-    if (m !== null) {
-      return `${y}-${String(m + 1).padStart(2, '0')}-${d.padStart(2, '0')}`;
+  // "8 Jun 2026" or "08 Jun 2026"
+  const m = s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  if (m) {
+    const month = MONTH_MAP[m[2].toLowerCase().slice(0, 3)];
+    if (month !== undefined) {
+      return `${m[3]}-${String(month + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
     }
   }
 
-  // "Jun 08, 2025" or "Jun 08 2025"
-  const namedMatch2 = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
-  if (namedMatch2) {
-    const [, mon, d, y] = namedMatch2;
-    const m = parseMonthName(mon);
-    if (m !== null) {
-      return `${y}-${String(m + 1).padStart(2, '0')}-${d.padStart(2, '0')}`;
+  // "Jun 8 2026"
+  const m2 = s.match(/^([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})$/);
+  if (m2) {
+    const month = MONTH_MAP[m2[1].toLowerCase().slice(0, 3)];
+    if (month !== undefined) {
+      return `${m2[3]}-${String(month + 1).padStart(2, '0')}-${m2[2].padStart(2, '0')}`;
     }
   }
 
   return null;
 }
 
-/**
- * Scan up to the first 8 lines for a date range pattern.
- * Returns [startIso, endIso] or null.
- */
-function extractDateRange(lines: string[]): [string, string] | null {
-  // Separators between start and end date: " - ", " to ", " – ", " — "
-  const sepPattern = /\s+[-–—]|\s+to\s+/i;
+// ── Column indices (fixed) ────────────────────────────────────────────────────
 
-  for (const line of lines.slice(0, 8)) {
-    const stripped = line.replace(/^["'\s]+|["'\s]+$/g, '');
-    const parts = stripped.split(sepPattern);
-    if (parts.length < 2) continue;
+const COL_ITEM_NAME    = 4;
+const COL_CATEGORY     = 5;
+const COL_SUBCATEGORY  = 6;
+const COL_METRIC       = 7;
+const COL_DATES_START  = 8;
 
-    const start = parseFlexDate(parts[0].trim().replace(/,\s*$/, ''));
-    // The end part might have trailing garbage (e.g. extra CSV commas)
-    const endRaw = parts[1].split(',')[0].trim();
-    const end = parseFlexDate(endRaw);
+// Metric identifiers (case-insensitive match)
+const METRIC_QTY  = 'item quantity sold';
+const METRIC_COST = 'unit cost of item';
 
-    if (start && end) return [start, end];
-  }
-  return null;
+function matchMetric(raw: string, target: string): boolean {
+  return raw.toLowerCase().trim().startsWith(target);
 }
 
 // ── CSV tokeniser ─────────────────────────────────────────────────────────────
 
-function detectDelimiter(firstLine: string): string {
-  const tabs = (firstLine.match(/\t/g) || []).length;
-  const commas = (firstLine.match(/,/g) || []).length;
-  return tabs > commas ? '\t' : ',';
-}
-
-/** Minimal RFC 4180-compatible CSV row parser */
 function parseCsvRow(line: string, delimiter: string): string[] {
   const fields: string[] = [];
   let inQuote = false;
@@ -148,23 +121,8 @@ function parseCsvRow(line: string, delimiter: string): string[] {
   return fields;
 }
 
-// ── Column name normaliser ────────────────────────────────────────────────────
-
-function normalise(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-const HEADER_ALIASES: Record<string, string[]> = {
-  itemName:     ['itemname', 'item', 'name', 'itemtitle'],
-  category:     ['category', 'cat'],
-  subCategory:  ['subcategory', 'subcat', 'subcategory'],
-  unitPrice:    ['unitprice', 'unitcost', 'unititemcost', 'unititemsellprice', 'unititemsellingprice', 'price', 'unitsellingprice', 'sellingprice'],
-  quantitySold: ['quantitysold', 'qtysold', 'quantity', 'qty', 'sold', 'quantityordered'],
-};
-
-function resolveHeaderIndex(headers: string[], field: string): number {
-  const aliases = HEADER_ALIASES[field] ?? [];
-  return headers.findIndex((h) => aliases.includes(normalise(h)));
+function detectDelimiter(line: string): string {
+  return (line.match(/\t/g) || []).length > (line.match(/,/g) || []).length ? '\t' : ',';
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -174,93 +132,109 @@ export function parseZomatoCsv(csvText: string): ZomatoCsvParseResult {
 
   // Strip BOM
   const clean = csvText.replace(/^﻿/, '');
-  const rawLines = clean.split(/\r?\n/);
-  const rawHeaderLines = rawLines.slice(0, 8);
+  const rawLines = clean.split(/\r?\n/).filter((l) => l.trim() !== '');
 
-  const delimiter = detectDelimiter(rawLines[0] || '');
+  if (rawLines.length < 2) {
+    return { items: [], reportStartDate: null, reportEndDate: null, errors: ['CSV appears to be empty.'] };
+  }
 
-  // Try to extract date range
-  const dateRange = extractDateRange(rawLines);
+  const delimiter = detectDelimiter(rawLines[0]);
+  const headerFields = parseCsvRow(rawLines[0], delimiter);
 
-  // Find header row
-  let headerRowIdx = -1;
-  let headerFields: string[] = [];
-  for (let i = 0; i < Math.min(rawLines.length, 10); i++) {
+  // Validate header structure
+  if (headerFields.length < COL_DATES_START + 1) {
+    errors.push(`Header row has only ${headerFields.length} columns — expected at least ${COL_DATES_START + 1}. Is this a Zomato Daily Item Sales Report?`);
+    return { items: [], reportStartDate: null, reportEndDate: null, errors };
+  }
+
+  // Extract date columns
+  const dateCols: { index: number; iso: string }[] = [];
+  for (let i = COL_DATES_START; i < headerFields.length; i++) {
+    const iso = parseDateHeader(headerFields[i]);
+    if (iso) dateCols.push({ index: i, iso });
+  }
+
+  if (dateCols.length === 0) {
+    errors.push('No date columns found in the header. Expected columns like "8 Jun 2026".');
+    return { items: [], reportStartDate: null, reportEndDate: null, errors };
+  }
+
+  const reportStartDate = dateCols[0].iso;
+  const reportEndDate   = dateCols[dateCols.length - 1].iso;
+
+  // ── Group data rows by item key ───────────────────────────────────────────
+
+  // key = "ItemName|||Category|||SubCategory"
+  const itemGroups = new Map<
+    string,
+    { qtyRow: string[] | null; costRow: string[] | null }
+  >();
+
+  for (let i = 1; i < rawLines.length; i++) {
     const fields = parseCsvRow(rawLines[i], delimiter);
-    const norm = fields.map(normalise);
-    const hasItemName = norm.some((f) =>
-      HEADER_ALIASES.itemName.some((a) => f.includes(a))
-    );
-    const hasQty = norm.some((f) =>
-      HEADER_ALIASES.quantitySold.some((a) => f.includes(a))
-    );
-    if (hasItemName && hasQty) {
-      headerRowIdx = i;
-      headerFields = fields;
-      break;
+    if (fields.length < COL_METRIC + 1) continue;
+
+    const itemName   = fields[COL_ITEM_NAME]?.trim()   ?? '';
+    const category   = fields[COL_CATEGORY]?.trim()    ?? '';
+    const subCat     = fields[COL_SUBCATEGORY]?.trim() ?? '';
+    const metric     = fields[COL_METRIC]?.trim()      ?? '';
+
+    if (!itemName) continue;
+
+    const key = `${itemName}|||${category}|||${subCat}`;
+    if (!itemGroups.has(key)) {
+      itemGroups.set(key, { qtyRow: null, costRow: null });
+    }
+
+    const group = itemGroups.get(key)!;
+    if (matchMetric(metric, METRIC_QTY)) {
+      group.qtyRow = fields;
+    } else if (matchMetric(metric, METRIC_COST)) {
+      group.costRow = fields;
     }
   }
 
-  if (headerRowIdx === -1) {
-    errors.push('Could not find a header row with "Item name" and "Quantity sold" columns. Please verify this is a Zomato Item Sales Report.');
-    return { items: [], reportStartDate: null, reportEndDate: null, rawHeaderLines, errors };
+  if (itemGroups.size === 0) {
+    errors.push('No item rows found. Verify this is a Zomato Daily Item Sales Report.');
+    return { items: [], reportStartDate, reportEndDate, errors };
   }
 
-  const idxItemName     = resolveHeaderIndex(headerFields, 'itemName');
-  const idxCategory     = resolveHeaderIndex(headerFields, 'category');
-  const idxSubCategory  = resolveHeaderIndex(headerFields, 'subCategory');
-  const idxUnitPrice    = resolveHeaderIndex(headerFields, 'unitPrice');
-  const idxQty          = resolveHeaderIndex(headerFields, 'quantitySold');
-
-  if (idxItemName === -1) errors.push('Missing column: Item name');
-  if (idxQty === -1)      errors.push('Missing column: Quantity sold');
-  if (idxUnitPrice === -1) errors.push('Missing column: Unit item price');
-
-  if (errors.length > 0) {
-    return { items: [], reportStartDate: null, reportEndDate: null, rawHeaderLines, errors };
-  }
+  // ── Build per-date records ────────────────────────────────────────────────
 
   const items: ParsedZomatoItem[] = [];
 
-  for (let i = headerRowIdx + 1; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    if (!line) continue;
+  for (const [key, { qtyRow, costRow }] of itemGroups) {
+    if (!qtyRow) continue; // need at least quantity row
 
-    const fields = parseCsvRow(line, delimiter);
-    const itemName = fields[idxItemName]?.trim() ?? '';
-    if (!itemName) continue;
+    const [itemName, category, subCategory] = key.split('|||');
 
-    const quantitySold = parseFloat(fields[idxQty] ?? '0') || 0;
-    const unitPrice    = parseFloat(fields[idxUnitPrice] ?? '0') || 0;
-    const category     = idxCategory !== -1 ? (fields[idxCategory]?.trim() ?? '') : '';
-    const subCategory  = idxSubCategory !== -1 ? (fields[idxSubCategory]?.trim() ?? '') : '';
+    for (const { index, iso } of dateCols) {
+      const qtyRaw  = qtyRow[index]  ?? '-';
+      const costRaw = costRow?.[index] ?? '-';
 
-    // Skip summary / total rows
-    if (
-      normalise(itemName) === 'total' ||
-      normalise(itemName).startsWith('grandtotal') ||
-      normalise(itemName).startsWith('subtotal')
-    ) continue;
+      // '-' means no sales on that day
+      if (qtyRaw === '-' || qtyRaw === '') continue;
 
-    items.push({
-      itemName,
-      category,
-      subCategory,
-      quantitySold,
-      unitPrice,
-      revenue: Math.round(quantitySold * unitPrice * 100) / 100,
-    });
+      const qty  = parseFloat(qtyRaw);
+      const cost = costRaw === '-' || costRaw === '' ? 0 : parseFloat(costRaw);
+
+      if (!isFinite(qty) || qty <= 0) continue;
+
+      items.push({
+        itemName,
+        category,
+        subCategory,
+        date: iso,
+        quantitySold: qty,
+        unitPrice:    isFinite(cost) ? cost : 0,
+        revenue:      Math.round(qty * (isFinite(cost) ? cost : 0) * 100) / 100,
+      });
+    }
   }
 
   if (items.length === 0) {
-    errors.push('No valid item rows found after the header. Please check the CSV file.');
+    errors.push('No sales data found (all quantities are "-"). The report period may have no orders.');
   }
 
-  return {
-    items,
-    reportStartDate: dateRange?.[0] ?? null,
-    reportEndDate:   dateRange?.[1] ?? null,
-    rawHeaderLines,
-    errors,
-  };
+  return { items, reportStartDate, reportEndDate, errors };
 }

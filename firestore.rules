@@ -215,6 +215,21 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // ── Zomato Sales Tracker ──────────────────────────────────────────────────
+    // Admin-only: import payout CSVs, view analytics, manage history.
+    match /zomato_imports/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /zomato_item_sales/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /zomato_category_summary/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /zomato_item_summary/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // ── Default deny ──────────────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
