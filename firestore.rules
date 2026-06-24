@@ -23,7 +23,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn()
-          && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
     function isAdminSelf(userId) {
@@ -36,17 +36,17 @@ service cloud.firestore {
 
     function isActivePosStaff() {
       return isSignedIn()
-          && request.auth.token.email != null
-          && exists(posStaffPath())
-          && get(posStaffPath()).data.status == 'active';
+        && request.auth.token.email != null
+        && exists(posStaffPath())
+        && get(posStaffPath()).data.status == 'active';
     }
 
     function isInventoryManager() {
       return isSignedIn()
-          && request.auth.token.email != null
-          && exists(posStaffPath())
-          && get(posStaffPath()).data.status == 'active'
-          && get(posStaffPath()).data.canManageInventory == true;
+        && request.auth.token.email != null
+        && exists(posStaffPath())
+        && get(posStaffPath()).data.status == 'active'
+        && get(posStaffPath()).data.canManageInventory == true;
     }
 
     function isAdminOrPosStaff() {
@@ -73,13 +73,16 @@ service cloud.firestore {
       // Public read — it's just approval status, no sensitive data.
       // Also needed for the pre-auth first-login check.
       allow read: if true;
+
       // Unauthenticated create for pending request submissions (no auth account yet)
       allow create: if request.resource.data.status == 'pending'
                     && request.resource.data.email == email;
+
       // Signed-in POS user may update their own doc (e.g. to store uid on first login)
       allow update: if isSignedIn()
                     && request.auth.token.email != null
                     && request.auth.token.email.lower() == email;
+
       // Admin has full access including inventory permission management
       allow write: if isAdmin();
     }
@@ -97,8 +100,8 @@ service cloud.firestore {
     // POS staff may create bills and delete them when reopening a bill for edit
     // (reopenBillAsOrder deletes the old bill after copying to pos_open_orders).
     match /bills/{billId} {
-      allow read:          if true;
-      allow create:        if isAdminOrPosStaff();
+      allow read:           if true;
+      allow create:         if isAdminOrPosStaff();
       allow update, delete: if isAdminOrPosStaff();
     }
 
@@ -189,6 +192,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── Inventory Masters ─────────────────────────────────────────────────────
+    // Shared inventory entities derived from menu data.
+    // Public read for dependency resolution. Admin-only write.
+    match /inventory_masters/{masterId} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
     // ── Delivery Settings ─────────────────────────────────────────────────────
     // Public read for delivery fee calculation on the checkout page.
     // Only admin can configure zones and minimum order.
@@ -210,8 +221,8 @@ service cloud.firestore {
     // Admin can read and manage all logs. Inventory managers may create audit
     // records for their own stock changes and review the log history.
     match /inventory_audit_logs/{logId} {
-      allow read: if isAdmin() || isInventoryManager();
-      allow create: if isAdminOrInventoryManager();
+      allow read:           if isAdmin() || isInventoryManager();
+      allow create:         if isAdminOrInventoryManager();
       allow update, delete: if isAdmin();
     }
 
@@ -220,19 +231,34 @@ service cloud.firestore {
     match /zomato_imports/{docId} {
       allow read, write: if isAdmin();
     }
+
     match /zomato_item_sales/{docId} {
       allow read, write: if isAdmin();
     }
+
     match /zomato_category_summary/{docId} {
       allow read, write: if isAdmin();
     }
+
     match /zomato_item_summary/{docId} {
       allow read, write: if isAdmin();
+    }
+
+    // ── Customer Feedback ─────────────────────────────────────────────────────
+    // Customers sign in with Google (Firebase Auth) to submit feedback.
+    // They can only create their own record — no reading or editing after submit.
+    // Admins have full access for the feedback management screen.
+    match /feedback/{docId} {
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.source == "qr-feedback";
+      allow read, update, delete: if isAdmin();
     }
 
     // ── Default deny ──────────────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
+
   }
 }

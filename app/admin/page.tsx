@@ -34,6 +34,11 @@ const adminLinks = [
     title: "Zomato Sales Tracker",
     description: "Import payout CSVs, analyse item performance, and generate reports",
   },
+  {
+    href: "/admin/feedback",
+    title: "Customer Feedback",
+    description: "Review direct feedback submitted by customers via QR code packaging",
+  },
 ];
 
 export default function AdminDashboardPage() {
