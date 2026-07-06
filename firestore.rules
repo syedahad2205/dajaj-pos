@@ -255,6 +255,66 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    // =========================================================================
+    // FINANCE MODULE — single source of truth for all money movement.
+    // Admin-only for now (Manager/Cashier/Accountant roles are a future phase).
+    // All collections are prefixed fin_. Transactions are treated as an
+    // append-mostly immutable ledger — voids are soft (status flips to 'void',
+    // never deleted) so history/audit trail stays intact.
+    // =========================================================================
+
+    match /fin_accounts/{accountId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /fin_expense_categories/{categoryId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /fin_expense_subcategories/{subcategoryId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /fin_income_categories/{categoryId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /fin_vendors/{vendorId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Finance Defaults — maps a business event (Cash Sales, UPI Sales, a
+    // Pigmi Deposit, ...) to the account it should automatically post
+    // into when Daily Closing is saved. Deliberately not prefixed fin_
+    // per the original spec for this collection.
+    match /finance_defaults/{eventKey} {
+      allow read, write: if isAdmin();
+    }
+
+    // Ledger records are immutable once created except for the status/void
+    // fields — enforced at the service layer via runTransaction. Rules stay
+    // admin-only; field-level immutability is an app-layer guarantee here
+    // since Admin SDK-style granular rule checks would require duplicating
+    // the whole transaction shape in rules.
+    match /fin_transactions/{transactionId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /fin_daily_closing/{closingId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Append-only audit trail. Admin may read/create; nothing may ever be
+    // updated or deleted so the trail can't be tampered with after the fact.
+    match /fin_audit_logs/{logId} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /fin_settings/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // ── Default deny ──────────────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

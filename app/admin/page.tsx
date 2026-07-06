@@ -25,6 +25,11 @@ const adminLinks = [
     description: "View and manage customer orders",
   },
   {
+    href: "/admin/finance/closing",
+    title: "Finance",
+    description: "Daily Closing — log cash expenses, Pigmi deposits, and sales, then close the books in under 2 minutes",
+  },
+  {
     href: "/admin/inventory",
     title: "Inventory Logs",
     description: "Review inventory updates and audit history",

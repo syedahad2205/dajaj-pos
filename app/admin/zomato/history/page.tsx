@@ -11,6 +11,7 @@ import {
   saveSettlement,
   type ZomatoImport,
 } from '@/services/zomatoService';
+import { postZomatoSettlementToFinance } from '@/services/zomatoFinanceService';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,8 @@ function SettlementForm({
   const [saving,   setSaving]   = useState(false);
   const [err,      setErr]      = useState<string | null>(null);
   const [expanded, setExpanded] = useState(!isFull); // collapse if already settled
+  const [syncing,  setSyncing]  = useState(false);
+  const [syncErr,  setSyncErr]  = useState<string | null>(null);
 
   const novNum    = parseFloat(nov);
   const payoutNum = parseFloat(payout);
@@ -150,6 +153,22 @@ function SettlementForm({
       setSaving(false);
     }
   };
+
+  const handleSyncToFinance = async () => {
+    setSyncErr(null);
+    setSyncing(true);
+    try {
+      await postZomatoSettlementToFinance(imp.id);
+      onSaved();
+    } catch (e) {
+      setSyncErr(e instanceof Error ? e.message : 'Failed to sync to Finance.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const financeWarnings = imp.financePostingWarnings ?? [];
+  const financeSynced = isFull && (imp.financeTransferTransactionId || imp.financeAdjustmentTransactionId) && financeWarnings.length === 0;
 
   return (
     <div className="border-t border-neutral-100 pt-3 mt-1 space-y-2">
@@ -198,6 +217,54 @@ function SettlementForm({
                   {imp.deductionPct !== undefined ? `${(imp.deductionPct * 100).toFixed(3)}%` : '—'}
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Finance sync status */}
+          {isFull && (
+            <div className="rounded-lg border border-neutral-200 px-3 py-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Finance Sync</p>
+                {financeSynced ? (
+                  <span className="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5 font-medium">synced</span>
+                ) : financeWarnings.length > 0 ? (
+                  <span className="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5 font-medium">needs attention</span>
+                ) : (
+                  <span className="text-xs bg-neutral-100 text-neutral-500 rounded-full px-2 py-0.5 font-medium">not synced</span>
+                )}
+              </div>
+              {typeof imp.financeEscrowTotal === 'number' && typeof imp.financeDifference === 'number' && (
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="rounded-lg bg-neutral-50 px-2 py-1.5">
+                    <p className="text-neutral-400">Escrow Recognized</p>
+                    <p className="font-bold text-neutral-700 mt-0.5">{fmtRupeeExact(imp.financeEscrowTotal)}</p>
+                  </div>
+                  <div className="rounded-lg bg-neutral-50 px-2 py-1.5">
+                    <p className="text-neutral-400">Settlement</p>
+                    <p className="font-bold text-emerald-700 mt-0.5">{fmtRupeeExact(imp.finalPayout ?? 0)}</p>
+                  </div>
+                  <div className="rounded-lg bg-neutral-50 px-2 py-1.5">
+                    <p className="text-neutral-400">Difference</p>
+                    <p className={`font-bold mt-0.5 tabular-nums ${imp.financeDifference > 0 ? 'text-red-600' : imp.financeDifference < 0 ? 'text-emerald-700' : 'text-neutral-700'}`}>
+                      {imp.financeDifference > 0 ? '-' : imp.financeDifference < 0 ? '+' : ''}
+                      {fmtRupeeExact(Math.abs(imp.financeDifference))}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {financeWarnings.length > 0 && (
+                <ul className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 list-disc pl-5 space-y-0.5">
+                  {financeWarnings.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              )}
+              {syncErr && <p className="text-xs text-red-600">{syncErr}</p>}
+              <button
+                onClick={handleSyncToFinance}
+                disabled={syncing}
+                className="w-full py-1.5 rounded-lg border border-neutral-300 text-xs font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 transition-colors"
+              >
+                {syncing ? 'Syncing…' : 'Sync to Finance'}
+              </button>
             </div>
           )}
 
