@@ -44,7 +44,12 @@ export function FeedbackAuthProvider({ children }: { children: ReactNode }) {
       loading,
       signInWithGoogle: async () => {
         const provider = new GoogleAuthProvider();
-        await signInWithPopup(auth, provider);
+        try {
+          await signInWithPopup(auth, provider);
+        } catch (err) {
+          console.error("[FeedbackAuth] signInWithPopup error:", err);
+          throw err;
+        }
       },
       signOutUser: async () => {
         await signOut(auth);

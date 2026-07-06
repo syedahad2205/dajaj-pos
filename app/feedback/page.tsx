@@ -48,8 +48,10 @@ export default function FeedbackPage() {
     setGlobalError("");
     try {
       await signInWithGoogle();
-    } catch {
-      setGlobalError("Sign-in failed. Please try again.");
+    } catch (err) {
+      console.error("[feedback] sign-in error:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      setGlobalError(message || "Sign-in failed. Please try again.");
     } finally {
       setAuthLoading(false);
     }
