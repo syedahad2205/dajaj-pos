@@ -15,6 +15,12 @@ service cloud.firestore {
     // CUSTOMER  — No Firebase Auth. Phone + OTP session in localStorage.
     //
     // RIDER     — No Firebase Auth. riderId + access code in localStorage.
+    //
+    // FINANCE USER — No Firebase Auth. Managed by admins in finance_auth via
+    //             the web app; will authenticate from the future React
+    //             Native Daily Closing app via a username/password check
+    //             against a bcrypt hash (services/financeUsersService.ts).
+    //             Entirely separate from admin/POS/customer/rider auth.
     // =========================================================================
 
     function isSignedIn() {
@@ -312,6 +318,16 @@ service cloud.firestore {
     }
 
     match /fin_settings/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── Finance Users (finance_auth) ──────────────────────────────────────────
+    // Auth infrastructure for the future React Native Daily Closing app.
+    // Completely separate from /admins — Finance Users have no Firebase Auth
+    // account, so request.auth is never a Finance User here. Only an admin
+    // (managing this from the web app) may read/write, which also means
+    // password hashes are never exposed to an unauthenticated client.
+    match /finance_auth/{financeUserId} {
       allow read, write: if isAdmin();
     }
 

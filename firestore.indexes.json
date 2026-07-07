@@ -87,6 +87,14 @@
         { "fieldPath": "branchId", "order": "ASCENDING" },
         { "fieldPath": "displayOrder", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "finance_auth",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "branchId", "order": "ASCENDING" },
+        { "fieldPath": "fullName", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

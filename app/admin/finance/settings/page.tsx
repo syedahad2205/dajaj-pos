@@ -10,7 +10,7 @@ const links = [
   { href: "/admin/finance/settings/defaults", title: "Finance Defaults", description: "Configure where Daily Closing and automatic financial events are posted. Changing these settings only affects future transactions." },
   { href: "/admin/finance/settings/pigmi", title: "Pigmi Settings", description: "Track total Pigmi deposits collected over time." },
   { href: "/admin/finance/settings/locks", title: "Lock Settings", description: "See which days are locked and reopen a day if it needs correcting." },
-  { href: "/admin/finance/settings/users", title: "Users", description: "Manager, cashier, and accountant roles — coming in a later phase." },
+  { href: "/admin/finance/settings/users", title: "Finance Users", description: "Create logins for the Daily Closing mobile app — cashiers and managers, separate from DAJAJ Admin accounts." },
   { href: "/admin/finance/vendors", title: "Vendors", description: "Supplier records and purchase history — vendor tagging on Transactions is planned for a later phase." },
 ];
 

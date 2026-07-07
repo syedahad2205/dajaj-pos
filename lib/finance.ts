@@ -305,7 +305,8 @@ export type FinanceAuditModule =
   | "closing"
   | "closing_expense"
   | "closing_deposit"
-  | "finance_default";
+  | "finance_default"
+  | "finance_user";
 
 export type FinanceAuditAction =
   | "create"
@@ -316,7 +317,45 @@ export type FinanceAuditAction =
   | "delete"
   | "close"
   | "reopen"
-  | "backfill";
+  | "backfill"
+  | "disable"
+  | "enable"
+  | "password_change"
+  | "login";
+
+// ─────────────────────────────────────────────────────────────────────────
+// Finance Users — a separate, lightweight login intended for the future
+// React Native Daily Closing app. Deliberately NOT Firebase Auth and NOT
+// the same collection/concept as /admins — a Finance User can only ever
+// authenticate against finance_auth via authenticateFinanceUser(), never
+// through the DAJAJ web admin login. `role` only has one value today
+// (finance_user) but is kept as a field so real roles (cashier, manager,
+// owner, auditor, ...) can be introduced later without a schema change.
+// ─────────────────────────────────────────────────────────────────────────
+export type FinanceUserRole = "finance_user";
+
+export interface FinanceUser {
+  id: string;
+  fullName: string;
+  username: string; // lowercase, unique
+  passwordHash: string;
+  active: boolean;
+  role: FinanceUserRole;
+  lastLogin?: Timestamp | null;
+  createdBy: string;
+  createdByName: string;
+  branchId: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+/** Safe-to-expose shape of a FinanceUser — never includes passwordHash. */
+export type FinanceUserPublic = Omit<FinanceUser, "passwordHash">;
+
+export function toFinanceUserPublic(user: FinanceUser): FinanceUserPublic {
+  const { passwordHash, ...rest } = user;
+  return rest;
+}
 
 export interface FinanceAuditLog {
   id: string;
