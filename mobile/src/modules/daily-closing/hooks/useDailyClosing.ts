@@ -69,6 +69,7 @@ async function fetchDailyClosingFromAPI(date: string): Promise<FinanceDailyClosi
   console.log('[fetchDailyClosing] Full Authorization header:', `Bearer ${idToken.substring(0, 20)}...`);
   
   const headers = { 
+    'X-Auth-Token': `Bearer ${idToken}`,
     'Authorization': `Bearer ${idToken}`,
     'Content-Type': 'application/json',
   };

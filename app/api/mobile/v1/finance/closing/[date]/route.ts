@@ -14,7 +14,7 @@ export async function OPTIONS() {
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,PATCH,OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      'Access-Control-Allow-Headers': 'Authorization, X-Auth-Token, Content-Type',
       'Access-Control-Max-Age': '86400',
     },
   });

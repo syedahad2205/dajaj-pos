@@ -53,7 +53,8 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
   });
   
   // 1. Extract bearer token
-  const authorization = request.headers.get("authorization") ?? request.headers.get("Authorization");
+  const authorization = request.headers.get("authorization") ?? request.headers.get("Authorization")
+    ?? request.headers.get("x-auth-token") ?? request.headers.get("X-Auth-Token");
   console.log('[mobileFinanceAuth] Authorization header present:', !!authorization);
   console.log('[mobileFinanceAuth] Authorization header value:', authorization?.substring(0, 30));
   console.log('[mobileFinanceAuth] Authorization header starts with Bearer:', authorization?.startsWith("Bearer "));
