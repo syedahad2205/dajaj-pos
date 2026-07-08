@@ -81,6 +81,14 @@
       ]
     },
     {
+      "collectionGroup": "fin_daily_closing",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "branchId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "finance_defaults",
       "queryScope": "COLLECTION",
       "fields": [

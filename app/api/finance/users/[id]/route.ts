@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedFirestoreForRequest } from "@/lib/firebaseServerApp";
 import { financeErrorResponse } from "@/lib/financeApiError";
+import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { deleteFinanceUser, updateFinanceUser } from "@/services/financeUsersService";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         userEmail ?? "Unknown",
         firestore,
       );
+      if (body.active === false) {
+        await getAdminAuth().revokeRefreshTokens(params.id);
+      }
       return NextResponse.json({ success: true });
     } finally {
       await cleanup();

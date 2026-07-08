@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- DAJAJ brand colors -->
+    <color name="dajaj_red">#d43f2f</color>
+    <color name="dajaj_cream">#fff8ed</color>
+    <color name="dajaj_orange">#ea580c</color>
+</resources>

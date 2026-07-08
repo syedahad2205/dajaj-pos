@@ -1,0 +1,31 @@
+# React Native / Metro
+node_modules/
+.metro-health-check*
+
+# Android
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/app/debug.keystore
+android/.idea/
+*.keystore
+!debug.keystore
+
+# iOS
+ios/build/
+ios/Pods/
+ios/DerivedData/
+ios/*.xcworkspace/xcuserdata/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Misc
+.DS_Store
+*.orig
+npm-debug.log
+yarn-debug.log*
+yarn-error.log*
