@@ -75,9 +75,17 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
     }));
   } catch (error) {
     console.error('[mobileFinanceAuth] Token verification failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return {
       ok: false,
-      response: NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 }),
+      response: NextResponse.json({ 
+        success: false, 
+        message: "Unauthorized: Token verification failed",
+        debug: {
+          error: errorMessage,
+          tokenPreview: idToken.substring(0, 50) + '...',
+        }
+      }, { status: 401 }),
     };
   }
 
@@ -85,9 +93,20 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
   if (!decodedToken.financeUser && !(decodedToken as any)['financeUser']) {
     console.error('[mobileFinanceAuth] Token missing financeUser claim');
     console.error('[mobileFinanceAuth] Full decoded token:', JSON.stringify(decodedToken, null, 2));
+    
+    // Return detailed error for debugging
     return {
       ok: false,
-      response: NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 }),
+      response: NextResponse.json({ 
+        success: false, 
+        message: "Unauthorized: financeUser claim missing",
+        debug: {
+          hasFinanceUserDirect: !!decodedToken.financeUser,
+          hasFinanceUserBracket: !!(decodedToken as any)['financeUser'],
+          tokenKeys: Object.keys(decodedToken),
+          uid: decodedToken.uid,
+        }
+      }, { status: 401 }),
     };
   }
 
