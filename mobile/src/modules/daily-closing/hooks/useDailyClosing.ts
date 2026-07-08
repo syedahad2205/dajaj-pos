@@ -66,10 +66,19 @@ async function fetchDailyClosingFromAPI(date: string): Promise<FinanceDailyClosi
   
   const url = `${API_BASE}/finance/closing/${date}`;
   console.log('[fetchDailyClosing] Fetching:', url);
-  console.log('[fetchDailyClosing] Authorization header:', `Bearer ${idToken.substring(0, 20)}...`);
+  console.log('[fetchDailyClosing] Full Authorization header:', `Bearer ${idToken.substring(0, 20)}...`);
+  
+  const headers = { 
+    'Authorization': `Bearer ${idToken}`,
+    'Content-Type': 'application/json',
+  };
+  console.log('[fetchDailyClosing] Request headers:', JSON.stringify(Object.keys(headers)));
+  console.log('[fetchDailyClosing] Authorization header key:', 'Authorization');
+  console.log('[fetchDailyClosing] Authorization header value length:', headers.Authorization.length);
 
   const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${idToken}` },
+    method: 'GET',
+    headers,
   });
 
   console.log('[fetchDailyClosing] Response status:', response.status);

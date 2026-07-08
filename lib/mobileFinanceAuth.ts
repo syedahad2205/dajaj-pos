@@ -46,9 +46,16 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
   console.log('[mobileFinanceAuth] Request URL:', request.url);
   console.log('[mobileFinanceAuth] Request method:', request.method);
   
+  // Log ALL headers to debug
+  console.log('[mobileFinanceAuth] All request headers:');
+  request.headers.forEach((value, key) => {
+    console.log(`[mobileFinanceAuth]   ${key}: ${value.substring(0, 50)}${value.length > 50 ? '...' : ''}`);
+  });
+  
   // 1. Extract bearer token
   const authorization = request.headers.get("authorization") ?? request.headers.get("Authorization");
   console.log('[mobileFinanceAuth] Authorization header present:', !!authorization);
+  console.log('[mobileFinanceAuth] Authorization header value:', authorization?.substring(0, 30));
   console.log('[mobileFinanceAuth] Authorization header starts with Bearer:', authorization?.startsWith("Bearer "));
   
   if (!authorization?.startsWith("Bearer ")) {
@@ -61,6 +68,7 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
         debug: {
           hasAuthHeader: !!authorization,
           authHeaderPreview: authorization?.substring(0, 20),
+          allHeaders: Array.from(request.headers.keys()),
         }
       }, { status: 401 }),
     };
