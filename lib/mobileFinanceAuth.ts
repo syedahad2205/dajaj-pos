@@ -63,8 +63,16 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
     decodedToken = await getAdminAuth().verifyIdToken(idToken);
     console.log('[mobileFinanceAuth] Token verified successfully');
     console.log('[mobileFinanceAuth] UID:', decodedToken.uid);
-    console.log('[mobileFinanceAuth] financeUser claim:', decodedToken.financeUser);
-    console.log('[mobileFinanceAuth] All claims:', JSON.stringify(decodedToken, null, 2).substring(0, 500));
+    console.log('[mobileFinanceAuth] Type of decodedToken:', typeof decodedToken);
+    console.log('[mobileFinanceAuth] decodedToken keys:', Object.keys(decodedToken));
+    console.log('[mobileFinanceAuth] financeUser claim (direct):', decodedToken.financeUser);
+    console.log('[mobileFinanceAuth] financeUser claim (bracket):', (decodedToken as any)['financeUser']);
+    console.log('[mobileFinanceAuth] All custom claims:', JSON.stringify({
+      financeUser: decodedToken.financeUser,
+      active: (decodedToken as any).active,
+      email: decodedToken.email,
+      email_verified: decodedToken.email_verified,
+    }));
   } catch (error) {
     console.error('[mobileFinanceAuth] Token verification failed:', error);
     return {
@@ -73,8 +81,10 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
     };
   }
 
-  if (!decodedToken.financeUser) {
+  console.log('[mobileFinanceAuth] Checking financeUser claim...');
+  if (!decodedToken.financeUser && !(decodedToken as any)['financeUser']) {
     console.error('[mobileFinanceAuth] Token missing financeUser claim');
+    console.error('[mobileFinanceAuth] Full decoded token:', JSON.stringify(decodedToken, null, 2));
     return {
       ok: false,
       response: NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 }),
