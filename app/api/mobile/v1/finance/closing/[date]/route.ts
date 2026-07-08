@@ -6,6 +6,20 @@ import { verifyFinanceUserRequest, getFinanceUserFirestoreClient, extractBearerT
 
 export const dynamic = "force-dynamic";
 
+// Handle CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,PATCH,OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
+
 // NOTE: reopenDailyClosing and backfillDailyClosingPostings are NOT exposed
 // here — they are Admin-only and remain on the existing web-facing routes only
 // (app/api/finance/closing/[date]/reopen and /backfill). Per Requirement 4.4.
@@ -18,18 +32,40 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request, { params }: { params: { date: string } }) {
   try {
     const verified = await verifyFinanceUserRequest(request);
-    if (!verified.ok) return verified.response;
+    if (!verified.ok) {
+      // Add CORS headers to error response
+      const errorResponse = verified.response;
+      errorResponse.headers.set('Access-Control-Allow-Origin', '*');
+      errorResponse.headers.set('Access-Control-Allow-Credentials', 'true');
+      return errorResponse;
+    }
 
     const idToken = extractBearerToken(request)!;
     const { firestore, cleanup } = await getFinanceUserFirestoreClient(idToken);
     try {
       const closing = await getDailyClosingView(params.date, firestore);
-      return NextResponse.json({ success: true, closing, serverTime: new Date().toISOString() });
+      const response = NextResponse.json({ 
+        success: true, 
+        closing, 
+        serverTime: new Date().toISOString() 
+      });
+      
+      // Add CORS headers to success response
+      response.headers.set('Access-Control-Allow-Origin', '*');
+      response.headers.set('Access-Control-Allow-Credentials', 'true');
+      
+      return response;
     } finally {
       await cleanup();
     }
   } catch (error) {
-    return financeErrorResponse(error, " [mobile GET closing]");
+    const errorResponse = financeErrorResponse(error, " [mobile GET closing]");
+    
+    // Add CORS headers to error response
+    errorResponse.headers.set('Access-Control-Allow-Origin', '*');
+    errorResponse.headers.set('Access-Control-Allow-Credentials', 'true');
+    
+    return errorResponse;
   }
 }
 
