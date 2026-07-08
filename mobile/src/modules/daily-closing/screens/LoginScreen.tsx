@@ -59,9 +59,25 @@ export function LoginScreen({ route }: Props) {
       // On iOS, currentUser can lag behind signInWithCustomToken's resolution,
       // causing downstream getIdToken() calls to fail immediately after navigation.
       console.log('[Login] Step 5: Getting ID token to ensure auth state is ready...');
-      const token = await userCredential.user.getIdToken();
+      const token = await userCredential.user.getIdToken(true); // Force refresh immediately after sign-in
       console.log('[Login] Step 6: ID token obtained, length:', token.length);
       console.log('[Login] Token preview:', token.substring(0, 50) + '...');
+      
+      // Decode and log claims for debugging
+      try {
+        const tokenParts = token.split('.');
+        if (tokenParts.length === 3) {
+          const payload = JSON.parse(atob(tokenParts[1]));
+          console.log('[Login] Token claims after sign-in:', JSON.stringify({
+            financeUser: payload.financeUser,
+            active: payload.active,
+            exp: payload.exp,
+            iat: payload.iat,
+          }));
+        }
+      } catch (e) {
+        console.warn('[Login] Could not decode token:', e);
+      }
       
       logger.auth.firebaseSignInSuccess(userCredential.user.uid);
       logger.auth.loginSuccess(user.username, userCredential.user.uid);

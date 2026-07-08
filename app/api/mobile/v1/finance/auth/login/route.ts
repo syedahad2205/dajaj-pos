@@ -89,6 +89,14 @@ export async function POST(request: Request) {
       makeAdminSdkDataSource(),
     );
 
+    // Set REAL custom claims on the user (not just in the custom token)
+    // This ensures the claims persist and are available in verifyIdToken()
+    await getAdminAuth().setCustomUserClaims(user.id, {
+      financeUser: true,
+      active: true,
+    });
+
+    // Now create the custom token (claims are already set above, but we include them for immediate use)
     const customToken = await getAdminAuth().createCustomToken(user.id, {
       financeUser: true,
       active: true,
