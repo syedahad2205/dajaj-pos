@@ -14,6 +14,7 @@ import type { AuthStackParamList } from '@/navigation/AuthNavigator';
 import { login } from '@/core/auth/authApi';
 import { getFirebaseAuth } from '@/core/firebase/firebaseClient';
 import { useAuthStore } from '@/core/auth/useAuthStore';
+import { logger } from '@/core/logging/logger';
 import { DajajLogo } from '@/core/ui/components/DajajLogo';
 import { colors, radius, shadow } from '@/core/ui/theme/colors';
 
@@ -35,14 +36,50 @@ export function LoginScreen({ route }: Props) {
   async function onSubmit(values: FormValues) {
     setServerError(null);
     setIsLoading(true);
+    console.log('==========================================');
+    console.log('🔐 LOGIN STARTED');
+    console.log('Username:', values.username.trim());
+    console.log('==========================================');
+    
+    logger.info('auth', 'Login button pressed', { username: values.username.trim() });
     try {
+      console.log('[Login] Step 1: Calling login API...');
       const { customToken, user } = await login(values.username.trim(), values.password);
+      console.log('[Login] Step 2: Custom token received, length:', customToken.length);
+      console.log('[Login] User data:', JSON.stringify(user));
+      
+      // authApi.ts logs: loginStart, request, response, customTokenReceived, loginFailure
       const auth = getFirebaseAuth();
-      await signInWithCustomToken(auth, customToken);
+      logger.auth.firebaseSignInStart();
+      console.log('[Login] Step 3: Signing in to Firebase...');
+      const userCredential = await signInWithCustomToken(auth, customToken);
+      console.log('[Login] Step 4: Firebase sign-in complete, UID:', userCredential.user.uid);
+      
+      // Wait for the auth state to fully propagate before navigating.
+      // On iOS, currentUser can lag behind signInWithCustomToken's resolution,
+      // causing downstream getIdToken() calls to fail immediately after navigation.
+      console.log('[Login] Step 5: Getting ID token to ensure auth state is ready...');
+      const token = await userCredential.user.getIdToken();
+      console.log('[Login] Step 6: ID token obtained, length:', token.length);
+      console.log('[Login] Token preview:', token.substring(0, 50) + '...');
+      
+      logger.auth.firebaseSignInSuccess(userCredential.user.uid);
+      logger.auth.loginSuccess(user.username, userCredential.user.uid);
       setUser(user);
       setStatus('authenticated');
+      console.log('[Login] Step 7: Login complete, navigation will happen automatically');
+      console.log('==========================================');
     } catch (err) {
-      setServerError(err instanceof Error ? err.message : 'Login failed. Please try again.');
+      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      console.error('==========================================');
+      console.error('❌ LOGIN FAILED');
+      console.error('Error:', message);
+      console.error('Stack:', err);
+      console.error('==========================================');
+      // loginFailure already logged by authApi if the error originated there;
+      // log here as a fallback for Firebase sign-in failures
+      logger.exception('LoginScreen', 'onSubmit', err);
+      setServerError(message);
     } finally {
       setIsLoading(false);
     }

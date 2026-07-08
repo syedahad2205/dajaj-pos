@@ -12,6 +12,7 @@
 import { MMKV } from 'react-native-mmkv';
 import { generateIdempotencyKey } from '@/core/offline/idempotency';
 import { API_VERSION } from '@/core/api/apiClient';
+import { logger } from '@/core/logging/logger';
 
 export const storage = new MMKV({ id: 'dajaj-finance-offline-queue' });
 
@@ -125,13 +126,17 @@ export function enqueue<TPayload>(
   }
 
   writeQueue(queue);
+  logger.queue.enqueued(mutation.id, operation, targetDate, options.isOffline);
   return mutation;
 }
 
 /** Remove a mutation from the queue by idempotency key. */
 export function dequeue(id: string): void {
-  const queue = readQueue().filter(m => m.id !== id);
-  writeQueue(queue);
+  const queue = readQueue();
+  const item = queue.find(m => m.id === id);
+  const updated = queue.filter(m => m.id !== id);
+  writeQueue(updated);
+  if (item) logger.queue.dequeued(id, item.operation);
 }
 
 /** Update a mutation's status and retryCount in-place. */
@@ -160,6 +165,7 @@ export function markDateFailed(targetDate: string, fromIndex: number): void {
 /** Clear the entire queue (used on logout). */
 export function clearQueue(): void {
   storage.delete(QUEUE_KEY);
+  logger.queue.cleared();
 }
 
 /** All distinct dates that have queued mutations, for per-date parallel replay. */

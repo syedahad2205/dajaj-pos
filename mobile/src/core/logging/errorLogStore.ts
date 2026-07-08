@@ -4,6 +4,11 @@
  * MMKV-backed, capped at MAX_ENTRIES with oldest-first eviction.
  * No network calls — purely local diagnostics.
  * Never stores usernames, passwords, tokens, or full Firestore document bodies (Requirement 17.4).
+ *
+ * NOTE: All entries written here are also forwarded to the centralized logger
+ * (core/logging/logger.ts) so that errors appear in the unified log viewer.
+ * The MMKV store here is kept for backwards compatibility and as a secondary
+ * dedicated error-only store.
  */
 import { MMKV } from 'react-native-mmkv';
 
@@ -36,6 +41,17 @@ export function logError(entry: Omit<LocalErrorLogEntry, 'timestamp'>): void {
   // Oldest-first eviction (Requirement 17.2)
   const trimmed = entries.length > MAX_ENTRIES ? entries.slice(entries.length - MAX_ENTRIES) : entries;
   writeLog(trimmed);
+
+  // Forward to the centralized logger — lazy import to avoid circular deps at module load
+  setImmediate(() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { logger } = require('@/core/logging/logger') as { logger: { exception: (screen: string, op: string | null, err: unknown, ctx?: Record<string, unknown>) => void } };
+      logger.exception(entry.screen, entry.operation, { message: entry.message, stack: entry.stack });
+    } catch {
+      // Never let logger failure affect error handling
+    }
+  });
 }
 
 /** Read all logged entries (for Settings Diagnostics). */
@@ -65,11 +81,6 @@ export function clearErrorLog(): void {
  */
 export function installGlobalErrorHandlers(): void {
   // React Native exposes this via the global ErrorUtils object
-  const originalHandler = (globalThis as Record<string, unknown>).ErrorUtils &&
-    (globalThis as Record<string, unknown>).ErrorUtils !== null
-    ? ((globalThis as Record<string, unknown>).ErrorUtils as { getGlobalHandler?: () => unknown }).getGlobalHandler?.()
-    : null;
-
   const errorUtils = (globalThis as Record<string, unknown>).ErrorUtils as {
     setGlobalHandler?: (handler: (error: Error, isFatal?: boolean) => void) => void;
     getGlobalHandler?: () => ((error: Error, isFatal?: boolean) => void) | null;

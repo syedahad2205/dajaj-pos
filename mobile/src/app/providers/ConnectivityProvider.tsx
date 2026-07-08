@@ -6,6 +6,8 @@
  *   1. NetInfo online-transition (within 5s via the subscription callback)
  *   2. Manual "Sync Now" (consumers call runAll() directly)
  *   3. AppState → "active" (foreground return)
+ *
+ * All connectivity changes and sync triggers are logged via the centralized logger.
  */
 import React, { useEffect, useRef, type ReactNode } from 'react';
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
@@ -13,6 +15,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { useConnectivityStore } from '@/core/connectivity/useConnectivityStore';
 import { runAll } from '@/core/offline/QueueProcessor';
 import { useAuthStore } from '@/core/auth/useAuthStore';
+import { logger } from '@/core/logging/logger';
 
 interface Props {
   children: ReactNode;
@@ -26,8 +29,9 @@ export function ConnectivityProvider({ children }: Props) {
 
   // Only trigger sync when the user is authenticated — avoids calling
   // getFirebaseAuth() before AuthProvider has initialised the SDK.
-  function triggerSync() {
+  function triggerSync(trigger: 'netinfo' | 'foreground' | 'manual') {
     if (status !== 'authenticated') return;
+    logger.connectivity.syncTriggered(trigger);
     void runAll();
   }
 
@@ -39,13 +43,14 @@ export function ConnectivityProvider({ children }: Props) {
         state.type === 'cellular' &&
         (state.details?.cellularGeneration === '2g' || state.details?.cellularGeneration === null);
 
+      logger.connectivity.changed(isOnline, slowNetwork);
       setConnectivity(isOnline, slowNetwork);
 
       if (isOnline) {
         // Slight delay so the connection stabilises before hammering the API (Requirement 11.1 "within 5s")
         if (syncTimeout.current) clearTimeout(syncTimeout.current);
         syncTimeout.current = setTimeout(() => {
-          triggerSync();
+          triggerSync('netinfo');
         }, 1500);
       }
     });
@@ -56,7 +61,8 @@ export function ConnectivityProvider({ children }: Props) {
         nextState === 'active' &&
         (prevAppState.current === 'background' || prevAppState.current === 'inactive')
       ) {
-        triggerSync(); // Requirement 11.9
+        logger.debug('app', 'App foregrounded — triggering sync');
+        triggerSync('foreground'); // Requirement 11.9
       }
       prevAppState.current = nextState;
     });

@@ -35,7 +35,18 @@ export interface MutationCallOptions<TPayload> {
 
 async function getIdToken(): Promise<string> {
   const auth = getFirebaseAuth();
-  const token = await auth.currentUser?.getIdToken();
+  // On iOS, currentUser can be null briefly after signInWithCustomToken
+  // before onAuthStateChanged fires. Wait for auth state if needed.
+  let currentUser = auth.currentUser;
+  if (!currentUser) {
+    currentUser = await new Promise((resolve) => {
+      const unsub = auth.onAuthStateChanged((u) => {
+        unsub();
+        resolve(u);
+      });
+    });
+  }
+  const token = await currentUser?.getIdToken();
   if (!token) throw new Error('Not authenticated.');
   return token;
 }

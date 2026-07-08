@@ -6,11 +6,13 @@ import { HomeScreen } from '@/modules/daily-closing/screens/HomeScreen';
 import { HistoryScreen } from '@/modules/daily-closing/screens/HistoryScreen';
 import { SettingsScreen } from '@/core/ui/screens/SettingsScreen';
 import { DailyClosingScreen } from '@/modules/daily-closing/screens/DailyClosingScreen';
+import { LogViewerScreen } from '@/core/logging/LogViewerScreen';
 import { colors } from '@/core/ui/theme/colors';
 
 export type RootStackParamList = {
   Tabs: undefined;
   DailyClosing: { date: string; mode: 'edit' | 'readonly' };
+  LogViewer: undefined;
 };
 
 export type TabParamList = {
@@ -103,6 +105,11 @@ export function AppNavigator() {
         name="DailyClosing"
         component={DailyClosingScreen}
         options={{ title: 'Daily Closing' }}
+      />
+      <Stack.Screen
+        name="LogViewer"
+        component={LogViewerScreen}
+        options={{ title: 'App Logs', headerShown: false }}
       />
     </Stack.Navigator>
   );

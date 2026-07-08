@@ -1,11 +1,12 @@
 /**
  * Top-level React error boundary (design §13a, Requirement 17.1).
  * Renders a generic "Something went wrong" screen with a restart affordance.
- * Writes caught errors to the local error log.
+ * Writes caught errors to both the local error log and the centralized logger.
  */
 import React, { type ReactNode, Component } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { logError } from '@/core/logging/errorLogStore';
+import { logger } from '@/core/logging/logger';
 
 interface Props { children: ReactNode; }
 interface State { hasError: boolean; message: string; }
@@ -24,11 +25,15 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: unknown, info: { componentStack?: string }) {
-    logError({
-      screen: 'ErrorBoundary',
-      operation: null,
-      message: error instanceof Error ? error.message : String(error),
-      stack: (error instanceof Error ? error.stack : undefined) ?? info.componentStack,
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = (error instanceof Error ? error.stack : undefined) ?? info.componentStack;
+
+    // Write to dedicated error log (backwards compat + error-only store)
+    logError({ screen: 'ErrorBoundary', operation: null, message, stack });
+
+    // Also write to centralized logger for unified log viewer visibility
+    logger.exception('ErrorBoundary', null, error, {
+      componentStack: info.componentStack,
     });
   }
 

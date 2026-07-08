@@ -6,12 +6,15 @@
  * - Sets useAuthStore user + status on auth state changes
  * - Globally intercepts permission-denied / token-revoked errors to trigger
  *   the forced sign-out flow (Requirement 2.5, 2.7)
+ *
+ * All auth lifecycle events are logged through the centralized logger.
  */
 import React, { useEffect, type ReactNode } from 'react';
 import { signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
 import type { NavigationContainerRef } from '@react-navigation/native';
 import { getFirebaseAuth } from '@/core/firebase/firebaseClient';
 import { useAuthStore } from '@/core/auth/useAuthStore';
+import { logger } from '@/core/logging/logger';
 
 // Navigation ref is set by RootNavigator and used here for programmatic navigation
 export let navigationRef: NavigationContainerRef<Record<string, unknown>> | null = null;
@@ -28,6 +31,7 @@ interface Props {
  * (Requirement 2.5, 2.7 — disable/password-change by admin).
  */
 async function handleSessionInvalidated(message?: string) {
+  logger.auth.sessionInvalidated(message ?? 'Session no longer valid');
   const auth = getFirebaseAuth();
   await firebaseSignOut(auth).catch(() => {});
   useAuthStore.getState().signOut();
@@ -62,16 +66,16 @@ export function AuthProvider({ children }: Props) {
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Session exists — mark authenticated.
-        // The FinanceUserPublic is stored in useAuthStore by the Login screen
-        // after a successful login response; on session restore (cold start),
-        // we don't have it from Firebase Auth directly, so we use a minimal
-        // placeholder that will be filled when the app fetches the user's data.
-        // In practice, the Login flow always sets user before navigating away,
-        // so the store will already have the user on session restore if the
-        // user was previously logged in.
+        logger.firebase.authStateChanged('signed-in', firebaseUser.uid);
+        // Session exists — check if this is a restore vs a fresh login.
+        // On fresh login the store already has the user (set by LoginScreen).
+        const alreadyHasUser = !!useAuthStore.getState().user;
+        if (!alreadyHasUser) {
+          logger.auth.sessionRestored(firebaseUser.uid);
+        }
         setStatus('authenticated');
       } else {
+        logger.firebase.authStateChanged('signed-out');
         setUser(null);
         setStatus('unauthenticated');
       }

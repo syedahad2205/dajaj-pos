@@ -4,9 +4,15 @@
  *
  * Attaches Authorization header + deviceTime, parses the response envelope,
  * targets the versioned /api/mobile/v1/... prefix from a single constant.
+ *
+ * All outgoing requests and responses are logged through the centralized
+ * logger — no additional logging needed in individual hooks or screens.
  */
 import type { FinanceDailyClosing } from '@/modules/daily-closing/types';
 import { API_BASE, API_VERSION } from '@/config';
+import { logger, nextRequestId } from '@/core/logging/logger';
+import { useConnectivityStore } from '@/core/connectivity/useConnectivityStore';
+import { useAuthStore } from '@/core/auth/useAuthStore';
 
 export { API_BASE, API_VERSION };
 
@@ -40,14 +46,38 @@ export async function apiCall(options: ApiCallOptions): Promise<MutationResponse
   };
   if (idempotencyKey) payload.idempotencyKey = idempotencyKey;
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${idToken}`,
-    },
-    body: method !== 'GET' ? JSON.stringify(payload) : undefined,
+  const url = `${API_BASE}${path}`;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${idToken}`,
+  };
+  const requestId = nextRequestId();
+
+  // Log outgoing request — sensitive headers are auto-masked by logger
+  logger.network.request(requestId, method, url, headers, payload, {
+    username: useAuthStore.getState().user?.username,
+    isOnline: useConnectivityStore.getState().isOnline,
   });
 
-  return (await response.json()) as MutationResponse;
+  const startMs = Date.now();
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: method !== 'GET' ? JSON.stringify(payload) : undefined,
+    });
+
+    const durationMs = Date.now() - startMs;
+    const data = (await response.json()) as MutationResponse;
+
+    // Log response — body is sanitized by logger
+    logger.network.response(requestId, response.status, response.statusText, durationMs, data);
+
+    return data;
+  } catch (error) {
+    // Log network-level failure (no response received)
+    logger.network.failure(requestId, error, payload);
+    throw error;
+  }
 }

@@ -40,5 +40,16 @@ export const useAuthStore = create<AuthState>()((set) => ({
   signOut() {
     clearQueue(); // Requirement 1.11, 2.7 — clear cached daily closing drafts
     set({ user: null, status: 'unauthenticated' });
+
+    // Log the sign-out — lazy import to avoid circular deps
+    setImmediate(() => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { logger } = require('@/core/logging/logger') as { logger: { auth: { signedOut: (reason?: string) => void } } };
+        logger.auth.signedOut();
+      } catch {
+        // Never let logger failure affect sign-out
+      }
+    });
   },
 }));

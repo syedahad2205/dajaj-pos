@@ -3,8 +3,12 @@
  * Sections: Identity, Sync, Diagnostics, Logout.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity, StatusBar } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity, StatusBar, Share } from 'react-native';
 import { signOut as firebaseSignOut } from 'firebase/auth';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '@/navigation/AppNavigator';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuthStore } from '@/core/auth/useAuthStore';
 import { getFirebaseAuth } from '@/core/firebase/firebaseClient';
 import { useConnectivityStore } from '@/core/connectivity/useConnectivityStore';
@@ -13,6 +17,7 @@ import { getQueue, dequeue, updateMutation } from '@/core/offline/mutationQueue'
 import {
   APP_VERSION, BUILD_NUMBER, ENVIRONMENT, FIREBASE_PROJECT, API_VERSION, getLastSuccessfulSync,
 } from '@/core/diagnostics/deviceInfo';
+import { exportLogs, clearPersistedLogs, getPersistedLogs } from '@/core/logging/logger';
 import { colors, radius, shadow } from '@/core/ui/theme/colors';
 
 const SYNC_LABEL: Record<string, string> = {
@@ -22,7 +27,11 @@ const SYNC_LABEL: Record<string, string> = {
   'sync-failed': '🔴  Sync Failed',
 };
 
+// Settings is a tab screen — we use useNavigation to access the root stack
+type SettingsNavProp = NativeStackNavigationProp<RootStackParamList>;
+
 export function SettingsScreen() {
+  const navigation = useNavigation<SettingsNavProp>();
   const { user, signOut } = useAuthStore();
   const { syncStatus } = useConnectivityStore();
   const [isSyncing, setIsSyncing] = useState(false);
@@ -59,6 +68,26 @@ export function SettingsScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Discard', style: 'destructive', onPress: () => dequeue(id) },
     ]);
+  }
+
+  async function handleExportLogs() {
+    try {
+      const text = exportLogs();
+      await Share.share({ message: text, title: 'DAJAJ Finance Log' });
+    } catch {
+      Alert.alert('Export Failed', 'Could not open share sheet.');
+    }
+  }
+
+  function handleClearLogs() {
+    Alert.alert(
+      'Clear Logs',
+      'This will permanently delete all stored logs. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear', style: 'destructive', onPress: () => clearPersistedLogs() },
+      ],
+    );
   }
 
   return (
@@ -121,7 +150,33 @@ export function SettingsScreen() {
         <Row label="Last Sync" value={getLastSuccessfulSync() ?? 'Never'} />
         <Row label="Queue Size" value={String(queue.length)} testID="queue-size" />
         <Row label="Pending" value={String(pending.length)} testID="pending-ops" />
-        <Row label="Failed" value={String(failed.length)} testID="failed-ops" last />
+        <Row label="Failed" value={String(failed.length)} testID="failed-ops" />
+        <Row label="Log Entries" value={String(getPersistedLogs().length)} last />
+
+        {/* Log actions */}
+        <View style={styles.logActions}>
+          <TouchableOpacity
+            style={styles.logBtn}
+            onPress={() => navigation.push('LogViewer')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.logBtnText}>📋  View Logs</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.logBtn}
+            onPress={handleExportLogs}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.logBtnText}>⬆  Export</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.logBtn, styles.logBtnDestructive]}
+            onPress={handleClearLogs}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.logBtnText, { color: colors.rose700 }]}>🗑  Clear</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Logout */}
@@ -217,4 +272,24 @@ const styles = StyleSheet.create({
   },
   logoutText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   footer: { textAlign: 'center', marginTop: 20, fontSize: 12, color: colors.slate400 },
+  logActions: {
+    flexDirection: 'row',
+    paddingTop: 10,
+    paddingBottom: 4,
+    gap: 8,
+  },
+  logBtn: {
+    flex: 1,
+    backgroundColor: colors.slate50,
+    borderRadius: radius.inner,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  logBtnDestructive: {
+    borderColor: '#fecaca',
+    backgroundColor: colors.rose50,
+  },
+  logBtnText: { fontSize: 12, fontWeight: '700', color: colors.slate700 },
 });

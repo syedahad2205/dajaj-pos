@@ -61,7 +61,12 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
   let decodedToken: Awaited<ReturnType<ReturnType<typeof getAdminAuth>["verifyIdToken"]>>;
   try {
     decodedToken = await getAdminAuth().verifyIdToken(idToken);
-  } catch {
+    console.log('[mobileFinanceAuth] Token verified successfully');
+    console.log('[mobileFinanceAuth] UID:', decodedToken.uid);
+    console.log('[mobileFinanceAuth] financeUser claim:', decodedToken.financeUser);
+    console.log('[mobileFinanceAuth] All claims:', JSON.stringify(decodedToken, null, 2).substring(0, 500));
+  } catch (error) {
+    console.error('[mobileFinanceAuth] Token verification failed:', error);
     return {
       ok: false,
       response: NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 }),
@@ -69,11 +74,14 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
   }
 
   if (!decodedToken.financeUser) {
+    console.error('[mobileFinanceAuth] Token missing financeUser claim');
     return {
       ok: false,
       response: NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 }),
     };
   }
+
+  console.log('[mobileFinanceAuth] financeUser claim verified');
 
   // 4. Confirm finance_auth/{uid} exists and is active (defense-in-depth: rules check this too)
   const uid = decodedToken.uid;

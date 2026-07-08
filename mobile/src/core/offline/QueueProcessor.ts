@@ -23,6 +23,7 @@ import {
   type QueuedMutation,
 } from '@/core/offline/mutationQueue';
 import { useConnectivityStore } from '@/core/connectivity/useConnectivityStore';
+import { logger } from '@/core/logging/logger';
 
 let queryClient: QueryClient | null = null;
 let getIdToken: (() => Promise<string | null>) | null = null;
@@ -50,6 +51,10 @@ const MAX_AUTO_RETRIES = 3;
 /** Replay all queued mutations for a single date, strictly FIFO. */
 async function replayDateQueue(targetDate: string, idToken: string): Promise<void> {
   const store = useConnectivityStore.getState();
+  const initialItems = getQueueForDate(targetDate);
+  logger.sync.dateStarted(targetDate, initialItems.length);
+
+  let dequeued = 0;
 
   // Process mutations one at a time for this date
   // Re-read queue on each iteration — queue may change between retries
@@ -82,6 +87,8 @@ async function replayDateQueue(targetDate: string, idToken: string): Promise<voi
           );
         }
         dequeue(next.id);
+        logger.sync.itemSuccess(next.id, next.operation, targetDate);
+        dequeued++;
         // Continue to next item for this date
       } else {
         // API returned success: false
@@ -93,12 +100,15 @@ async function replayDateQueue(targetDate: string, idToken: string): Promise<voi
               updateMutation(m.id, { status: 'failed' });
             }
           }
+          logger.sync.itemFailed(next.id, next.operation, targetDate, result.message, next.retryCount);
+          logger.queue.dateFailed(targetDate, result.message);
           continueDate = false;
         } else {
           // Transient / unexpected failure — retry logic
           const newRetryCount = next.retryCount + 1;
           if (newRetryCount < MAX_AUTO_RETRIES) {
             updateMutation(next.id, { status: 'pending', retryCount: newRetryCount });
+            logger.sync.itemRetrying(next.id, next.operation, newRetryCount);
             // Brief pause before retry
             await new Promise(r => setTimeout(r, 500 * newRetryCount));
           } else {
@@ -109,6 +119,8 @@ async function replayDateQueue(targetDate: string, idToken: string): Promise<voi
                 updateMutation(m.id, { status: 'failed' });
               }
             }
+            logger.sync.itemFailed(next.id, next.operation, targetDate, result.message, next.retryCount);
+            logger.queue.dateFailed(targetDate, `Max retries exhausted: ${result.message}`);
             continueDate = false;
           }
         }
@@ -118,6 +130,7 @@ async function replayDateQueue(targetDate: string, idToken: string): Promise<voi
       const newRetryCount = next.retryCount + 1;
       if (newRetryCount < MAX_AUTO_RETRIES) {
         updateMutation(next.id, { status: 'pending', retryCount: newRetryCount });
+        logger.sync.itemRetrying(next.id, next.operation, newRetryCount);
         await new Promise(r => setTimeout(r, 500 * newRetryCount));
       } else {
         const remaining = getQueueForDate(targetDate);
@@ -126,6 +139,9 @@ async function replayDateQueue(targetDate: string, idToken: string): Promise<voi
             updateMutation(m.id, { status: 'failed' });
           }
         }
+        const errMsg = _err instanceof Error ? _err.message : String(_err);
+        logger.sync.itemFailed(next.id, next.operation, targetDate, errMsg, next.retryCount);
+        logger.queue.dateFailed(targetDate, `Network failure: ${errMsg}`);
         continueDate = false;
       }
     }
@@ -136,6 +152,8 @@ async function replayDateQueue(targetDate: string, idToken: string): Promise<voi
   const hasPending = allQueued.some(m => m.status === 'pending' || m.status === 'syncing');
   const hasFailed = allQueued.some(m => m.status === 'failed');
   store.recomputeSyncStatus(hasPending, hasFailed);
+
+  logger.debug('sync', `Date ${targetDate} replay finished`, { dequeued });
 }
 
 /** Run all queued mutations — all dates in parallel, each date strictly FIFO. */
@@ -151,9 +169,20 @@ export async function runAll(): Promise<void> {
     return;
   }
 
+  logger.sync.started(dates.length);
+
   // Update UI to pending-sync while replay is running
   useConnectivityStore.getState().recomputeSyncStatus(true, false);
 
   // Replay each date's queue in parallel (Requirement 11.1)
   await Promise.all(dates.map(date => replayDateQueue(date, idToken)));
+
+  // Count remaining failed items for completion log
+  const remaining = dates.flatMap(d => getQueueForDate(d));
+  const failedCount = remaining.filter(m => m.status === 'failed').length;
+  if (failedCount > 0) {
+    logger.sync.failed(`${failedCount} item(s) remain failed after sync`);
+  } else {
+    logger.sync.completed(0); // dequeued count tracked per-date above
+  }
 }
