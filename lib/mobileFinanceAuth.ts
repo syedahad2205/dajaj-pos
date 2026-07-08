@@ -41,27 +41,55 @@ export type VerifyResult =
  * Returns { ok: false, response } on any failure — the route should early-return response.
  */
 export async function verifyFinanceUserRequest(request: Request): Promise<VerifyResult> {
+  console.log('[mobileFinanceAuth] ═══════════════════════════════════════════════');
+  console.log('[mobileFinanceAuth] Starting verifyFinanceUserRequest');
+  console.log('[mobileFinanceAuth] Request URL:', request.url);
+  console.log('[mobileFinanceAuth] Request method:', request.method);
+  
   // 1. Extract bearer token
   const authorization = request.headers.get("authorization") ?? request.headers.get("Authorization");
+  console.log('[mobileFinanceAuth] Authorization header present:', !!authorization);
+  console.log('[mobileFinanceAuth] Authorization header starts with Bearer:', authorization?.startsWith("Bearer "));
+  
   if (!authorization?.startsWith("Bearer ")) {
+    console.error('[mobileFinanceAuth] ❌ No Bearer token in Authorization header');
     return {
       ok: false,
-      response: NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 }),
+      response: NextResponse.json({ 
+        success: false, 
+        message: "Unauthorized: No Bearer token",
+        debug: {
+          hasAuthHeader: !!authorization,
+          authHeaderPreview: authorization?.substring(0, 20),
+        }
+      }, { status: 401 }),
     };
   }
   const idToken = authorization.slice("Bearer ".length).trim();
   if (!idToken) {
+    console.error('[mobileFinanceAuth] ❌ Empty token after Bearer prefix');
     return {
       ok: false,
-      response: NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 }),
+      response: NextResponse.json({ 
+        success: false, 
+        message: "Unauthorized: Empty token" 
+      }, { status: 401 }),
     };
   }
+  
+  console.log('[mobileFinanceAuth] ✓ Token extracted, length:', idToken.length);
 
   // 2 + 3. Verify token and check financeUser claim
   let decodedToken: Awaited<ReturnType<ReturnType<typeof getAdminAuth>["verifyIdToken"]>>;
   try {
-    decodedToken = await getAdminAuth().verifyIdToken(idToken);
-    console.log('[mobileFinanceAuth] Token verified successfully');
+    console.log('[mobileFinanceAuth] Calling getAdminAuth()...');
+    const adminAuth = getAdminAuth();
+    console.log('[mobileFinanceAuth] ✓ Admin Auth obtained');
+    
+    console.log('[mobileFinanceAuth] Verifying ID token...');
+    decodedToken = await adminAuth.verifyIdToken(idToken);
+    
+    console.log('[mobileFinanceAuth] ✓ Token verified successfully');
     console.log('[mobileFinanceAuth] UID:', decodedToken.uid);
     console.log('[mobileFinanceAuth] Type of decodedToken:', typeof decodedToken);
     console.log('[mobileFinanceAuth] decodedToken keys:', Object.keys(decodedToken));
@@ -74,7 +102,11 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
       email_verified: decodedToken.email_verified,
     }));
   } catch (error) {
-    console.error('[mobileFinanceAuth] Token verification failed:', error);
+    console.error('[mobileFinanceAuth] ❌ Token verification failed');
+    console.error('[mobileFinanceAuth] Error type:', error?.constructor?.name);
+    console.error('[mobileFinanceAuth] Error message:', error instanceof Error ? error.message : String(error));
+    console.error('[mobileFinanceAuth] Error stack:', error instanceof Error ? error.stack : 'N/A');
+    
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return {
       ok: false,
@@ -83,6 +115,7 @@ export async function verifyFinanceUserRequest(request: Request): Promise<Verify
         message: "Unauthorized: Token verification failed",
         debug: {
           error: errorMessage,
+          errorType: error?.constructor?.name || 'Unknown',
           tokenPreview: idToken.substring(0, 50) + '...',
         }
       }, { status: 401 }),

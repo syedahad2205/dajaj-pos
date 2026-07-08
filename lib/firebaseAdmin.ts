@@ -38,17 +38,41 @@ function getAdminApp(): App {
     return adminApp;
   }
 
-  const projectId = readRequiredEnv("FIREBASE_ADMIN_PROJECT_ID");
-  const clientEmail = readRequiredEnv("FIREBASE_ADMIN_CLIENT_EMAIL");
-  const privateKey = readRequiredEnv("FIREBASE_ADMIN_PRIVATE_KEY").replace(/\\n/g, "\n");
+  console.log('[firebaseAdmin] Initializing Firebase Admin SDK...');
+  
+  try {
+    const projectId = readRequiredEnv("FIREBASE_ADMIN_PROJECT_ID");
+    console.log('[firebaseAdmin] ✓ Project ID loaded:', projectId);
+    
+    const clientEmail = readRequiredEnv("FIREBASE_ADMIN_CLIENT_EMAIL");
+    console.log('[firebaseAdmin] ✓ Client email loaded:', clientEmail);
+    
+    const rawPrivateKey = readRequiredEnv("FIREBASE_ADMIN_PRIVATE_KEY");
+    console.log('[firebaseAdmin] ✓ Private key loaded, raw length:', rawPrivateKey.length);
+    console.log('[firebaseAdmin] Private key starts with quotes:', rawPrivateKey.startsWith('"'));
+    console.log('[firebaseAdmin] Private key ends with quotes:', rawPrivateKey.endsWith('"'));
+    console.log('[firebaseAdmin] Private key first 50 chars:', rawPrivateKey.substring(0, 50));
+    console.log('[firebaseAdmin] Private key has literal \\n:', rawPrivateKey.includes('\\n'));
+    console.log('[firebaseAdmin] Private key has actual newlines:', rawPrivateKey.includes('\n'));
+    
+    const privateKey = rawPrivateKey.replace(/\\n/g, "\n");
+    console.log('[firebaseAdmin] ✓ Private key processed, final length:', privateKey.length);
+    console.log('[firebaseAdmin] Final key starts with:', privateKey.substring(0, 30));
 
-  adminApp = initializeApp({
-    credential: cert({
-      projectId,
-      clientEmail,
-      privateKey,
-    }),
-  });
+    adminApp = initializeApp({
+      credential: cert({
+        projectId,
+        clientEmail,
+        privateKey,
+      }),
+    });
+    
+    console.log('[firebaseAdmin] ✓ Firebase Admin SDK initialized successfully');
+  } catch (error) {
+    console.error('[firebaseAdmin] ❌ Failed to initialize Firebase Admin SDK:', error);
+    console.error('[firebaseAdmin] Error details:', error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 
   return adminApp;
 }
@@ -58,8 +82,11 @@ let adminFirestore: Firestore | undefined;
 
 /** Returns the (lazily-created) Firebase Admin Auth instance. */
 export function getAdminAuth(): Auth {
+  console.log('[firebaseAdmin] getAdminAuth() called');
   if (!adminAuth) {
+    console.log('[firebaseAdmin] Creating Admin Auth instance...');
     adminAuth = getAuth(getAdminApp());
+    console.log('[firebaseAdmin] ✓ Admin Auth instance created');
   }
   return adminAuth;
 }
