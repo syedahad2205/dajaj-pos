@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDailyClosingView, closeDailyClosing } from "@/services/financeClosingService";
 import { withMobileAuth } from "@/lib/mobileRouteHelpers";
 import { financeErrorResponse } from "@/lib/financeApiError";
-import { verifyFinanceUserRequest, getFinanceUserFirestoreClient, extractBearerToken } from "@/lib/mobileFinanceAuth";
+import { verifyFinanceUserRequest, getAdminFirestore } from "@/lib/mobileFinanceAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -40,24 +40,23 @@ export async function GET(request: Request, { params }: { params: { date: string
       return errorResponse;
     }
 
-    const idToken = extractBearerToken(request)!;
-    const { firestore, cleanup } = await getFinanceUserFirestoreClient(idToken);
-    try {
-      const closing = await getDailyClosingView(params.date, firestore);
-      const response = NextResponse.json({ 
-        success: true, 
-        closing, 
-        serverTime: new Date().toISOString() 
-      });
-      
-      // Add CORS headers to success response
-      response.headers.set('Access-Control-Allow-Origin', '*');
-      response.headers.set('Access-Control-Allow-Credentials', 'true');
-      
-      return response;
-    } finally {
-      await cleanup();
-    }
+    // Use Admin SDK firestore (not client SDK with user's token)
+    // We've already verified the user's identity and financeUser claim above,
+    // so we can safely use Admin SDK which bypasses Firestore security rules
+    const adminDb = getAdminFirestore();
+    const closing = await getDailyClosingView(params.date, adminDb);
+    
+    const response = NextResponse.json({ 
+      success: true, 
+      closing, 
+      serverTime: new Date().toISOString() 
+    });
+    
+    // Add CORS headers to success response
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+    
+    return response;
   } catch (error) {
     const errorResponse = financeErrorResponse(error, " [mobile GET closing]");
     

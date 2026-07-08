@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { deleteApp, initializeServerApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
-import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
+import { getAdminAuth, getAdminFirestore as getAdminFirestoreInternal } from "@/lib/firebaseAdmin";
+
+// Re-export for convenience
+export { getAdminFirestore } from "@/lib/firebaseAdmin";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
