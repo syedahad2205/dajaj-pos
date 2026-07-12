@@ -152,6 +152,11 @@ export interface DailyClosingExpenseEntry {
   id: string;
   categoryId: string;
   categoryName: string;
+  // Optional second-level breakdown. Stored only when the chosen category has
+  // subcategories — keeps historical rows valid even after a subcategory is
+  // archived or its parent category is reorganised.
+  subcategoryId?: string | null;
+  subcategoryName?: string | null;
   amount: number;
   remarks: string;
   createdAt?: Timestamp;

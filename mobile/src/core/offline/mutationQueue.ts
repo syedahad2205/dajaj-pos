@@ -22,6 +22,7 @@ const QUEUE_KEY = 'mutation_queue';
 
 export type MutationOperation =
   | 'addExpense'
+  | 'addExpenses'
   | 'removeExpense'
   | 'addDeposit'
   | 'removeDeposit'
@@ -184,9 +185,10 @@ export function buildMutationPath(mutation: QueuedMutation): { path: string; met
   const base = `/finance/closing/${mutation.targetDate}`;
   const payload = mutation.payload as Record<string, unknown>;
 
-  switch (mutation.operation) {
-    case 'addExpense':
-      return { path: `${base}/expenses`, method: 'POST' };
+    switch (mutation.operation) {
+      case 'addExpense':
+      case 'addExpenses':
+        return { path: `${base}/expenses`, method: 'POST' };
     case 'removeExpense':
       return { path: `${base}/expenses/${payload.entryId as string}`, method: 'DELETE' };
     case 'addDeposit':

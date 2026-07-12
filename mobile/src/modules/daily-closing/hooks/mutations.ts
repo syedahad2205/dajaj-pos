@@ -108,6 +108,38 @@ export function useAddExpense(date: string) {
   });
 }
 
+/**
+ * Bulk add of several cash expenses in a single request — mirrors the web
+ * "add all at once" popup. Offline: enqueues one mutation whose payload is
+ * `{ expenses: [...] }`; the server route detects the array and writes them
+ * in a single transaction. Idempotency is preserved exactly like a single
+ * addExpense (one queue item → one idempotency key → processed once).
+ */
+export function useAddExpenses(date: string) {
+  const queryClient = useQueryClient();
+  const { isOnline } = useConnectivityStore();
+
+  return useMutation({
+    mutationFn: async (input: {
+      expenses: Array<{ categoryId: string; amount: number; remarks?: string; subcategoryId?: string | null; subcategoryName?: string | null }>;
+    }) => {
+      const idToken = await getIdToken();
+      await dispatchMutation(
+        {
+          operation: 'addExpenses',
+          targetDate: date,
+          path: `/finance/closing/${date}/expenses`,
+          method: 'POST',
+          payload: input,
+          idToken,
+        },
+        isOnline,
+        (closing: FinanceDailyClosing) => queryClient.setQueryData<FinanceDailyClosing | null>(['dailyClosing', date], closing),
+      );
+    },
+  });
+}
+
 export function useRemoveExpense(date: string) {
   const queryClient = useQueryClient();
   const { isOnline } = useConnectivityStore();

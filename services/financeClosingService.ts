@@ -52,6 +52,9 @@ function dailyClosingCollection(db: Firestore) {
 function expenseCategoriesCollection(db: Firestore) {
   return collection(db, "fin_expense_categories");
 }
+function expenseSubcategoriesCollection(db: Firestore) {
+  return collection(db, "fin_expense_subcategories");
+}
 
 function emptyClosing(date: string, branchId: string, openingCash: number, openingCashSource: "chained" | "manual"): FinanceDailyClosing {
   return {
@@ -123,6 +126,8 @@ function normalizeClosing(raw: DocumentData): FinanceDailyClosing {
         id: e.id,
         categoryId: e.categoryId,
         categoryName: e.categoryName,
+        subcategoryId: e.subcategoryId ?? null,
+        subcategoryName: e.subcategoryName ?? null,
         amount: typeof e.amount === "number" ? e.amount : 0,
         remarks: e.remarks ?? "",
       }))
@@ -291,6 +296,32 @@ export interface AddExpenseInput {
   categoryId: string;
   amount: number;
   remarks?: string;
+  subcategoryId?: string | null;
+  subcategoryName?: string | null;
+}
+
+/**
+ * Validates + resolves a single expense line's subcategory (if any). Throws
+ * if a subcategory is supplied that doesn't exist or doesn't belong to the
+ * chosen category. Pass `allowNone` to also accept a row that has no
+ * subcategory selected (used by the batch add where only some rows are
+ * subcategory-tagged).
+ */
+async function resolveExpenseSubcategory(
+  tx: FirestoreTransaction,
+  db: Firestore,
+  categoryId: string,
+  categoryName: string,
+  subcategoryId?: string | null,
+): Promise<{ subcategoryId: string | null; subcategoryName: string | null }> {
+  if (!subcategoryId) return { subcategoryId: null, subcategoryName: null };
+  const subSnap = await tx.get(doc(expenseSubcategoriesCollection(db), subcategoryId));
+  if (!subSnap.exists()) throw new Error(`Selected subcategory for "${categoryName}" no longer exists.`);
+  const subData = subSnap.data();
+  if (subData.categoryId !== categoryId) {
+    throw new Error(`"${subData.name}" is not a subcategory of "${categoryName}".`);
+  }
+  return { subcategoryId: subSnap.id, subcategoryName: subData.name as string };
 }
 
 /** Adds one pure cash-expense line to a day's register. Creates the day's document on first use. Cash Deposits (Pigmi etc.) are recorded separately via addDailyClosingDeposit. */
@@ -315,10 +346,20 @@ export async function addDailyClosingExpense(
 
     const base = await loadOrBootstrapClosingInTx(tx, db, date, branchId, closingSnap);
 
+    const { subcategoryId, subcategoryName } = await resolveExpenseSubcategory(
+      tx,
+      db,
+      input.categoryId,
+      categorySnap.data().name as string,
+      input.subcategoryId ?? null,
+    );
+
     const entry: DailyClosingExpenseEntry = {
       id: generateLocalId(),
       categoryId: input.categoryId,
       categoryName: categorySnap.data().name as string,
+      subcategoryId,
+      subcategoryName,
       amount: roundCurrency(input.amount),
       remarks: input.remarks?.trim() ?? "",
     };
@@ -332,12 +373,120 @@ export async function addDailyClosingExpense(
     writeFinanceAuditLog(tx, db, {
       module: "closing_expense",
       entityId: entry.id,
-      entityLabel: `${date} · ${entry.categoryName} · ₹${entry.amount}`,
+      entityLabel: `${date} · ${entry.categoryName}${entry.subcategoryName ? ` · ${entry.subcategoryName}` : ""} · ₹${entry.amount}`,
       action: "create",
       userId,
       userName,
       newValue: entry,
     });
+
+    return next;
+  });
+}
+
+/**
+ * Adds many cash-expense lines to a day's register in a single transaction —
+ * used by the bulk "add several expenses at once" popup so the user only
+ * waits on one round trip instead of one per line. Mirrors
+ * addDailyClosingExpense per line (subcategory resolution, category
+ * transactionCount bumps, audit logging) but does it for every entry at
+ * once. Empty/invalid rows are skipped rather than failing the whole batch,
+ * except for hard data errors (bad category, subcategory mismatch) which
+ * abort the whole save so nothing partial is written.
+ */
+export async function addDailyClosingExpenses(
+  date: string,
+  inputs: AddExpenseInput[],
+  userId: string,
+  userName: string,
+  db: Firestore = defaultFirestore,
+  branchId: string = DEFAULT_BRANCH_ID,
+): Promise<FinanceDailyClosing> {
+  if (!isValidDateKey(date)) throw new Error("Invalid date.");
+  const valid = (inputs ?? []).filter(
+    (i) => i && i.categoryId && Number.isFinite(i.amount) && (i.amount as number) > 0,
+  );
+  if (valid.length === 0) throw new Error("Add at least one expense with a category and a positive amount.");
+
+  return runTransaction(db, async (tx) => {
+    const closingRef = doc(dailyClosingCollection(db), date);
+    const closingSnap = await tx.get(closingRef);
+
+    // ALL READS UP FRONT — Firestore transactions require every read to finish
+    // before any write begins. Batch up the (de-duplicated) category and
+    // subcategory document reads so the subsequent writes never trigger a
+    // "reads after writes" error.
+    const categoryIds = Array.from(new Set(valid.map((i) => i.categoryId)));
+    const subIds = Array.from(new Set(valid.map((i) => i.subcategoryId).filter((s): s is string => !!s)));
+
+    const [categorySnaps, subSnaps] = await Promise.all([
+      Promise.all(categoryIds.map((id) => tx.get(doc(expenseCategoriesCollection(db), id)))),
+      Promise.all(subIds.map((id) => tx.get(doc(expenseSubcategoriesCollection(db), id)))),
+    ]);
+    const categoryById = new Map(categorySnaps.map((s) => [s.id, s]));
+    const subById = new Map(subSnaps.map((s) => [s.id, s]));
+
+    const base = await loadOrBootstrapClosingInTx(tx, db, date, branchId, closingSnap);
+
+    const categoryCountBumps = new Map<string, number>();
+    const newEntries: DailyClosingExpenseEntry[] = [];
+
+    for (const input of valid) {
+      const categorySnap = categoryById.get(input.categoryId);
+      if (!categorySnap || !categorySnap.exists()) throw new Error(`Expense category "${input.categoryId}" no longer exists.`);
+      const categoryName = categorySnap.data().name as string;
+
+      let subcategoryId: string | null = null;
+      let subcategoryName: string | null = null;
+      if (input.subcategoryId) {
+        const subSnap = subById.get(input.subcategoryId);
+        if (!subSnap || !subSnap.exists()) throw new Error(`Selected subcategory for "${categoryName}" no longer exists.`);
+        const subData = subSnap.data();
+        if (subData.categoryId !== input.categoryId) {
+          throw new Error(`"${subData.name}" is not a subcategory of "${categoryName}".`);
+        }
+        subcategoryId = subSnap.id;
+        subcategoryName = subData.name as string;
+      }
+
+      const entry: DailyClosingExpenseEntry = {
+        id: generateLocalId(),
+        categoryId: input.categoryId,
+        categoryName,
+        subcategoryId,
+        subcategoryName,
+        amount: roundCurrency(input.amount),
+        remarks: input.remarks?.trim() ?? "",
+      };
+      newEntries.push(entry);
+      categoryCountBumps.set(input.categoryId, (categoryCountBumps.get(input.categoryId) ?? 0) + 1);
+    }
+
+    const expenses = [...base.expenses, ...newEntries];
+    const totals = computeDerivedTotals({ ...base, expenses });
+    const next: FinanceDailyClosing = { ...base, expenses, ...totals };
+
+    // ── Writes only, after every read above ──
+    tx.set(closingRef, { ...next, createdAt: closingSnap.exists() ? closingSnap.data()?.createdAt : serverTimestamp(), updatedAt: serverTimestamp() });
+
+    for (const [categoryId, bump] of categoryCountBumps.entries()) {
+      const categorySnap = categoryById.get(categoryId);
+      if (categorySnap && categorySnap.exists()) {
+        tx.update(categorySnap.ref, { transactionCount: ((categorySnap.data().transactionCount as number) ?? 0) + bump });
+      }
+    }
+
+    for (const entry of newEntries) {
+      writeFinanceAuditLog(tx, db, {
+        module: "closing_expense",
+        entityId: entry.id,
+        entityLabel: `${date} · ${entry.categoryName}${entry.subcategoryName ? ` · ${entry.subcategoryName}` : ""} · ₹${entry.amount}`,
+        action: "create",
+        userId,
+        userName,
+        newValue: entry,
+      });
+    }
 
     return next;
   });

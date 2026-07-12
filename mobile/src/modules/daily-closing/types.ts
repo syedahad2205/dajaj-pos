@@ -26,9 +26,26 @@ export interface DailyClosingExpenseEntry {
   id: string;
   categoryId: string;
   categoryName: string;
+  // Optional second-level breakdown. Mirrors lib/finance.ts — stored only when
+  // the chosen category has subcategories.
+  subcategoryId?: string | null;
+  subcategoryName?: string | null;
   amount: number;
   remarks: string;
   createdAt?: FirestoreTimestamp;
+}
+
+// ─── FinanceExpenseSubcategory ────────────────────────────────────────────────
+export interface FinanceExpenseSubcategory {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  name: string;
+  active: boolean;
+  displayOrder: number;
+  transactionCount: number;
+  createdAt?: FirestoreTimestamp;
+  updatedAt?: FirestoreTimestamp;
 }
 
 // ─── DailyClosingDepositEntry ─────────────────────────────────────────────────

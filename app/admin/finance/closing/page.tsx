@@ -6,7 +6,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, todayDateKey } from "@/lib/financeFormat";
-import { roundCurrency, SUPPORTED_CASH_DEPOSIT_TYPES, CASH_DEPOSIT_TYPE_LABELS, type CashDepositType } from "@/lib/finance";
+import { roundCurrency, SUPPORTED_CASH_DEPOSIT_TYPES, CASH_DEPOSIT_TYPE_LABELS, type CashDepositType, type FinanceExpenseSubcategory } from "@/lib/finance";
 import FinanceNav from "@/components/finance/FinanceNav";
 import Modal from "@/components/finance/Modal";
 
@@ -14,7 +14,17 @@ interface ExpenseEntry {
   id: string;
   categoryId: string;
   categoryName: string;
+  subcategoryId: string | null;
+  subcategoryName: string | null;
   amount: number;
+  remarks: string;
+}
+
+interface ExpenseDraftRow {
+  key: string;
+  categoryId: string;
+  subcategoryId: string;
+  amount: string;
   remarks: string;
 }
 
@@ -79,6 +89,7 @@ function FinanceClosingContent() {
   const [date, setDate] = useState(searchParams?.get("date") || today);
   const [closing, setClosing] = useState<DailyClosing | null>(null);
   const [categories, setCategories] = useState<ExpenseCategoryOption[]>([]);
+  const [subcategories, setSubcategories] = useState<FinanceExpenseSubcategory[]>([]);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -90,7 +101,7 @@ function FinanceClosingContent() {
   const [openingCashDraft, setOpeningCashDraft] = useState("0");
 
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
-  const [expenseForm, setExpenseForm] = useState({ categoryId: "", amount: "", remarks: "" });
+  const [expenseRows, setExpenseRows] = useState<ExpenseDraftRow[]>([{ key: "row-0", categoryId: "", subcategoryId: "", amount: "", remarks: "" }]);
   const [expenseSaving, setExpenseSaving] = useState(false);
   const [expenseError, setExpenseError] = useState("");
 
@@ -107,14 +118,20 @@ function FinanceClosingContent() {
     setFetching(true);
     setError("");
     try {
-      const [closingRes, categoriesRes] = await Promise.all([
+      const [closingRes, categoriesRes, subcategoriesRes] = await Promise.all([
         firebaseAuthedFetch(`/api/finance/closing/${date}`),
         firebaseAuthedFetch("/api/finance/expense-categories"),
+        firebaseAuthedFetch("/api/finance/expense-subcategories"),
       ]);
-      const [closingPayload, categoriesPayload] = await Promise.all([readJson(closingRes), readJson(categoriesRes)]);
+      const [closingPayload, categoriesPayload, subcategoriesPayload] = await Promise.all([
+        readJson(closingRes),
+        readJson(categoriesRes),
+        readJson(subcategoriesRes),
+      ]);
       const c: DailyClosing = closingPayload.closing;
       setClosing(c);
       setCategories(categoriesPayload.categories);
+      setSubcategories(subcategoriesPayload.subcategories ?? []);
       setSalesDraft({
         upiSales: String(c.upiSales),
         zomatoSales: String(c.zomatoSales),
@@ -142,6 +159,10 @@ function FinanceClosingContent() {
   if (!authenticated || role !== "admin") return null;
 
   const activeCategories = categories.filter((c) => c.active);
+
+  // Subcategories available for a given category (only shown in the popup when non-empty).
+  const subcategoriesFor = (categoryId: string): FinanceExpenseSubcategory[] =>
+    subcategories.filter((s) => s.categoryId === categoryId && s.active);
 
   // Live preview numbers — mirrors services/financeClosingService.ts computeDerivedTotals().
   const previewClosingCash = closingCashDraft === "" ? null : Number(closingCashDraft);
@@ -194,15 +215,37 @@ function FinanceClosingContent() {
     }
   };
 
-  const handleAddExpense = async () => {
+  const openExpenseModal = () => {
+    setExpenseRows([{ key: `row-${Date.now()}`, categoryId: "", subcategoryId: "", amount: "", remarks: "" }]);
     setExpenseError("");
-    const amountNum = Number(expenseForm.amount);
-    if (!expenseForm.categoryId) {
-      setExpenseError("Choose a category.");
+    setExpenseModalOpen(true);
+  };
+
+  const updateExpenseRow = (key: string, patch: Partial<ExpenseDraftRow>) => {
+    setExpenseRows((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  };
+
+  const addExpenseRow = () => {
+    setExpenseRows((rows) => [...rows, { key: `row-${Date.now()}-${rows.length}`, categoryId: "", subcategoryId: "", amount: "", remarks: "" }]);
+  };
+
+  const removeExpenseRow = (key: string) => {
+    setExpenseRows((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== key) : rows));
+  };
+
+  const handleSaveExpenses = async () => {
+    setExpenseError("");
+    const valid = expenseRows
+      .map((r) => ({ ...r, amountNum: Number(r.amount) }))
+      .filter((r) => r.categoryId && Number.isFinite(r.amountNum) && r.amountNum > 0);
+    if (valid.length === 0) {
+      setExpenseError("Add at least one expense with a category and an amount greater than zero.");
       return;
     }
-    if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      setExpenseError("Enter a valid amount.");
+    // Guard against a row that has a subcategory selection but no parent category.
+    const orphanSubcat = expenseRows.find((r) => r.subcategoryId && !r.categoryId);
+    if (orphanSubcat) {
+      setExpenseError("Pick a category before choosing a subcategory.");
       return;
     }
     setExpenseSaving(true);
@@ -210,14 +253,25 @@ function FinanceClosingContent() {
       const response = await firebaseAuthedFetch(`/api/finance/closing/${date}/expenses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categoryId: expenseForm.categoryId, amount: amountNum, remarks: expenseForm.remarks }),
+        body: JSON.stringify({
+          expenses: valid.map((r) => {
+            const subs = subcategoriesFor(r.categoryId);
+            const chosen = r.subcategoryId ? subs.find((s) => s.id === r.subcategoryId) : undefined;
+            return {
+              categoryId: r.categoryId,
+              amount: r.amountNum,
+              remarks: r.remarks,
+              subcategoryId: chosen ? chosen.id : null,
+              subcategoryName: chosen ? chosen.name : null,
+            };
+          }),
+        }),
       });
       const payload = await readJson(response);
       setClosing(payload.closing);
       setExpenseModalOpen(false);
-      setExpenseForm({ categoryId: "", amount: "", remarks: "" });
     } catch (err) {
-      setExpenseError(err instanceof Error ? err.message : "Failed to add expense.");
+      setExpenseError(err instanceof Error ? err.message : "Failed to save expenses.");
     } finally {
       setExpenseSaving(false);
     }
@@ -414,10 +468,10 @@ function FinanceClosingContent() {
                 {!locked ? (
                   <button
                     type="button"
-                    onClick={() => setExpenseModalOpen(true)}
+                    onClick={openExpenseModal}
                     className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
                   >
-                    <Plus className="h-3.5 w-3.5" /> Add Expense
+                    <Plus className="h-3.5 w-3.5" /> Add Expenses
                   </button>
                 ) : null}
               </div>
@@ -429,7 +483,10 @@ function FinanceClosingContent() {
                   {closing.expenses.map((e) => (
                     <li key={e.id} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
                       <div>
-                        <p className="text-sm font-semibold text-slate-800">{e.categoryName}</p>
+                        <p className="text-sm font-semibold text-slate-800">
+                          {e.categoryName}
+                          {e.subcategoryName ? <span className="font-normal text-slate-500"> · {e.subcategoryName}</span> : null}
+                        </p>
                         {e.remarks ? <p className="text-xs text-slate-400">{e.remarks}</p> : null}
                       </div>
                       <div className="flex items-center gap-4">
@@ -598,47 +655,97 @@ function FinanceClosingContent() {
       </div>
 
       {expenseModalOpen ? (
-        <Modal title="Add Expense" onClose={() => setExpenseModalOpen(false)}>
+        <Modal
+          title="Add Cash Expenses"
+          subtitle="Add as many lines as you need, then save them all at once."
+          onClose={() => setExpenseModalOpen(false)}
+          maxWidthClassName="max-w-3xl"
+        >
           <div className="space-y-4">
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-slate-700">Category</label>
-              <select
-                value={expenseForm.categoryId}
-                onChange={(e) => setExpenseForm((f) => ({ ...f, categoryId: e.target.value }))}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-              >
-                <option value="">Select…</option>
-                {activeCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+            <div className="overflow-hidden rounded-2xl border border-slate-200">
+              <div className="hidden grid-cols-[1.4fr_1.2fr_0.9fr_1.4fr_auto] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 sm:grid">
+                <span>Category</span>
+                <span>Subcategory</span>
+                <span>Amount</span>
+                <span>Remarks</span>
+                <span className="sr-only">Remove</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {expenseRows.map((row) => {
+                  const subs = subcategoriesFor(row.categoryId);
+                  return (
+                    <div
+                      key={row.key}
+                      className="grid grid-cols-1 gap-2 px-3 py-3 sm:grid-cols-[1.4fr_1.2fr_0.9fr_1.4fr_auto] sm:items-center sm:gap-2"
+                    >
+                      <select
+                        value={row.categoryId}
+                        onChange={(e) => updateExpenseRow(row.key, { categoryId: e.target.value, subcategoryId: "" })}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                      >
+                        <option value="">Category…</option>
+                        {activeCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={row.subcategoryId}
+                        disabled={!row.categoryId || subs.length === 0}
+                        onChange={(e) => updateExpenseRow(row.key, { subcategoryId: e.target.value })}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50 disabled:text-slate-300"
+                      >
+                        <option value="">{!row.categoryId ? "—" : subs.length === 0 ? "None" : "Subcategory…"}</option>
+                        {subs.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        value={row.amount}
+                        onChange={(e) => updateExpenseRow(row.key, { amount: e.target.value })}
+                        placeholder="0"
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                      />
+                      <input
+                        value={row.remarks}
+                        onChange={(e) => updateExpenseRow(row.key, { remarks: e.target.value })}
+                        placeholder="Remarks (optional)"
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeExpenseRow(row.key)}
+                        disabled={expenseRows.length === 1}
+                        className="flex items-center justify-center rounded-xl px-2 py-2 text-slate-400 hover:text-rose-600 disabled:opacity-30 sm:px-1"
+                        aria-label="Remove row"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-slate-700">Amount</label>
-              <input
-                type="number"
-                value={expenseForm.amount}
-                onChange={(e) => setExpenseForm((f) => ({ ...f, amount: e.target.value }))}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-slate-700">Remarks (optional)</label>
-              <input
-                value={expenseForm.remarks}
-                onChange={(e) => setExpenseForm((f) => ({ ...f, remarks: e.target.value }))}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-              />
-            </div>
+
+            <button
+              type="button"
+              onClick={addExpenseRow}
+              className="flex items-center gap-1.5 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-400 hover:bg-slate-50"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add another line
+            </button>
+
             {expenseError ? <p className="text-sm font-medium text-rose-600">{expenseError}</p> : null}
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setExpenseModalOpen(false)} className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 Cancel
               </button>
-              <button type="button" disabled={expenseSaving} onClick={handleAddExpense} className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
-                {expenseSaving ? "Saving…" : "Save"}
+              <button type="button" disabled={expenseSaving} onClick={handleSaveExpenses} className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+                {expenseSaving ? "Saving…" : `Save ${expenseRows.filter((r) => r.categoryId && Number(r.amount) > 0).length || ""} Expense(s)`.trim()}
               </button>
             </div>
           </div>

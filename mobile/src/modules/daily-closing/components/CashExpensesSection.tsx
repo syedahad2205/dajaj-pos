@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import type { FinanceDailyClosing, DailyClosingExpenseEntry } from '@/modules/daily-closing/types';
-import { useAddExpense } from '@/modules/daily-closing/hooks/useAddExpense';
+import { useAddExpenses } from '@/modules/daily-closing/hooks/useAddExpenses';
 import { useRemoveExpense } from '@/modules/daily-closing/hooks/useRemoveExpense';
-import { AddExpenseModal } from './AddExpenseModal';
+import { useExpenseSubcategories } from '@/modules/daily-closing/hooks/useExpenseSubcategories';
+import { AddExpenseModal, type AddExpenseRow } from './AddExpenseModal';
 import { SummaryRow } from '@/core/ui/components/SummaryRow';
 import { formatCurrency } from '@/modules/daily-closing/utils/formatUtils';
 import { colors, radius, shadow } from '@/core/ui/theme/colors';
@@ -13,19 +14,20 @@ interface Props { date: string; closing: FinanceDailyClosing | null; readonly: b
 export function CashExpensesSection({ date, closing, readonly }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const addExpense = useAddExpense(date);
+  const addExpenses = useAddExpenses(date);
   const removeExpense = useRemoveExpense(date);
+  const { data: subcategories = [] } = useExpenseSubcategories();
 
-  function handleSave(input: { categoryId: string; amount: number; remarks?: string }) {
+  function handleSave(rows: AddExpenseRow[]) {
     setSaveError(null);
-    addExpense.mutate(input, {
+    addExpenses.mutate({ expenses: rows }, {
       onSuccess: () => setShowModal(false),
-      onError: (e) => setSaveError(e instanceof Error ? e.message : 'Failed to save'),
+      onError: (e: unknown) => setSaveError(e instanceof Error ? e.message : 'Failed to save'),
     });
   }
 
   function confirmDelete(entry: DailyClosingExpenseEntry) {
-    Alert.alert('Remove Expense', `Remove ${entry.categoryName} — ${formatCurrency(entry.amount)}?`, [
+    Alert.alert('Remove Expense', `Remove ${entry.categoryName}${entry.subcategoryName ? ` · ${entry.subcategoryName}` : ''} — ${formatCurrency(entry.amount)}?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => removeExpense.mutate(entry.id) },
     ]);
@@ -42,7 +44,10 @@ export function CashExpensesSection({ date, closing, readonly }: Props) {
       {expenses.map(entry => (
         <View key={entry.id} style={styles.row}>
           <View style={styles.rowInfo}>
-            <Text style={styles.rowLabel}>{entry.categoryName}</Text>
+            <Text style={styles.rowLabel}>
+              {entry.categoryName}
+              {entry.subcategoryName ? <Text style={styles.rowSubcategory}> · {entry.subcategoryName}</Text> : null}
+            </Text>
             {entry.remarks ? <Text style={styles.rowRemarks}>{entry.remarks}</Text> : null}
           </View>
           <Text style={styles.expenseAmount}>{formatCurrency(entry.amount)}</Text>
@@ -60,7 +65,7 @@ export function CashExpensesSection({ date, closing, readonly }: Props) {
 
       {!readonly && !(closing?.locked) && (
         <TouchableOpacity style={styles.addBtn} onPress={() => { setSaveError(null); setShowModal(true); }} activeOpacity={0.8}>
-          <Text style={styles.addBtnText}>+ Add Expense</Text>
+          <Text style={styles.addBtnText}>+ Add Expenses</Text>
         </TouchableOpacity>
       )}
 
@@ -68,8 +73,9 @@ export function CashExpensesSection({ date, closing, readonly }: Props) {
         visible={showModal}
         onClose={() => setShowModal(false)}
         onSave={handleSave}
-        isSaving={addExpense.isPending}
+        isSaving={addExpenses.isPending}
         saveError={saveError}
+        subcategories={subcategories}
       />
     </View>
   );
@@ -82,6 +88,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.slate50 },
   rowInfo: { flex: 1 },
   rowLabel: { fontSize: 14, color: colors.slate900 },
+  rowSubcategory: { fontSize: 12, color: colors.slate400, fontWeight: '400' },
   rowRemarks: { fontSize: 12, color: colors.slate400, marginTop: 1 },
   expenseAmount: { fontSize: 14, fontWeight: '700', color: colors.rose600, marginHorizontal: 10, fontVariant: ['tabular-nums'] },
   deleteText: { color: colors.slate400, fontSize: 16, paddingHorizontal: 4 },

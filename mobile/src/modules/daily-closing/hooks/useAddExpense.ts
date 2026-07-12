@@ -1,1 +1,1 @@
-export { useAddExpense } from '@/modules/daily-closing/hooks/mutations';
+export { useAddExpense, useAddExpenses } from '@/modules/daily-closing/hooks/mutations';
