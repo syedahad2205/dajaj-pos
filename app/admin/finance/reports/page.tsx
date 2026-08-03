@@ -274,7 +274,7 @@ export default function FinanceReportsPage() {
         {/* Empty state */}
         {report === null && !fetching && (
           <div className="rounded-[28px] border border-dashed border-slate-300 bg-white p-14 text-center">
-            <p className="text-sm font-semibold text-slate-400">Select a date range above and click "Generate Report"</p>
+            <p className="text-sm font-semibold text-slate-400">Select a date range above and click &ldquo;Generate Report&rdquo;</p>
             <p className="mt-1 text-xs text-slate-300">Revenue, expenses, P&amp;L, and daily breakdown will appear here</p>
           </div>
         )}
