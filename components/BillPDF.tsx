@@ -99,14 +99,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   tableCol1: {
-    width: '52%',
+    width: '40%',
+  },
+  tableColRate: {
+    width: '20%',
+    textAlign: 'right',
   },
   tableCol2: {
-    width: '16%',
+    width: '12%',
     textAlign: 'right',
   },
   tableCol3: {
-    width: '32%',
+    width: '28%',
     textAlign: 'right',
   },
   itemName: {
@@ -220,28 +224,35 @@ const BillDocument = ({ bill, qrDataUrl }: { bill: Bill; qrDataUrl?: string }) =
         <View style={styles.table}>
           <View style={styles.tableHeader}>
             <View style={styles.tableCol1}><Text style={styles.tableHeaderLabel}>Item</Text></View>
+            <View style={styles.tableColRate}><Text style={styles.tableHeaderLabel}>Rate</Text></View>
             <View style={styles.tableCol2}><Text style={styles.tableHeaderLabel}>Qty</Text></View>
-            <View style={styles.tableCol3}><Text style={styles.tableHeaderLabel}>Price</Text></View>
+            <View style={styles.tableCol3}><Text style={styles.tableHeaderLabel}>Amount</Text></View>
           </View>
-          {bill.items.map((item, index) => (
-            <View key={index} style={styles.tableRow}>
-              <View style={styles.tableCol1}>
-                <Text style={styles.itemName}>{item.name}</Text>
-                {item.variant ? <Text style={styles.itemDetail}>{item.variant}</Text> : null}
-                {item.addons.map((addon, ai) => (
-                  <Text key={ai} style={styles.addon}>
-                    + {addon.name} (₹{addon.price})
-                  </Text>
-                ))}
+          {bill.items.map((item, index) => {
+            const rate = item.basePrice + item.addons.reduce((s, a) => s + a.price, 0);
+            return (
+              <View key={index} style={styles.tableRow}>
+                <View style={styles.tableCol1}>
+                  <Text style={styles.itemName}>{item.name}</Text>
+                  {item.variant ? <Text style={styles.itemDetail}>{item.variant}</Text> : null}
+                  {item.addons.map((addon, ai) => (
+                    <Text key={ai} style={styles.addon}>
+                      + {addon.name} (₹{addon.price})
+                    </Text>
+                  ))}
+                </View>
+                <View style={styles.tableColRate}>
+                  <Text>₹{rate.toFixed(2)}</Text>
+                </View>
+                <View style={styles.tableCol2}>
+                  <Text>{item.qty}</Text>
+                </View>
+                <View style={styles.tableCol3}>
+                  <Text>₹{item.itemTotal.toFixed(2)}</Text>
+                </View>
               </View>
-              <View style={styles.tableCol2}>
-                <Text>{item.qty}</Text>
-              </View>
-              <View style={styles.tableCol3}>
-                <Text>₹{item.itemTotal.toFixed(2)}</Text>
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         <View style={styles.totals}>

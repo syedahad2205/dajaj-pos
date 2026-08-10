@@ -197,30 +197,35 @@ export default function BillPage() {
             <thead>
               <tr className="border-b border-gray-400">
                 <th className="text-left pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Item</th>
+                <th className="text-right pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Rate</th>
                 <th className="text-right pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Qty</th>
-                <th className="text-right pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Price</th>
+                <th className="text-right pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Amount</th>
               </tr>
             </thead>
             <tbody>
-              {bill.items.map((item, index) => (
-                <tr key={index} className="border-b border-gray-100">
-                  <td className="py-1.5">
-                    <div className="text-xs font-medium">{item.name}</div>
-                    {item.variant && <div className="text-[10px] text-gray-500">{item.variant}</div>}
-                    {item.addons.length > 0 && (
-                      <div className="mt-0.5">
-                        {item.addons.map((addon, ai) => (
-                          <div key={ai} className="text-[10px] text-gray-400 pl-3">
-                            + {addon.name} (₹{addon.price})
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="text-right text-xs align-top py-1.5">{item.qty}</td>
-                  <td className="text-right text-xs align-top py-1.5">₹{item.itemTotal.toFixed(2)}</td>
-                </tr>
-              ))}
+              {bill.items.map((item, index) => {
+                const rate = item.basePrice + item.addons.reduce((s, a) => s + a.price, 0);
+                return (
+                  <tr key={index} className="border-b border-gray-100">
+                    <td className="py-1.5">
+                      <div className="text-xs font-medium">{item.name}</div>
+                      {item.variant && <div className="text-[10px] text-gray-500">{item.variant}</div>}
+                      {item.addons.length > 0 && (
+                        <div className="mt-0.5">
+                          {item.addons.map((addon, ai) => (
+                            <div key={ai} className="text-[10px] text-gray-400 pl-3">
+                              + {addon.name} (₹{addon.price})
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="text-right text-xs align-top py-1.5">₹{rate.toFixed(2)}</td>
+                    <td className="text-right text-xs align-top py-1.5">{item.qty}</td>
+                    <td className="text-right text-xs align-top py-1.5">₹{item.itemTotal.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
