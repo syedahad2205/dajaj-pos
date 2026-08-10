@@ -105,7 +105,8 @@ export default function POSPage() {
   const [localLabel, setLocalLabel] = useState('');
 
   // Bill confirm modal
-  type BillConfirm = { orderId: string; label: string; items: PosCartItem[]; grandTotal: number; paymentMode: PaymentMode; cashCollected: string };
+  type DiscountType = 'amount' | 'percent';
+  type BillConfirm = { orderId: string; label: string; items: PosCartItem[]; subtotal: number; deliveryCharge: string; discount: string; discountType: DiscountType; paymentMode: PaymentMode; cashCollected: string };
   const [billConfirm, setBillConfirm] = useState<BillConfirm | null>(null);
   const [lastBill, setLastBill] = useState<{ billNo: string; publicToken: string } | null>(null);
 
@@ -325,17 +326,23 @@ export default function POSPage() {
     if (items.length === 0) { alert('No items in this order.'); return; }
     if (!label.trim()) { alert('Please enter a customer name.'); return; }
 
-    const { grandTotal } = calcTotals(items);
-    setBillConfirm({ orderId: targetId, label, items, grandTotal, paymentMode: 'Cash', cashCollected: '' });
+    const { subtotal } = calcTotals(items);
+    setBillConfirm({ orderId: targetId, label, items, subtotal, deliveryCharge: '', discount: '', discountType: 'amount', paymentMode: 'Cash', cashCollected: '' });
   };
 
   // ── Execute bill after modal confirm ─────────────────────────────────────────
   const confirmBill = async () => {
     if (!billConfirm) return;
-    const { orderId: targetId, label, items, paymentMode: chosenMode, cashCollected } = billConfirm;
+    const { orderId: targetId, label, items, paymentMode: chosenMode, cashCollected, deliveryCharge, discount, discountType } = billConfirm;
     setBilling(true);
     try {
-      const { subtotal, cgst, sgst, grandTotal } = calcTotals(items);
+      const { subtotal, cgst, sgst } = calcTotals(items);
+      const deliveryNum = parseFloat(deliveryCharge) || 0;
+      const discountInput = parseFloat(discount) || 0;
+      const discountNum = discountType === 'percent'
+        ? (subtotal * Math.min(discountInput, 100)) / 100
+        : discountInput;
+      const grandTotal = Math.max(0, subtotal + deliveryNum - discountNum);
       const billItems: BillItem[] = items.map((item) => ({
         sku: item.sku,
         name: item.name,
@@ -352,6 +359,9 @@ export default function POSPage() {
         subtotal,
         cgst,
         sgst,
+        ...(deliveryNum > 0 ? { deliveryCharge: deliveryNum } : {}),
+        ...(discountNum > 0 ? { discount: discountNum } : {}),
+        ...(discountNum > 0 && discountType === 'percent' ? { discountPercent: Math.min(discountInput, 100) } : {}),
         grandTotal,
         paymentMode: chosenMode,
         ...(chosenMode === 'UPI' && cashCollected.trim() ? { cashCollected: parseFloat(cashCollected) } : {}),
@@ -878,12 +888,89 @@ export default function POSPage() {
       </nav>
 
       {/* ── BILL CONFIRM MODAL ── */}
-      {billConfirm && (
+      {billConfirm && (() => {
+        const deliveryNum = parseFloat(billConfirm.deliveryCharge) || 0;
+        const discountInput = parseFloat(billConfirm.discount) || 0;
+        const discountNum = billConfirm.discountType === 'percent'
+          ? (billConfirm.subtotal * Math.min(discountInput, 100)) / 100
+          : discountInput;
+        const finalTotal = Math.max(0, billConfirm.subtotal + deliveryNum - discountNum);
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5">
             <div>
               <h2 className="text-lg font-bold text-neutral-900">Confirm Bill</h2>
-              <p className="text-sm text-neutral-500 mt-0.5">{billConfirm.label} · ₹{billConfirm.grandTotal.toFixed(0)}</p>
+              <p className="text-sm text-neutral-500 mt-0.5">{billConfirm.label} · ₹{finalTotal.toFixed(0)}</p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="h-6 flex items-center">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Delivery Charge</label>
+                  </div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    placeholder="₹ 0"
+                    value={billConfirm.deliveryCharge}
+                    onChange={(e) => setBillConfirm((prev) => prev ? { ...prev, deliveryCharge: e.target.value } : prev)}
+                    className="w-full px-3 py-2.5 rounded-xl border-2 border-neutral-200 focus:border-orange-400 focus:outline-none text-sm font-medium"
+                  />
+                </div>
+                <div>
+                  <div className="h-6 flex items-center justify-between">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Discount</label>
+                    <div className="flex rounded-lg border border-neutral-200 overflow-hidden flex-shrink-0">
+                      {(['amount', 'percent'] as DiscountType[]).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setBillConfirm((prev) => prev ? { ...prev, discountType: t } : prev)}
+                          className={`w-6 h-5 flex items-center justify-center text-xs font-bold leading-none transition-colors ${
+                            billConfirm.discountType === t
+                              ? 'bg-orange-600 text-white'
+                              : 'bg-white text-neutral-500 hover:bg-neutral-50'
+                          }`}
+                        >
+                          {t === 'amount' ? '₹' : '%'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={billConfirm.discountType === 'percent' ? 100 : undefined}
+                    placeholder={billConfirm.discountType === 'percent' ? '% 0' : '₹ 0'}
+                    value={billConfirm.discount}
+                    onChange={(e) => setBillConfirm((prev) => prev ? { ...prev, discount: e.target.value } : prev)}
+                    className="w-full px-3 py-2.5 rounded-xl border-2 border-neutral-200 focus:border-orange-400 focus:outline-none text-sm font-medium"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-neutral-50 px-3 py-2.5 space-y-1 text-sm">
+                <div className="flex justify-between text-neutral-500">
+                  <span>Subtotal</span><span>₹{billConfirm.subtotal.toFixed(2)}</span>
+                </div>
+                {deliveryNum > 0 && (
+                  <div className="flex justify-between text-neutral-500">
+                    <span>Delivery Charge</span><span>+ ₹{deliveryNum.toFixed(2)}</span>
+                  </div>
+                )}
+                {discountNum > 0 && (
+                  <div className="flex justify-between text-neutral-500">
+                    <span>Discount{billConfirm.discountType === 'percent' ? ` (${Math.min(discountInput, 100)}%)` : ''}</span>
+                    <span>− ₹{discountNum.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-neutral-900 pt-1 border-t border-neutral-200">
+                  <span>Total</span><span>₹{finalTotal.toFixed(2)}</span>
+                </div>
+              </div>
             </div>
 
             <div>
@@ -938,7 +1025,8 @@ export default function POSPage() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ── BILL SUCCESS TOAST ── */}
       {lastBill && (

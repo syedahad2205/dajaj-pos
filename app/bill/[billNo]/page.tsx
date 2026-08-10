@@ -7,12 +7,15 @@ import { auth } from '@/lib/firebase';
 import { getBillByNumber, type Bill } from '@/lib/firestore';
 import BillPDF from '@/components/BillPDF';
 import { sendBillOnWhatsApp } from '@/lib/whatsapp';
+import { buildUpiPaymentLink } from '@/lib/upi';
+import { generateQrDataUrl } from '@/lib/qr';
 
 export default function BillPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [bill, setBill] = useState<Bill | null>(null);
   const [error, setError] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState('');
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -45,6 +48,12 @@ export default function BillPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [billNo, searchParams, loading]);
+
+  useEffect(() => {
+    if (!bill) return;
+    const link = buildUpiPaymentLink(bill.grandTotal, bill.billNo);
+    generateQrDataUrl(link, 160).then(setQrDataUrl).catch(() => setQrDataUrl(''));
+  }, [bill]);
 
   const loadBill = async () => {
     try {
@@ -217,7 +226,23 @@ export default function BillPage() {
           </div>
 
           <div className="border-t pt-4 space-y-2">
-            <div className="flex justify-between font-bold text-lg">
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Subtotal:</span>
+              <span>₹{bill.subtotal.toFixed(2)}</span>
+            </div>
+            {bill.deliveryCharge ? (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Delivery Charge:</span>
+                <span>+ ₹{bill.deliveryCharge.toFixed(2)}</span>
+              </div>
+            ) : null}
+            {bill.discount ? (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Discount{bill.discountPercent ? ` (${bill.discountPercent}%)` : ''}:</span>
+                <span>− ₹{bill.discount.toFixed(2)}</span>
+              </div>
+            ) : null}
+            <div className="flex justify-between font-bold text-lg pt-1 border-t">
               <span>Total:</span>
               <span>₹{bill.grandTotal.toFixed(2)}</span>
             </div>
@@ -232,6 +257,13 @@ export default function BillPage() {
               </div>
             ) : null}
           </div>
+
+          {qrDataUrl && (
+            <div className="flex flex-col items-center mt-6 pt-4 border-t">
+              <img src={qrDataUrl} alt="Scan to pay via UPI" className="w-28 h-28" />
+              <p className="text-xs text-gray-500 mt-1">Scan & Pay ₹{bill.grandTotal.toFixed(2)}</p>
+            </div>
+          )}
 
           <div className="text-center mt-6 pt-4 border-t">
             <p className="text-sm text-gray-600">Thank you. Visit Again.</p>

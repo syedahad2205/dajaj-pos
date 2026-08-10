@@ -266,6 +266,9 @@ export interface Bill {
   subtotal: number;
   cgst: number;
   sgst: number;
+  deliveryCharge?: number;
+  discount?: number;
+  discountPercent?: number;
   grandTotal: number;
   paymentMode: string;
   cashCollected?: number;

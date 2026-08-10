@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { PDFDownloadLink, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { type Bill } from '@/lib/firestore';
+import { buildUpiPaymentLink } from '@/lib/upi';
+import { generateQrDataUrl } from '@/lib/qr';
 import logoImage from '@/public/logo.png';
 
 // Extract the src URL from the imported image for React-PDF
@@ -125,7 +127,7 @@ const styles = StyleSheet.create({
   }  
 });
 
-const BillDocument = ({ bill }: { bill: Bill }) => {
+const BillDocument = ({ bill, qrDataUrl }: { bill: Bill; qrDataUrl?: string }) => {
   const date = bill.createdAt?.toDate ? bill.createdAt.toDate() : new Date();
   const formattedDate = date.toLocaleDateString('en-IN', {
     day: '2-digit',
@@ -203,6 +205,22 @@ const BillDocument = ({ bill }: { bill: Bill }) => {
         </View>
 
         <View style={styles.totals}>
+          <View style={styles.totalRow}>
+            <Text style={styles.label}>Subtotal:</Text>
+            <Text style={styles.label}>₹{bill.subtotal.toFixed(2)}</Text>
+          </View>
+          {bill.deliveryCharge ? (
+            <View style={styles.totalRow}>
+              <Text style={styles.label}>Delivery Charge:</Text>
+              <Text style={styles.label}>+ ₹{bill.deliveryCharge.toFixed(2)}</Text>
+            </View>
+          ) : null}
+          {bill.discount ? (
+            <View style={styles.totalRow}>
+              <Text style={styles.label}>Discount{bill.discountPercent ? ` (${bill.discountPercent}%)` : ''}:</Text>
+              <Text style={styles.label}>− ₹{bill.discount.toFixed(2)}</Text>
+            </View>
+          ) : null}
           <View style={styles.grandTotal}>
             <Text>Total:</Text>
             <Text>₹{bill.grandTotal.toFixed(2)}</Text>
@@ -219,6 +237,14 @@ const BillDocument = ({ bill }: { bill: Bill }) => {
           ) : null}
         </View>
 
+        {qrDataUrl ? (
+          <View style={{ alignItems: 'center', marginTop: 15 }}>
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            <Image src={qrDataUrl} style={{ width: 80, height: 80 }} />
+            <Text style={{ fontSize: 8, marginTop: 4, color: '#666' }}>Scan & Pay ₹{bill.grandTotal.toFixed(2)}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.footer}>
           <Text>Thank you. Visit Again.</Text>
         </View>
@@ -229,9 +255,17 @@ const BillDocument = ({ bill }: { bill: Bill }) => {
 };
 
 export default function BillPDF({ bill }: BillPDFProps) {
+  const [qrDataUrl, setQrDataUrl] = useState('');
+
+  useEffect(() => {
+    generateQrDataUrl(buildUpiPaymentLink(bill.grandTotal, bill.billNo), 200)
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(''));
+  }, [bill.grandTotal, bill.billNo]);
+
   return (
     <PDFDownloadLink
-      document={<BillDocument bill={bill} />}
+      document={<BillDocument bill={bill} qrDataUrl={qrDataUrl} />}
       fileName={`${bill.billNo}.pdf`}
       className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium inline-block"
     >
