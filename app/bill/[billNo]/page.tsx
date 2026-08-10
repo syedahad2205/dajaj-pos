@@ -155,103 +155,102 @@ export default function BillPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
-        <div className="mb-4">
-        </div>
-
+      <div className="max-w-sm mx-auto px-4">
         {/* Bill Preview */}
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-          <div className="text-center mb-6">
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">DAJAJ</h1>
-            <p className="text-gray-600">The Spice of Spices</p>
-            <p className="text-sm text-gray-500 mt-1">Kundapura</p>
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <div className="text-center mb-4">
+            <h1 className="text-2xl font-bold text-gray-800 tracking-wide">DAJAJ</h1>
+            <p className="text-gray-500 text-sm italic">The Spice of Spices</p>
+            <p className="text-xs text-gray-400 mt-0.5">Kundapura</p>
           </div>
 
-          <div className="border-t border-b py-4 mb-4">
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-gray-600">Bill No:</span>
+          <div className="border-t border-dashed border-gray-300 my-3" />
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Bill No:</span>
               <span className="font-semibold">{bill.billNo}</span>
             </div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-gray-600">Date:</span>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Date:</span>
               <span>{formattedDate}</span>
             </div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-gray-600">Time:</span>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Time:</span>
               <span>{formattedTime}</span>
             </div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-gray-600">Customer:</span>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Customer:</span>
               <span>{bill.customer.name}</span>
             </div>
             {bill.customer.mobile && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Mobile:</span>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Mobile:</span>
                 <span>{bill.customer.mobile}</span>
               </div>
             )}
           </div>
 
-          <div className="mb-4">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2 text-sm font-semibold text-gray-700">Item</th>
-                  <th className="text-right py-2 text-sm font-semibold text-gray-700">Qty</th>
-                  <th className="text-right py-2 text-sm font-semibold text-gray-700">Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bill.items.map((item, index) => (
-                  <tr key={index} className="border-b">
-                    <td className="py-2">
-                      <div className="text-sm font-medium">{item.name}</div>
-                      {item.variant && <div className="text-xs text-gray-500">{item.variant}</div>}
-                      {item.addons.length > 0 && (
-                        <div className="mt-1">
-                          {item.addons.map((addon, ai) => (
-                            <div key={ai} className="text-xs text-gray-500 pl-4">
-                              + {addon.name} (₹{addon.price})
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="text-right text-sm">{item.qty}</td>
-                    <td className="text-right text-sm">₹{item.itemTotal.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <div className="border-t border-dashed border-gray-300 my-3" />
 
-          <div className="border-t pt-4 space-y-2">
-            <div className="flex justify-between text-sm text-gray-600">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-400">
+                <th className="text-left pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Item</th>
+                <th className="text-right pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Qty</th>
+                <th className="text-right pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bill.items.map((item, index) => (
+                <tr key={index} className="border-b border-gray-100">
+                  <td className="py-1.5">
+                    <div className="text-xs font-medium">{item.name}</div>
+                    {item.variant && <div className="text-[10px] text-gray-500">{item.variant}</div>}
+                    {item.addons.length > 0 && (
+                      <div className="mt-0.5">
+                        {item.addons.map((addon, ai) => (
+                          <div key={ai} className="text-[10px] text-gray-400 pl-3">
+                            + {addon.name} (₹{addon.price})
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="text-right text-xs align-top py-1.5">{item.qty}</td>
+                  <td className="text-right text-xs align-top py-1.5">₹{item.itemTotal.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="space-y-1.5 mt-3">
+            <div className="flex justify-between text-xs text-gray-500">
               <span>Subtotal:</span>
               <span>₹{bill.subtotal.toFixed(2)}</span>
             </div>
             {bill.deliveryCharge ? (
-              <div className="flex justify-between text-sm text-gray-600">
+              <div className="flex justify-between text-xs text-gray-500">
                 <span>Delivery Charge:</span>
                 <span>+ ₹{bill.deliveryCharge.toFixed(2)}</span>
               </div>
             ) : null}
             {bill.discount ? (
-              <div className="flex justify-between text-sm text-gray-600">
+              <div className="flex justify-between text-xs text-gray-500">
                 <span>Discount{bill.discountPercent ? ` (${bill.discountPercent}%)` : ''}:</span>
                 <span>− ₹{bill.discount.toFixed(2)}</span>
               </div>
             ) : null}
-            <div className="flex justify-between font-bold text-lg pt-1 border-t">
+            <div className="flex justify-between font-bold text-base pt-2 mt-1 border-t border-gray-800">
               <span>Total:</span>
               <span>₹{bill.grandTotal.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-sm text-gray-600 mt-2">
+            <div className="flex justify-between text-xs text-gray-500 pt-1.5">
               <span>Payment Mode:</span>
               <span>{bill.paymentMode}</span>
             </div>
             {bill.cashCollected ? (
-              <div className="flex justify-between text-sm text-gray-600 mt-1">
+              <div className="flex justify-between text-xs text-gray-500">
                 <span>Cash Collected:</span>
                 <span>₹{bill.cashCollected.toFixed(2)}</span>
               </div>
@@ -259,23 +258,23 @@ export default function BillPage() {
           </div>
 
           {qrDataUrl && (
-            <div className="flex flex-col items-center mt-6 pt-4 border-t">
-              <img src={qrDataUrl} alt="Scan to pay via UPI" className="w-28 h-28" />
-              <p className="text-xs text-gray-500 mt-1">Scan & Pay ₹{bill.grandTotal.toFixed(2)}</p>
+            <div className="flex flex-col items-center mt-4 pt-3 border-t border-dashed border-gray-300">
+              <img src={qrDataUrl} alt="Scan to pay via UPI" className="w-24 h-24" />
+              <p className="text-[10px] text-gray-500 mt-1">Scan & Pay ₹{bill.grandTotal.toFixed(2)}</p>
             </div>
           )}
 
-          <div className="text-center mt-6 pt-4 border-t">
-            <p className="text-sm text-gray-600">Thank you. Visit Again.</p>
+          <div className="text-center mt-4 pt-3 border-t border-dashed border-gray-300">
+            <p className="text-xs text-gray-500">Thank you. Visit Again.</p>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex space-x-4 justify-center">
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <BillPDF bill={bill} />
           <button
             onClick={handleWhatsApp}
-            className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium"
+            className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium text-center"
           >
             Send on WhatsApp
           </button>
