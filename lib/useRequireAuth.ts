@@ -6,6 +6,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { hasAdminBypassSession } from "@/lib/devAuth";
 import { auth } from "@/lib/firebase";
 import { getAdminProfile } from "@/services/adminService";
+import { getFinanceManagerProfile } from "@/services/financeManagerService";
 import { getPosStaffProfile, getPosStaffProfileByEmail } from "@/lib/firestore";
 import type { UserRole } from "@/lib/firebase";
 
@@ -29,9 +30,35 @@ export function useRequireAuth(requiredRole?: UserRole) {
         setAuthenticated(false);
         setRole(null);
         const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
-        if (requiredRole === "admin") router.push(`/admin/login${next}`);
+        if (requiredRole === "admin" || requiredRole === "financeManager") router.push(`/admin/login${next}`);
         else if (requiredRole === "pos") router.push(`/pos/login`);
         else router.push(`/login${next}`);
+        setLoading(false);
+        return;
+      }
+
+      if (requiredRole === "financeManager") {
+        // Admins can always access Finance too — Finance Manager is a
+        // narrower role layered on top of the same login, not a replacement.
+        const adminProfile = await getAdminProfile(user.uid);
+        if (adminProfile) {
+          setAuthenticated(true);
+          setRole("admin");
+          setLoading(false);
+          return;
+        }
+        const managerProfile = await getFinanceManagerProfile(user.uid);
+        if (!managerProfile || managerProfile.active === false) {
+          setAuthenticated(false);
+          setRole(null);
+          await signOut(auth);
+          const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
+          router.push(`/admin/login${next}`);
+          setLoading(false);
+          return;
+        }
+        setAuthenticated(true);
+        setRole("financeManager");
         setLoading(false);
         return;
       }

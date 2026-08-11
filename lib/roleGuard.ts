@@ -10,6 +10,15 @@ export function requireAdmin() {
   return useRequireAuth("admin");
 }
 
+// For the 4 pages Finance Manager is scoped to (Dashboard, Daily Closing,
+// Transactions, Reports). Resolves to role "admin" for a full Admin, or
+// "financeManager" for a restricted Finance Manager account — never both,
+// and never any other role. Every other admin page must keep using
+// requireAdmin() so Finance Manager stays excluded from it.
+export function requireFinanceAccess() {
+  return useRequireAuth("financeManager");
+}
+
 export function requirePosStaff() {
   return useRequireAuth("pos");
 }

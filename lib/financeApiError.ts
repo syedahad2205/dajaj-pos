@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isFirebaseRouteAuthError } from "@/lib/firebaseServerApp";
+import { isFinanceRouteForbiddenError } from "@/lib/financeRouteAuth";
 
 /**
  * Shared error → HTTP response mapping for every Finance module API route,
@@ -17,6 +18,7 @@ export function financeErrorResponse(error: unknown, context: string) {
 
   let status = 400;
   if (isFirebaseRouteAuthError(error)) status = 401;
+  else if (isFinanceRouteForbiddenError(error)) status = 403;
   else if (errorCode === "permission-denied") status = 403;
   else if (/not found/i.test(message)) status = 404;
   else if (!(error instanceof Error)) status = 500;

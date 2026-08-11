@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { ADMIN_BYPASS_CODE, hasAdminBypassSession, setAdminBypassSession } from "@/lib/devAuth";
+import { isAdminBypassAllowed } from "@/lib/devAuthShared";
 import { auth } from "@/lib/firebase";
 import { getAdminProfile, syncAdminProfile } from "@/services/adminService";
 
@@ -51,7 +52,7 @@ function AdminLoginContent() {
     setLoading(true);
 
     try {
-      if (email.trim() === ADMIN_BYPASS_CODE || password.trim() === ADMIN_BYPASS_CODE) {
+      if (isAdminBypassAllowed() && (email.trim() === ADMIN_BYPASS_CODE || password.trim() === ADMIN_BYPASS_CODE)) {
         setAdminBypassSession();
         router.push(resolveRedirect());
         return;

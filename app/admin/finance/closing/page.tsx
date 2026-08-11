@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Calendar, Plus, Trash2 } from "lucide-react";
-import { requireAdmin } from "@/lib/roleGuard";
+import { requireFinanceAccess } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, formatDateDisplay, todayDateKey } from "@/lib/financeFormat";
 import { roundCurrency, SUPPORTED_CASH_DEPOSIT_TYPES, CASH_DEPOSIT_TYPE_LABELS, type CashDepositType, type FinanceExpenseSubcategory } from "@/lib/finance";
@@ -82,8 +82,9 @@ function SummaryRow({ label, value, emphasis, muted }: { label: string; value: s
 }
 
 function FinanceClosingContent() {
-  const { authenticated, loading, role } = requireAdmin();
-  const canQuery = authenticated && role === "admin";
+  const { authenticated, loading, role } = requireFinanceAccess();
+  const hasFinanceAccess = authenticated && (role === "admin" || role === "financeManager");
+  const canQuery = hasFinanceAccess;
   const today = todayDateKey();
   const searchParams = useSearchParams();
 
@@ -157,7 +158,7 @@ function FinanceClosingContent() {
   if (loading) {
     return <main className="min-h-screen bg-[#fff8ed] px-4 py-10 text-slate-900">Checking your session…</main>;
   }
-  if (!authenticated || role !== "admin") return null;
+  if (!hasFinanceAccess) return null;
 
   const activeCategories = categories.filter((c) => c.active);
 
@@ -414,19 +415,25 @@ function FinanceClosingContent() {
             <p className="truncate text-xs font-semibold text-emerald-700">
               Closed at {closing?.closingTime} by {closing?.closedByName}
             </p>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={handleReopen}
-              className="flex-shrink-0 rounded-full px-2 py-1 text-xs font-semibold text-slate-500 underline hover:bg-emerald-100 hover:text-slate-800"
-            >
-              Reopen
-            </button>
+            {/* Reopening a locked day is a correction action — Admin-only, even
+                though a Finance Manager can otherwise save/edit this page. The
+                API route enforces this too (requireAdminCaller), this just
+                keeps the affordance from being offered in the first place. */}
+            {role === "admin" ? (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={handleReopen}
+                className="flex-shrink-0 rounded-full px-2 py-1 text-xs font-semibold text-slate-500 underline hover:bg-emerald-100 hover:text-slate-800"
+              >
+                Reopen
+              </button>
+            ) : null}
           </div>
         ) : null}
 
         <div className="mx-auto hidden max-w-2xl md:mt-4 md:block">
-          <FinanceNav />
+          <FinanceNav role={role} />
         </div>
       </header>
 

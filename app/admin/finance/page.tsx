@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { requireAdmin } from "@/lib/roleGuard";
+import { requireFinanceAccess } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, formatDateShort } from "@/lib/financeFormat";
 import FinanceNav from "@/components/finance/FinanceNav";
@@ -46,8 +46,9 @@ function StatCard({ label, value, tone = "default" }: { label: string; value: st
 }
 
 export default function FinanceDashboardPage() {
-  const { authenticated, loading, role } = requireAdmin();
-  const canQuery = authenticated && role === "admin";
+  const { authenticated, loading, role } = requireFinanceAccess();
+  const hasFinanceAccess = authenticated && (role === "admin" || role === "financeManager");
+  const canQuery = hasFinanceAccess;
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [fetching, setFetching] = useState(true);
@@ -67,7 +68,7 @@ export default function FinanceDashboardPage() {
   if (loading) {
     return <main className="min-h-screen bg-[#fff8ed] px-4 py-10 text-slate-900">Checking your session…</main>;
   }
-  if (!authenticated || role !== "admin") return null;
+  if (!hasFinanceAccess) return null;
 
   const maxTrend = summary ? Math.max(...summary.revenueExpenseTrend.map((d) => Math.max(d.revenue, d.expense)), 1) : 1;
 
@@ -79,7 +80,7 @@ export default function FinanceDashboardPage() {
           <h1 className="mt-1 text-3xl font-black">Finance Dashboard</h1>
           <p className="mt-2 text-sm text-slate-600">The financial health of DAJAJ, at a glance — combining Daily Closing and Transactions.</p>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-            <FinanceNav />
+            <FinanceNav role={role} />
             <Link href="/admin/finance/closing" className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
               ⭐ Daily Closing
             </Link>

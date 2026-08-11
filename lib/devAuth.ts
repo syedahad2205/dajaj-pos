@@ -1,11 +1,14 @@
 "use client";
 
-import { ADMIN_BYPASS_CODE, ADMIN_BYPASS_SESSION_KEY } from "@/lib/devAuthShared";
+import { ADMIN_BYPASS_CODE, ADMIN_BYPASS_SESSION_KEY, isAdminBypassAllowed } from "@/lib/devAuthShared";
 
 export { ADMIN_BYPASS_CODE, ADMIN_BYPASS_SESSION_KEY };
 
+// Both functions below are hard-gated on isAdminBypassAllowed() (NODE_ENV !==
+// "production") so the bypass code can never grant access in a deployed
+// environment, regardless of what's sitting in a browser's localStorage.
 export function hasAdminBypassSession() {
-  if (typeof window === "undefined") {
+  if (!isAdminBypassAllowed() || typeof window === "undefined") {
     return false;
   }
 
@@ -13,7 +16,7 @@ export function hasAdminBypassSession() {
 }
 
 export function setAdminBypassSession() {
-  if (typeof window === "undefined") {
+  if (!isAdminBypassAllowed() || typeof window === "undefined") {
     return;
   }
 

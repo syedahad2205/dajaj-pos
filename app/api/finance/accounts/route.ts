@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedFirestoreForRequest } from "@/lib/firebaseServerApp";
+import { requireAdminCaller } from "@/lib/financeRouteAuth";
 import { financeErrorResponse } from "@/lib/financeApiError";
 import { createFinanceAccount, getFinanceAccounts, seedDefaultFinanceAccounts } from "@/services/financeAccountsService";
 
@@ -21,11 +22,15 @@ export async function GET(request: Request) {
   }
 }
 
+// Admin-only, even for a Finance Manager who otherwise has write access to
+// fin_accounts (needed to post transaction/closing balances) — creating an
+// account outright is a Finance Settings action.
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { cleanup, firestore, userId, userEmail } = await getAuthenticatedFirestoreForRequest(request);
     try {
+      await requireAdminCaller(firestore, userId);
       if (body?.seedDefaults) {
         const created = await seedDefaultFinanceAccounts(userId, userEmail ?? "Unknown", undefined, firestore);
         return NextResponse.json({ success: true, created });

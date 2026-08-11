@@ -2,21 +2,26 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { UserRole } from "@/lib/firebase";
 
 const tabs = [
   { href: "/admin/finance", label: "Dashboard" },
   { href: "/admin/finance/closing", label: "⭐ Daily Closing" },
   { href: "/admin/finance/transactions", label: "Transactions" },
   { href: "/admin/finance/reports", label: "Reports" },
+  // Accounts, Vendors, Categories, Finance Users, and Lock Settings all live
+  // under this tab — Finance Manager never sees it (see role filter below),
+  // since that role is scoped to Dashboard/Daily Closing/Transactions/Reports only.
   { href: "/admin/finance/settings", label: "Settings" },
 ];
 
-export default function FinanceNav() {
+export default function FinanceNav({ role }: { role?: UserRole | null } = {}) {
   const pathname = usePathname();
+  const visibleTabs = role === "financeManager" ? tabs.filter((tab) => tab.href !== "/admin/finance/settings") : tabs;
 
   return (
     <nav className="flex flex-wrap gap-1.5 sm:gap-2">
-      {tabs.map((tab) => {
+      {visibleTabs.map((tab) => {
         const active = tab.href === "/admin/finance" ? pathname === tab.href : pathname?.startsWith(tab.href);
         return (
           <Link

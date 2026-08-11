@@ -21,6 +21,15 @@ service cloud.firestore {
     //             Native Daily Closing app via a username/password check
     //             against a bcrypt hash (services/financeUsersService.ts).
     //             Entirely separate from admin/POS/customer/rider auth.
+    //
+    // FINANCE MANAGER — Firebase Auth (email), same login as Admin at
+    //             /admin/login. isFinanceManager() checks /finance_managers/{uid}.
+    //             Scoped ONLY to Finance Dashboard, Daily Closing, Transactions,
+    //             and Reports — never POS/Inventory/Riders/Zomato/Orders/
+    //             Feedback, and never Finance Settings (Accounts, Vendors,
+    //             Categories, Finance Users, Locks all stay Admin-only). This
+    //             is a different concept from FINANCE USER above — do not
+    //             conflate finance_managers with finance_auth.
     // =========================================================================
 
     function isSignedIn() {
@@ -70,11 +79,35 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/finance_auth/$(request.auth.uid)).data.active == true;
     }
 
+    // Restricted Finance web role — a real Firebase Auth account (unlike
+    // isFinanceUser() above) scoped to only the Finance collections this file
+    // explicitly grants below. Absence of `active` on the doc means active,
+    // matching a record created manually via the Firebase Console with no
+    // active field set at all.
+    function isFinanceManager() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/finance_managers/$(request.auth.uid))
+        && get(/databases/$(database)/documents/finance_managers/$(request.auth.uid)).data.active != false;
+    }
+
+    function isAdminOrFinanceManager() {
+      return isAdmin() || isFinanceManager();
+    }
+
     // ── Admin Profiles ────────────────────────────────────────────────────────
     // A Firebase Auth user may read their OWN doc (needed during login to verify
     // admin status). Any existing admin may read/write other admin docs.
     match /admins/{adminId} {
       allow read:  if isAdminSelf(adminId) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ── Finance Manager Profiles ──────────────────────────────────────────────
+    // Same self-read-or-admin pattern as /admins above. Only an Admin may
+    // create/disable/remove a Finance Manager — a Finance Manager can never
+    // grant themselves or anyone else this role.
+    match /finance_managers/{managerId} {
+      allow read:  if isAdminSelf(managerId) || isAdmin();
       allow write: if isAdmin();
     }
 
@@ -270,31 +303,43 @@ service cloud.firestore {
 
     // =========================================================================
     // FINANCE MODULE — single source of truth for all money movement.
-    // Admin-only for now (Manager/Cashier/Accountant roles are a future phase).
+    // Admin has full access everywhere below. Finance Manager (see AUTH MODEL
+    // above) is granted read+write only on the collections Daily Closing,
+    // Transactions, Dashboard, and Reports actually need, and read-only on
+    // reference/lookup collections — never write access to categories,
+    // vendors, or anything else that's a Finance Settings concern.
     // All collections are prefixed fin_. Transactions are treated as an
     // append-mostly immutable ledger — voids are soft (status flips to 'void',
     // never deleted) so history/audit trail stays intact.
     // =========================================================================
 
+    // Read+write for Finance Manager too — needed to post transactions and
+    // Daily Closing sales/deposits, which update account balances.
     match /fin_accounts/{accountId} {
-      allow read, write: if isAdmin();
+      allow read, write: if isAdminOrFinanceManager();
     }
 
+    // Finance Manager gets read-only here — populating dropdowns on
+    // Daily Closing/Transactions, never creating/editing a category, which
+    // stays a Finance Settings (Admin-only) action.
     match /fin_expense_categories/{categoryId} {
-      allow read: if isAdmin() || isFinanceUser();
+      allow read: if isAdmin() || isFinanceUser() || isFinanceManager();
       allow write: if isAdmin();
     }
 
     match /fin_expense_subcategories/{subcategoryId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin() || isFinanceManager();
+      allow write: if isAdmin();
     }
 
     match /fin_income_categories/{categoryId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin() || isFinanceManager();
+      allow write: if isAdmin();
     }
 
     match /fin_vendors/{vendorId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin() || isFinanceManager();
+      allow write: if isAdmin();
     }
 
     // Finance Defaults — maps a business event (Cash Sales, UPI Sales, a
@@ -302,22 +347,22 @@ service cloud.firestore {
     // into when Daily Closing is saved. Deliberately not prefixed fin_
     // per the original spec for this collection.
     match /finance_defaults/{eventKey} {
-      allow read: if isAdmin() || isFinanceUser();
+      allow read: if isAdmin() || isFinanceUser() || isFinanceManager();
       allow write: if isAdmin();
     }
 
     // Ledger records are immutable once created except for the status/void
     // fields — enforced at the service layer via runTransaction. Rules stay
-    // admin-only; field-level immutability is an app-layer guarantee here
-    // since Admin SDK-style granular rule checks would require duplicating
-    // the whole transaction shape in rules.
+    // admin-or-finance-manager; field-level immutability is an app-layer
+    // guarantee here since Admin SDK-style granular rule checks would
+    // require duplicating the whole transaction shape in rules.
     match /fin_transactions/{transactionId} {
-      allow read, write: if isAdmin();
+      allow read, write: if isAdminOrFinanceManager();
     }
 
     match /fin_daily_closing/{closingId} {
-      allow read: if isAdmin() || isFinanceUser();
-      allow write: if isAdmin();
+      allow read: if isAdminOrFinanceManager() || isFinanceUser();
+      allow write: if isAdminOrFinanceManager();
     }
 
     // ── Finance Mobile Idempotency ────────────────────────────────────────────
@@ -328,10 +373,13 @@ service cloud.firestore {
       allow read, write: if isFinanceUser();
     }
 
-    // Append-only audit trail. Admin may read/create; nothing may ever be
-    // updated or deleted so the trail can't be tampered with after the fact.
+    // Append-only audit trail. Admin may read/create; Finance Manager may
+    // create (so their own actions still get logged) but never read the
+    // trail back. Nothing may ever be updated or deleted so the trail can't
+    // be tampered with after the fact.
     match /fin_audit_logs/{logId} {
-      allow read, create: if isAdmin();
+      allow read: if isAdmin();
+      allow create: if isAdminOrFinanceManager();
       allow update, delete: if false;
     }
 

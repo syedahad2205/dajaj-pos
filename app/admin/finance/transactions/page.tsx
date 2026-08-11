@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { requireAdmin } from "@/lib/roleGuard";
+import { requireFinanceAccess } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, todayDateKey } from "@/lib/financeFormat";
 import FinanceNav from "@/components/finance/FinanceNav";
@@ -57,8 +57,9 @@ function TypeBadge({ type }: { type: TxType }) {
 }
 
 function FinanceTransactionsContent() {
-  const { authenticated, loading, role } = requireAdmin();
-  const canQuery = authenticated && role === "admin";
+  const { authenticated, loading, role } = requireFinanceAccess();
+  const hasFinanceAccess = authenticated && (role === "admin" || role === "financeManager");
+  const canQuery = hasFinanceAccess;
   const searchParams = useSearchParams();
 
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
@@ -186,7 +187,7 @@ function FinanceTransactionsContent() {
   if (loading) {
     return <main className="min-h-screen bg-[#fff8ed] px-4 py-10 text-slate-900">Checking your session…</main>;
   }
-  if (!authenticated || role !== "admin") return null;
+  if (!hasFinanceAccess) return null;
 
   const resetEntry = (type: TxType) => {
     setEntryType(type);
@@ -313,7 +314,7 @@ function FinanceTransactionsContent() {
             stays untouched by this.
           </p>
           <div className="mt-5">
-            <FinanceNav />
+            <FinanceNav role={role} />
           </div>
         </header>
 
