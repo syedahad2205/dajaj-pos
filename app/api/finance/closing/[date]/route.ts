@@ -21,20 +21,14 @@ export async function GET(request: Request, { params }: { params: { date: string
 
 /** The single "Save Daily Closing" action: locks the day against the manager's physically-counted Closing Cash. */
 export async function POST(request: Request, { params }: { params: { date: string } }) {
-  const tStart = Date.now();
   let cleanup: (() => Promise<void>) | undefined;
   try {
     const body = await request.json();
     const authResult = await getAuthenticatedFirestoreForRequest(request);
     cleanup = authResult.cleanup;
     const { firestore, userId, userEmail } = authResult;
-    const tAuthed = Date.now();
 
     const closing = await closeDailyClosing(params.date, Number(body.closingCash), userId, userEmail ?? "Unknown", firestore);
-    const tSaved = Date.now();
-    console.log(
-      `[closing/close] auth=${tAuthed - tStart}ms save=${tSaved - tAuthed}ms total=${tSaved - tStart}ms`,
-    );
 
     void cleanup().catch((err) => console.error("[closing/close] cleanup failed", err));
     return NextResponse.json({ success: true, closing });

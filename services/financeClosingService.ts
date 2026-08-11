@@ -789,9 +789,7 @@ async function postDailyClosingToLedger(
 ): Promise<{ transactionsByEvent: Record<string, string>; warnings: string[] }> {
   const transactionsByEvent: Record<string, string> = {};
   const warnings: string[] = [];
-  const tDefaultsStart = Date.now();
   const defaultsMap = await getFinanceDefaultsMap(db, branchId);
-  const tDefaultsDone = Date.now();
   const allEvents = getExpectedPostingEvents(closing);
   const incomeEvents = allEvents.filter((e) => e.kind === "income");
   const expenseEvents = allEvents.filter((e) => e.kind === "expense");
@@ -932,10 +930,6 @@ async function postDailyClosingToLedger(
   const cashDrawerIncomeEvents = incomeEvents.filter((e) => e.eventKey === "cash_sales");
   const otherIncomeEvents = incomeEvents.filter((e) => e.eventKey !== "cash_sales");
 
-  const tGroupsStart = Date.now();
-  let tCashDrawerDone = tGroupsStart;
-  let tOtherIncomeDone = tGroupsStart;
-
   const [cashDrawerResults, otherIncomeResults] = await Promise.all([
     // Cash-drawer group: strictly one at a time — these are the events that
     // actually collide with each other.
@@ -944,14 +938,10 @@ async function postDailyClosingToLedger(
       for (const event of cashDrawerIncomeEvents) results.push(await postIncomeEvent(event));
       for (const event of expenseEvents) results.push(await postExpenseEvent(event));
       for (const event of depositEvents) results.push(await postDepositEvent(event));
-      tCashDrawerDone = Date.now();
       return results;
     })(),
     // Everything else posts to its own distinct account — safe to overlap.
-    Promise.all(otherIncomeEvents.map(postIncomeEvent)).then((r) => {
-      tOtherIncomeDone = Date.now();
-      return r;
-    }),
+    Promise.all(otherIncomeEvents.map(postIncomeEvent)),
   ]);
 
   for (const result of [...cashDrawerResults, ...otherIncomeResults]) {
@@ -962,10 +952,6 @@ async function postDailyClosingToLedger(
       warnings.push(result.warning);
     }
   }
-
-  console.log(
-    `[postDailyClosingToLedger] defaults=${tDefaultsDone - tDefaultsStart}ms cashDrawerGroup(${cashDrawerIncomeEvents.length + expenseEvents.length + depositEvents.length},sequential)=${tCashDrawerDone - tGroupsStart}ms otherIncomeGroup(${otherIncomeEvents.length},parallel)=${tOtherIncomeDone - tGroupsStart}ms`,
-  );
 
   return { transactionsByEvent, warnings };
 }
@@ -999,10 +985,8 @@ export async function closeDailyClosing(
   if (!Number.isFinite(closingCash)) throw new Error("Closing Cash is required.");
   if (!isValidDateKey(date)) throw new Error("Invalid date.");
 
-  const tLoadStart = Date.now();
   const base = await loadOrBootstrapClosing(date, db, branchId);
   if (base.locked) throw new Error(`${date} is already closed. Ask an admin to reopen it first.`);
-  const tLoaded = Date.now();
 
   const merged = { ...base, closingCash: roundCurrency(closingCash) };
   const totals = computeDerivedTotals(merged);
@@ -1056,7 +1040,6 @@ export async function closeDailyClosing(
       `Could not clean up a previous posting for this event (kept as-is to avoid double-counting): ${failure.message}`,
     );
   }
-  const tVoided = Date.now();
 
   const { transactionsByEvent, warnings: postingWarnings } = await postDailyClosingToLedger(
     draft,
@@ -1067,7 +1050,6 @@ export async function closeDailyClosing(
     unvoidableEventKeys,
   );
   warnings.push(...postingWarnings);
-  const tPosted = Date.now();
 
   // Keep the old (un-voidable) transaction references alongside whatever posted fresh this round.
   const mergedAutoPosted: Record<string, string> = { ...transactionsByEvent };
@@ -1094,14 +1076,8 @@ export async function closeDailyClosing(
     createdAt: base.createdAt ?? serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  const tSet = Date.now();
 
   await logFinanceAudit({ module: "closing", entityId: date, entityLabel: date, action: "close", userId, userName, newValue: final }, db);
-  const tAudited = Date.now();
-
-  console.log(
-    `[closeDailyClosing] load=${tLoaded - tLoadStart}ms void(cashDrawer=${cashDrawerVoidEntries.length},other=${otherVoidEntries.length})=${tVoided - tLoaded}ms post=${tPosted - tVoided}ms setDoc=${tSet - tPosted}ms audit=${tAudited - tSet}ms total=${tAudited - tLoadStart}ms`,
-  );
 
   return final;
 }
