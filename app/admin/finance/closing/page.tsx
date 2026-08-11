@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Calendar, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Calendar, History, Plus, Trash2 } from "lucide-react";
 import { requireFinanceAccess } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, formatDateDisplay, todayDateKey } from "@/lib/financeFormat";
@@ -395,6 +395,13 @@ function FinanceClosingContent() {
               {date === today ? " · Today" : ""}
             </p>
           </div>
+          <Link
+            href="/admin/finance/closing/history"
+            aria-label="Daily Closing history"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-slate-300 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200 sm:h-10 sm:w-10"
+          >
+            <History className="h-4 w-4" />
+          </Link>
           {/* Fixed-size icon trigger — its width never competes with the title, regardless of
               the selected date's string length. The real <input type="date"> sits invisibly
               on top so tapping the icon opens the native picker. */}
