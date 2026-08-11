@@ -382,20 +382,17 @@ function FinanceClosingContent() {
           <Link
             href="/admin/finance"
             aria-label="Back to Finance"
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200 sm:h-10 sm:w-10"
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.2em] text-orange-600">Finance</p>
-            <h1 className="truncate text-lg font-black leading-tight sm:text-2xl">Daily Closing</h1>
-          </div>
+          <h1 className="min-w-0 flex-1 truncate text-lg font-black leading-tight sm:text-2xl">Daily Closing</h1>
           <input
             type="date"
             value={date}
             max={today}
             onChange={(e) => setDate(e.target.value)}
-            className="w-[9.5rem] flex-shrink-0 rounded-xl border border-slate-300 px-2.5 py-2 text-base font-semibold text-slate-700 outline-none focus:border-orange-400 sm:w-auto sm:px-3 sm:py-2.5"
+            className="w-[8.5rem] flex-shrink-0 rounded-xl border border-slate-300 px-2 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-orange-400 sm:w-auto sm:px-3 sm:py-2.5 sm:text-base"
           />
         </div>
 
@@ -682,18 +679,18 @@ function FinanceClosingContent() {
                 This day is closed and locked.
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total Revenue</p>
-                  <p className="truncate text-lg font-black text-slate-900">{totalRevenue !== null ? formatCurrency(totalRevenue) : "—"}</p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">Total Revenue</p>
+                  <p className="truncate text-base font-black text-slate-900 sm:text-lg">{totalRevenue !== null ? formatCurrency(totalRevenue) : "—"}</p>
                 </div>
                 <button
                   type="button"
                   disabled={saving}
                   onClick={handleSaveDailyClosing}
-                  className="flex-shrink-0 rounded-2xl bg-slate-900 px-6 py-3.5 text-sm font-black text-white transition active:scale-[0.98] hover:bg-slate-800 disabled:opacity-50"
+                  className="flex-shrink-0 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition active:scale-[0.98] hover:bg-slate-800 disabled:opacity-50 sm:px-6 sm:py-3.5 sm:text-base"
                 >
-                  {saving ? "Saving…" : "Save Daily Closing"}
+                  {saving ? "Saving…" : "Save Closing"}
                 </button>
               </div>
             )}
