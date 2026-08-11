@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import { requireFinanceAccess } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, todayDateKey } from "@/lib/financeFormat";
@@ -348,37 +349,43 @@ function FinanceTransactionsContent() {
               {entryType !== "transfer" ? (
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Category</label>
-                  <select
-                    value={entry.categoryId}
-                    onChange={(e) => setEntry((f) => ({ ...f, categoryId: e.target.value, subcategoryId: "" }))}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                  >
-                    <option value="">Select…</option>
-                    {(entryType === "expense" ? activeExpenseCategories : activeIncomeCategories).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={entry.categoryId}
+                      onChange={(e) => setEntry((f) => ({ ...f, categoryId: e.target.value, subcategoryId: "" }))}
+                      className="appearance-none w-full rounded-xl border border-slate-300 px-3 py-2.5 pr-8 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                    >
+                      <option value="">Select…</option>
+                      {(entryType === "expense" ? activeExpenseCategories : activeIncomeCategories).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+                  </div>
                 </div>
               ) : null}
 
               {entryType === "expense" && entry.categoryId && (subcategoriesLoading || activeSubcategories.length > 0) ? (
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Subcategory (optional)</label>
-                  <select
-                    value={entry.subcategoryId}
-                    disabled={subcategoriesLoading}
-                    onChange={(e) => setEntry((f) => ({ ...f, subcategoryId: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50"
-                  >
-                    <option value="">{subcategoriesLoading ? "Loading…" : "None"}</option>
-                    {activeSubcategories.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={entry.subcategoryId}
+                      disabled={subcategoriesLoading}
+                      onChange={(e) => setEntry((f) => ({ ...f, subcategoryId: e.target.value }))}
+                      className="appearance-none w-full rounded-xl border border-slate-300 px-3 py-2.5 pr-8 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50"
+                    >
+                      <option value="">{subcategoriesLoading ? "Loading…" : "None"}</option>
+                      {activeSubcategories.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+                  </div>
                 </div>
               ) : null}
 
@@ -396,36 +403,42 @@ function FinanceTransactionsContent() {
               {entryType !== "income" ? (
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">{entryType === "expense" ? "Paid From" : "From Account"}</label>
-                  <select
-                    value={entry.fromAccountId}
-                    onChange={(e) => setEntry((f) => ({ ...f, fromAccountId: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                  >
-                    <option value="">Select…</option>
-                    {activeAccounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={entry.fromAccountId}
+                      onChange={(e) => setEntry((f) => ({ ...f, fromAccountId: e.target.value }))}
+                      className="appearance-none w-full rounded-xl border border-slate-300 px-3 py-2.5 pr-8 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                    >
+                      <option value="">Select…</option>
+                      {activeAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+                  </div>
                 </div>
               ) : null}
 
               {entryType !== "expense" ? (
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">{entryType === "income" ? "Received Into" : "To Account"}</label>
-                  <select
-                    value={entry.toAccountId}
-                    onChange={(e) => setEntry((f) => ({ ...f, toAccountId: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                  >
-                    <option value="">Select…</option>
-                    {activeAccounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={entry.toAccountId}
+                      onChange={(e) => setEntry((f) => ({ ...f, toAccountId: e.target.value }))}
+                      className="appearance-none w-full rounded-xl border border-slate-300 px-3 py-2.5 pr-8 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                    >
+                      <option value="">Select…</option>
+                      {activeAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+                  </div>
                 </div>
               ) : null}
 
@@ -479,31 +492,37 @@ function FinanceTransactionsContent() {
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-500">Type</label>
-              <select
-                value={filters.type}
-                onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value, page: 1 }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
-              >
-                <option value="">All</option>
-                <option value="income">Income</option>
-                <option value="expense">Expense</option>
-                <option value="transfer">Transfer</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={filters.type}
+                  onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value, page: 1 }))}
+                  className="appearance-none w-full rounded-xl border border-slate-300 px-3 py-2 pr-8 text-sm outline-none focus:border-orange-400"
+                >
+                  <option value="">All</option>
+                  <option value="income">Income</option>
+                  <option value="expense">Expense</option>
+                  <option value="transfer">Transfer</option>
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+              </div>
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-500">Account</label>
-              <select
-                value={filters.accountId}
-                onChange={(e) => setFilters((f) => ({ ...f, accountId: e.target.value, page: 1 }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
-              >
-                <option value="">All</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={filters.accountId}
+                  onChange={(e) => setFilters((f) => ({ ...f, accountId: e.target.value, page: 1 }))}
+                  className="appearance-none w-full rounded-xl border border-slate-300 px-3 py-2 pr-8 text-sm outline-none focus:border-orange-400"
+                >
+                  <option value="">All</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+              </div>
             </div>
           </div>
           <div className="mt-3">

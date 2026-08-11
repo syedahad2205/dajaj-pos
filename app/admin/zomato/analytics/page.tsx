@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronDown } from 'lucide-react';
 import { requireAdmin } from '@/lib/roleGuard';
 import {
   getZomatoImports,
@@ -189,18 +190,21 @@ export default function ZomatoAnalyticsPage() {
         </div>
 
         {/* Period selector */}
-        <select
-          value={selectedImportId}
-          onChange={(e) => setSelectedImportId(e.target.value)}
-          className="px-3 py-1.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 max-w-[200px]"
-        >
-          <option value="all">All Periods</option>
-          {imports.map((imp) => (
-            <option key={imp.id} value={imp.id}>
-              {fmtDate(imp.reportStartDate)} – {fmtDate(imp.reportEndDate)}
-            </option>
-          ))}
-        </select>
+        <div className="relative max-w-[200px]">
+          <select
+            value={selectedImportId}
+            onChange={(e) => setSelectedImportId(e.target.value)}
+            className="appearance-none w-full px-3 py-1.5 pr-8 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          >
+            <option value="all">All Periods</option>
+            {imports.map((imp) => (
+              <option key={imp.id} value={imp.id}>
+                {fmtDate(imp.reportStartDate)} – {fmtDate(imp.reportEndDate)}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400" strokeWidth={2.5} />
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full">

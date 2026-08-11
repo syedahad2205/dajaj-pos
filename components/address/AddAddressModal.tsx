@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import MapPicker from "@/components/address/MapPicker";
 import type { Address, AddressInput } from "@/lib/addresses";
 
@@ -59,15 +60,18 @@ export default function AddAddressModal({
 
         <div className="flex-1 overflow-y-auto p-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <select
-              value={form.label}
-              onChange={(event) => setForm((current) => ({ ...current, label: event.target.value as AddressInput["label"] }))}
-              className="rounded-2xl border border-slate-300 px-4 py-3"
-            >
-              <option value="Home">Home</option>
-              <option value="Work">Work</option>
-              <option value="Other">Other</option>
-            </select>
+            <div className="relative">
+              <select
+                value={form.label}
+                onChange={(event) => setForm((current) => ({ ...current, label: event.target.value as AddressInput["label"] }))}
+                className="appearance-none w-full rounded-2xl border border-slate-300 px-4 py-3 pr-9"
+              >
+                <option value="Home">Home</option>
+                <option value="Work">Work</option>
+                <option value="Other">Other</option>
+              </select>
+              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+            </div>
             <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Name" className="rounded-2xl border border-slate-300 px-4 py-3" />
             <input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Phone" className="rounded-2xl border border-slate-300 px-4 py-3" />
             <input value={form.pincode} onChange={(event) => setForm((current) => ({ ...current, pincode: event.target.value }))} placeholder="Pincode" className="rounded-2xl border border-slate-300 px-4 py-3" />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Archive, Plus, RotateCcw } from "lucide-react";
+import { Archive, ChevronDown, Plus, RotateCcw } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency } from "@/lib/financeFormat";
@@ -263,18 +263,21 @@ export default function FinanceVendorsPage() {
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-sm font-semibold text-slate-700">Default Expense Category</label>
-              <select
-                value={form.defaultExpenseCategoryId}
-                onChange={(e) => setForm((f) => ({ ...f, defaultExpenseCategoryId: e.target.value }))}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-              >
-                <option value="">None</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={form.defaultExpenseCategoryId}
+                  onChange={(e) => setForm((f) => ({ ...f, defaultExpenseCategoryId: e.target.value }))}
+                  className="appearance-none w-full rounded-2xl border border-slate-300 px-4 py-3 pr-9 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                >
+                  <option value="">None</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+              </div>
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-sm font-semibold text-slate-700">Address</label>

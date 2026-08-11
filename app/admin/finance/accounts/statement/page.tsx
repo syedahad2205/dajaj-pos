@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, formatDateDisplay, todayDateKey } from "@/lib/financeFormat";
@@ -108,19 +109,22 @@ function AccountStatementContent() {
         <div className="flex flex-wrap items-end gap-3 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-500">Account</label>
-            <select
-              value={accountId}
-              disabled={fetchingAccounts}
-              onChange={(e) => setAccountId(e.target.value)}
-              className="min-w-[200px] rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-400 disabled:opacity-50"
-            >
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                  {a.status === "archived" ? " (Archived)" : ""}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={accountId}
+                disabled={fetchingAccounts}
+                onChange={(e) => setAccountId(e.target.value)}
+                className="appearance-none min-w-[200px] rounded-xl border border-slate-300 px-3 py-2.5 pr-8 text-sm outline-none focus:border-orange-400 disabled:opacity-50"
+              >
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                    {a.status === "archived" ? " (Archived)" : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-500">From</label>
