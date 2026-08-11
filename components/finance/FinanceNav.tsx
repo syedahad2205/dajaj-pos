@@ -15,14 +15,14 @@ export default function FinanceNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex flex-wrap gap-2">
+    <nav className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((tab) => {
         const active = tab.href === "/admin/finance" ? pathname === tab.href : pathname?.startsWith(tab.href);
         return (
           <Link
             key={tab.href}
             href={tab.href}
-            className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
+            className={`flex-shrink-0 whitespace-nowrap rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
               active ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
             }`}
           >

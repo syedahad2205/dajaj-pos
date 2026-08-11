@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, todayDateKey } from "@/lib/financeFormat";
@@ -370,289 +371,335 @@ function FinanceClosingContent() {
   };
 
   const locked = closing?.locked ?? false;
+  const numericInputClass =
+    "w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50";
 
   return (
-    <main className="min-h-screen bg-[#fff8ed] px-4 py-8 text-slate-900">
-      <div className="mx-auto max-w-3xl space-y-5">
-        <header className="rounded-[28px] border border-orange-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-orange-600">Finance</p>
-          <h1 className="mt-1 text-3xl font-black">Daily Closing</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Verify opening cash, log today&apos;s cash expenses and cash deposits, enter sales, count the drawer, and save.
-            Under two minutes, no accounting knowledge required.
-          </p>
-          <div className="mt-5">
-            <FinanceNav />
+    <main className="flex h-dvh flex-col overflow-hidden bg-[#fff8ed] text-slate-900">
+      {/* Fixed header */}
+      <header className="flex-shrink-0 border-b border-orange-100 bg-white px-3 py-2.5 sm:px-6 sm:py-4">
+        <div className="mx-auto flex max-w-2xl items-center gap-2 sm:gap-3">
+          <Link
+            href="/admin/finance"
+            aria-label="Back to Finance"
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.2em] text-orange-600">Finance</p>
+            <h1 className="truncate text-lg font-black leading-tight sm:text-2xl">Daily Closing</h1>
           </div>
-        </header>
-
-        <div className="flex items-center justify-between rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-500">Date</label>
-            <input
-              type="date"
-              value={date}
-              max={today}
-              onChange={(e) => setDate(e.target.value)}
-              className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-400"
-            />
-          </div>
-          {locked ? (
-            <div className="text-right">
-              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                Closed at {closing?.closingTime} by {closing?.closedByName}
-              </span>
-              <button type="button" disabled={saving} onClick={handleReopen} className="mt-2 block text-xs font-semibold text-slate-500 underline hover:text-slate-800">
-                Reopen (Admin)
-              </button>
-            </div>
-          ) : null}
+          <input
+            type="date"
+            value={date}
+            max={today}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-[9.5rem] flex-shrink-0 rounded-xl border border-slate-300 px-2.5 py-2 text-base font-semibold text-slate-700 outline-none focus:border-orange-400 sm:w-auto sm:px-3 sm:py-2.5"
+          />
         </div>
 
-        {error ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p> : null}
-
-        {closing?.postingWarnings && closing.postingWarnings.length > 0 ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <p className="font-semibold">Some amounts weren&apos;t posted to an account automatically:</p>
-            <ul className="mt-1 list-disc space-y-0.5 pl-5">
-              {closing.postingWarnings.map((warning, i) => (
-                <li key={i}>{warning}</li>
-              ))}
-            </ul>
+        {locked ? (
+          <div className="mx-auto mt-2 flex max-w-2xl items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2">
+            <p className="truncate text-xs font-semibold text-emerald-700">
+              Closed at {closing?.closingTime} by {closing?.closedByName}
+            </p>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleReopen}
+              className="flex-shrink-0 rounded-full px-2 py-1 text-xs font-semibold text-slate-500 underline hover:bg-emerald-100 hover:text-slate-800"
+            >
+              Reopen
+            </button>
           </div>
         ) : null}
 
-        {fetching || !closing ? (
-          <p className="text-sm text-slate-500">Loading…</p>
-        ) : (
-          <>
-            {/* Opening Cash */}
-            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">1. Opening Cash</p>
-              {closing.openingCashSource === "chained" ? (
-                <>
-                  <p className={`text-2xl font-black ${closing.openingCash < 0 ? "text-rose-600" : "text-slate-900"}`}>
-                    {formatCurrency(closing.openingCash)} <span className="text-sm font-normal text-slate-400">(yesterday&apos;s closing cash)</span>
-                  </p>
-                  {closing.openingCash < 0 ? (
-                    <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
-                      ⚠ Opening with cash deficit: {formatCurrency(Math.abs(closing.openingCash))}
+        <div className="mx-auto hidden max-w-2xl md:mt-4 md:block">
+          <FinanceNav />
+        </div>
+      </header>
+
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto max-w-2xl space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-5">
+          {error ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p> : null}
+
+          {closing?.postingWarnings && closing.postingWarnings.length > 0 ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p className="font-semibold">Some amounts weren&apos;t posted to an account automatically:</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {closing.postingWarnings.map((warning, i) => (
+                  <li key={i}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {fetching || !closing ? (
+            <p className="py-10 text-center text-sm text-slate-500">Loading…</p>
+          ) : (
+            <>
+              {/* Opening Cash */}
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">1. Opening Cash</p>
+                {closing.openingCashSource === "chained" ? (
+                  <>
+                    <p className={`text-2xl font-black ${closing.openingCash < 0 ? "text-rose-600" : "text-slate-900"}`}>
+                      {formatCurrency(closing.openingCash)} <span className="text-sm font-normal text-slate-400">(yesterday&apos;s closing cash)</span>
                     </p>
+                    {closing.openingCash < 0 ? (
+                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                        ⚠ Opening with cash deficit: {formatCurrency(Math.abs(closing.openingCash))}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <div>
+                    <p className="mb-2 text-xs text-slate-500">No previous closed day found — enter today&apos;s starting cash once.</p>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      disabled={locked}
+                      value={openingCashDraft}
+                      onChange={(e) => setOpeningCashDraft(e.target.value)}
+                      onBlur={handleSaveOpeningCash}
+                      className="w-full max-w-xs rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50"
+                    />
+                    {Number(openingCashDraft) < 0 ? (
+                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                        ⚠ Opening with cash deficit: {formatCurrency(Math.abs(Number(openingCashDraft)))}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-slate-400">A negative value is fine — it means the drawer starts today already short. It will be carried forward in today&apos;s calculations.</p>
+                  </div>
+                )}
+              </section>
+
+              {/* Cash Expenses */}
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">2. Cash Expenses</p>
+                  {!locked ? (
+                    <button
+                      type="button"
+                      onClick={openExpenseModal}
+                      className="flex flex-shrink-0 items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2.5 text-xs font-semibold text-white transition active:scale-[0.97] hover:bg-slate-800"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add Expenses
+                    </button>
                   ) : null}
-                </>
-              ) : (
-                <div>
-                  <p className="mb-2 text-xs text-slate-500">No previous closed day found — enter today&apos;s starting cash once.</p>
-                  <input
-                    type="number"
-                    disabled={locked}
-                    value={openingCashDraft}
-                    onChange={(e) => setOpeningCashDraft(e.target.value)}
-                    onBlur={handleSaveOpeningCash}
-                    className="w-full max-w-xs rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50"
-                  />
-                  {Number(openingCashDraft) < 0 ? (
-                    <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
-                      ⚠ Opening with cash deficit: {formatCurrency(Math.abs(Number(openingCashDraft)))}
-                    </p>
+                </div>
+
+                {closing.expenses.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-slate-400">No expenses added yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {closing.expenses.map((e) => (
+                      <li key={e.id} className="flex items-center justify-between gap-2 rounded-2xl bg-slate-50 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-800">
+                            {e.categoryName}
+                            {e.subcategoryName ? <span className="font-normal text-slate-500"> · {e.subcategoryName}</span> : null}
+                          </p>
+                          {e.remarks ? <p className="truncate text-xs text-slate-400">{e.remarks}</p> : null}
+                        </div>
+                        <div className="flex flex-shrink-0 items-center gap-1">
+                          <p className="text-sm font-bold text-rose-600">{formatCurrency(e.amount)}</p>
+                          {!locked ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExpense(e.id)}
+                              className="rounded-full p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                              aria-label="Remove"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <SummaryRow label="Cash Expense Total" value={formatCurrency(cashExpenseTotal)} emphasis />
+                </div>
+              </section>
+
+              {/* Cash Deposits */}
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">3. Cash Deposits</p>
+                    <p className="mt-0.5 text-xs text-slate-400">Cash moving out of the drawer — not a business expense.</p>
+                  </div>
+                  {!locked ? (
+                    <button
+                      type="button"
+                      onClick={() => setDepositModalOpen(true)}
+                      className="flex flex-shrink-0 items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2.5 text-xs font-semibold text-white transition active:scale-[0.97] hover:bg-slate-800"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add Deposit
+                    </button>
                   ) : null}
-                  <p className="mt-1 text-xs text-slate-400">A negative value is fine — it means the drawer starts today already short. It will be carried forward in today&apos;s calculations.</p>
                 </div>
-              )}
-            </section>
 
-            {/* Cash Expenses */}
-            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">2. Cash Expenses</p>
-                {!locked ? (
-                  <button
-                    type="button"
-                    onClick={openExpenseModal}
-                    className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Add Expenses
-                  </button>
-                ) : null}
+                {closing.deposits.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-slate-400">No deposits added yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {closing.deposits.map((d) => (
+                      <li key={d.id} className="flex items-center justify-between gap-2 rounded-2xl bg-slate-50 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-800">{d.typeLabel}</p>
+                          {d.remarks ? <p className="truncate text-xs text-slate-400">{d.remarks}</p> : null}
+                        </div>
+                        <div className="flex flex-shrink-0 items-center gap-1">
+                          <p className="text-sm font-bold text-sky-600">{formatCurrency(d.amount)}</p>
+                          {!locked ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDeposit(d.id)}
+                              className="rounded-full p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                              aria-label="Remove"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <div className="mt-4 space-y-1 border-t border-slate-100 pt-3">
+                  <SummaryRow label="Cash Deposit Total" value={formatCurrency(depositTotal)} emphasis />
+                  <SummaryRow label="Total Cash Out (Expenses + Deposits)" value={formatCurrency(totalCashOut)} muted />
+                </div>
+              </section>
+
+              {/* Sales */}
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">4. Today&apos;s Sales</p>
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">UPI Sales</label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      disabled={locked}
+                      value={salesDraft.upiSales}
+                      onChange={(e) => setSalesDraft((s) => ({ ...s, upiSales: e.target.value }))}
+                      onBlur={handleSaveSales}
+                      className={numericInputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Zomato Sales</label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      disabled={locked}
+                      value={salesDraft.zomatoSales}
+                      onChange={(e) => setSalesDraft((s) => ({ ...s, zomatoSales: e.target.value }))}
+                      onBlur={handleSaveSales}
+                      className={numericInputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Swiggy Sales</label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      disabled={locked}
+                      value={salesDraft.swiggySales}
+                      onChange={(e) => setSalesDraft((s) => ({ ...s, swiggySales: e.target.value }))}
+                      onBlur={handleSaveSales}
+                      className={numericInputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Other Income</label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      disabled={locked}
+                      value={salesDraft.otherIncome}
+                      onChange={(e) => setSalesDraft((s) => ({ ...s, otherIncome: e.target.value }))}
+                      onBlur={handleSaveSales}
+                      className={numericInputClass}
+                    />
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-slate-400">No need to say which bank — that gets reconciled later.</p>
+              </section>
+
+              {/* Closing Cash */}
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">5. Count the Drawer</p>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">Closing Cash</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  disabled={locked}
+                  value={closingCashDraft}
+                  onChange={(e) => setClosingCashDraft(e.target.value)}
+                  placeholder="Physical cash counted"
+                  className="w-full max-w-xs rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50"
+                />
+              </section>
+
+              {/* Daily Summary */}
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Daily Summary</p>
+                <SummaryRow label="Opening Cash" value={formatCurrency(previewOpeningCash)} />
+                <SummaryRow label="Cash Expenses" value={formatCurrency(cashExpenseTotal)} />
+                <SummaryRow label="Cash Deposits" value={formatCurrency(depositTotal)} muted />
+                <SummaryRow label="Total Cash Out" value={formatCurrency(totalCashOut)} />
+                <SummaryRow label="Cash Revenue" value={cashRevenue !== null ? formatCurrency(cashRevenue) : "—"} emphasis />
+                <SummaryRow label="UPI Sales" value={formatCurrency(previewSales.upi)} muted />
+                <SummaryRow label="Zomato Sales" value={formatCurrency(previewSales.zomato)} muted />
+                <SummaryRow label="Swiggy Sales" value={formatCurrency(previewSales.swiggy)} muted />
+                <SummaryRow label="Other Income" value={formatCurrency(previewSales.other)} muted />
+                <SummaryRow label="Total Revenue" value={totalRevenue !== null ? formatCurrency(totalRevenue) : "—"} emphasis />
+                <SummaryRow label="Closing Cash" value={previewClosingCash !== null ? formatCurrency(previewClosingCash) : "—"} />
+              </section>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Fixed bottom action bar */}
+      {!fetching && closing ? (
+        <footer
+          className="flex-shrink-0 border-t border-slate-200 bg-white px-3 pt-3 shadow-[0_-6px_16px_-8px_rgba(15,23,42,0.15)] sm:px-6"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+        >
+          <div className="mx-auto max-w-2xl">
+            {locked ? (
+              <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-center text-sm font-semibold text-emerald-700">
+                This day is closed and locked.
               </div>
-
-              {closing.expenses.length === 0 ? (
-                <p className="py-4 text-center text-sm text-slate-400">No expenses added yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {closing.expenses.map((e) => (
-                    <li key={e.id} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">
-                          {e.categoryName}
-                          {e.subcategoryName ? <span className="font-normal text-slate-500"> · {e.subcategoryName}</span> : null}
-                        </p>
-                        {e.remarks ? <p className="text-xs text-slate-400">{e.remarks}</p> : null}
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <p className="text-sm font-bold text-rose-600">{formatCurrency(e.amount)}</p>
-                        {!locked ? (
-                          <button type="button" onClick={() => handleRemoveExpense(e.id)} className="text-slate-400 hover:text-rose-600" aria-label="Remove">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <SummaryRow label="Cash Expense Total" value={formatCurrency(cashExpenseTotal)} emphasis />
-              </div>
-            </section>
-
-            {/* Cash Deposits */}
-            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">3. Cash Deposits</p>
-                  <p className="mt-0.5 text-xs text-slate-400">Cash moving out of the drawer — not a business expense.</p>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total Revenue</p>
+                  <p className="truncate text-lg font-black text-slate-900">{totalRevenue !== null ? formatCurrency(totalRevenue) : "—"}</p>
                 </div>
-                {!locked ? (
-                  <button
-                    type="button"
-                    onClick={() => setDepositModalOpen(true)}
-                    className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Add Deposit
-                  </button>
-                ) : null}
-              </div>
-
-              {closing.deposits.length === 0 ? (
-                <p className="py-4 text-center text-sm text-slate-400">No deposits added yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {closing.deposits.map((d) => (
-                    <li key={d.id} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">{d.typeLabel}</p>
-                        {d.remarks ? <p className="text-xs text-slate-400">{d.remarks}</p> : null}
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <p className="text-sm font-bold text-sky-600">{formatCurrency(d.amount)}</p>
-                        {!locked ? (
-                          <button type="button" onClick={() => handleRemoveDeposit(d.id)} className="text-slate-400 hover:text-rose-600" aria-label="Remove">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <div className="mt-4 space-y-1 border-t border-slate-100 pt-3">
-                <SummaryRow label="Cash Deposit Total" value={formatCurrency(depositTotal)} emphasis />
-                <SummaryRow label="Total Cash Out (Expenses + Deposits)" value={formatCurrency(totalCashOut)} muted />
-              </div>
-            </section>
-
-            {/* Sales */}
-            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">4. Today&apos;s Sales</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">UPI Sales</label>
-                  <input
-                    type="number"
-                    disabled={locked}
-                    value={salesDraft.upiSales}
-                    onChange={(e) => setSalesDraft((s) => ({ ...s, upiSales: e.target.value }))}
-                    onBlur={handleSaveSales}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-400 disabled:bg-slate-50"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Zomato Sales</label>
-                  <input
-                    type="number"
-                    disabled={locked}
-                    value={salesDraft.zomatoSales}
-                    onChange={(e) => setSalesDraft((s) => ({ ...s, zomatoSales: e.target.value }))}
-                    onBlur={handleSaveSales}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-400 disabled:bg-slate-50"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Swiggy Sales</label>
-                  <input
-                    type="number"
-                    disabled={locked}
-                    value={salesDraft.swiggySales}
-                    onChange={(e) => setSalesDraft((s) => ({ ...s, swiggySales: e.target.value }))}
-                    onBlur={handleSaveSales}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-400 disabled:bg-slate-50"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Other Income</label>
-                  <input
-                    type="number"
-                    disabled={locked}
-                    value={salesDraft.otherIncome}
-                    onChange={(e) => setSalesDraft((s) => ({ ...s, otherIncome: e.target.value }))}
-                    onBlur={handleSaveSales}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-orange-400 disabled:bg-slate-50"
-                  />
-                </div>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">No need to say which bank — that gets reconciled later.</p>
-            </section>
-
-            {/* Closing Cash */}
-            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">5. Count the Drawer</p>
-              <label className="mb-1 block text-sm font-semibold text-slate-700">Closing Cash</label>
-              <input
-                type="number"
-                disabled={locked}
-                value={closingCashDraft}
-                onChange={(e) => setClosingCashDraft(e.target.value)}
-                placeholder="Physical cash counted"
-                className="w-full max-w-xs rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50"
-              />
-            </section>
-
-            {/* Daily Summary */}
-            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Daily Summary</p>
-              <SummaryRow label="Opening Cash" value={formatCurrency(previewOpeningCash)} />
-              <SummaryRow label="Cash Expenses" value={formatCurrency(cashExpenseTotal)} />
-              <SummaryRow label="Cash Deposits" value={formatCurrency(depositTotal)} muted />
-              <SummaryRow label="Total Cash Out" value={formatCurrency(totalCashOut)} />
-              <SummaryRow label="Cash Revenue" value={cashRevenue !== null ? formatCurrency(cashRevenue) : "—"} emphasis />
-              <SummaryRow label="UPI Sales" value={formatCurrency(previewSales.upi)} muted />
-              <SummaryRow label="Zomato Sales" value={formatCurrency(previewSales.zomato)} muted />
-              <SummaryRow label="Swiggy Sales" value={formatCurrency(previewSales.swiggy)} muted />
-              <SummaryRow label="Other Income" value={formatCurrency(previewSales.other)} muted />
-              <SummaryRow label="Total Revenue" value={totalRevenue !== null ? formatCurrency(totalRevenue) : "—"} emphasis />
-              <SummaryRow label="Closing Cash" value={previewClosingCash !== null ? formatCurrency(previewClosingCash) : "—"} />
-
-              {!locked ? (
                 <button
                   type="button"
                   disabled={saving}
                   onClick={handleSaveDailyClosing}
-                  className="mt-5 w-full rounded-2xl bg-slate-900 px-4 py-3.5 text-sm font-black text-white transition hover:bg-slate-800 disabled:opacity-50"
+                  className="flex-shrink-0 rounded-2xl bg-slate-900 px-6 py-3.5 text-sm font-black text-white transition active:scale-[0.98] hover:bg-slate-800 disabled:opacity-50"
                 >
                   {saving ? "Saving…" : "Save Daily Closing"}
                 </button>
-              ) : (
-                <p className="mt-5 rounded-2xl bg-emerald-50 px-4 py-3 text-center text-sm font-semibold text-emerald-700">
-                  This day is closed and locked.
-                </p>
-              )}
-            </section>
-          </>
-        )}
-      </div>
+              </div>
+            )}
+          </div>
+        </footer>
+      ) : null}
 
       {expenseModalOpen ? (
         <Modal
@@ -681,7 +728,7 @@ function FinanceClosingContent() {
                       <select
                         value={row.categoryId}
                         onChange={(e) => updateExpenseRow(row.key, { categoryId: e.target.value, subcategoryId: "" })}
-                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
                       >
                         <option value="">Category…</option>
                         {activeCategories.map((c) => (
@@ -694,7 +741,7 @@ function FinanceClosingContent() {
                         value={row.subcategoryId}
                         disabled={!row.categoryId || subs.length === 0}
                         onChange={(e) => updateExpenseRow(row.key, { subcategoryId: e.target.value })}
-                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50 disabled:text-slate-300"
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50 disabled:text-slate-300"
                       >
                         <option value="">{!row.categoryId ? "—" : subs.length === 0 ? "None" : "Subcategory…"}</option>
                         {subs.map((s) => (
@@ -705,22 +752,23 @@ function FinanceClosingContent() {
                       </select>
                       <input
                         type="number"
+                        inputMode="decimal"
                         value={row.amount}
                         onChange={(e) => updateExpenseRow(row.key, { amount: e.target.value })}
                         placeholder="0"
-                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
                       />
                       <input
                         value={row.remarks}
                         onChange={(e) => updateExpenseRow(row.key, { remarks: e.target.value })}
                         placeholder="Remarks (optional)"
-                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
                       />
                       <button
                         type="button"
                         onClick={() => removeExpenseRow(row.key)}
                         disabled={expenseRows.length === 1}
-                        className="flex items-center justify-center rounded-xl px-2 py-2 text-slate-400 hover:text-rose-600 disabled:opacity-30 sm:px-1"
+                        className="flex items-center justify-center rounded-xl p-2.5 text-slate-400 hover:text-rose-600 disabled:opacity-30 sm:p-1.5"
                         aria-label="Remove row"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -734,17 +782,26 @@ function FinanceClosingContent() {
             <button
               type="button"
               onClick={addExpenseRow}
-              className="flex items-center gap-1.5 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-400 hover:bg-slate-50"
+              className="flex items-center gap-1.5 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-xs font-semibold text-slate-600 transition hover:border-slate-400 hover:bg-slate-50"
             >
               <Plus className="h-3.5 w-3.5" /> Add another line
             </button>
 
             {expenseError ? <p className="text-sm font-medium text-rose-600">{expenseError}</p> : null}
-            <div className="flex justify-end gap-2 pt-2">
-              <button type="button" onClick={() => setExpenseModalOpen(false)} className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setExpenseModalOpen(false)}
+                className="rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:py-2.5"
+              >
                 Cancel
               </button>
-              <button type="button" disabled={expenseSaving} onClick={handleSaveExpenses} className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+              <button
+                type="button"
+                disabled={expenseSaving}
+                onClick={handleSaveExpenses}
+                className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 sm:py-2.5"
+              >
                 {expenseSaving ? "Saving…" : `Save ${expenseRows.filter((r) => r.categoryId && Number(r.amount) > 0).length || ""} Expense(s)`.trim()}
               </button>
             </div>
@@ -760,7 +817,7 @@ function FinanceClosingContent() {
               <select
                 value={depositForm.type}
                 onChange={(e) => setDepositForm((f) => ({ ...f, type: e.target.value as CashDepositType }))}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               >
                 {SUPPORTED_CASH_DEPOSIT_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -773,9 +830,10 @@ function FinanceClosingContent() {
               <label className="mb-1 block text-sm font-semibold text-slate-700">Amount</label>
               <input
                 type="number"
+                inputMode="decimal"
                 value={depositForm.amount}
                 onChange={(e) => setDepositForm((f) => ({ ...f, amount: e.target.value }))}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               />
             </div>
             <div>
@@ -783,15 +841,24 @@ function FinanceClosingContent() {
               <input
                 value={depositForm.remarks}
                 onChange={(e) => setDepositForm((f) => ({ ...f, remarks: e.target.value }))}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               />
             </div>
             {depositError ? <p className="text-sm font-medium text-rose-600">{depositError}</p> : null}
-            <div className="flex justify-end gap-2 pt-2">
-              <button type="button" onClick={() => setDepositModalOpen(false)} className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setDepositModalOpen(false)}
+                className="rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:py-2.5"
+              >
                 Cancel
               </button>
-              <button type="button" disabled={depositSaving} onClick={handleAddDeposit} className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+              <button
+                type="button"
+                disabled={depositSaving}
+                onClick={handleAddDeposit}
+                className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 sm:py-2.5"
+              >
                 {depositSaving ? "Saving…" : "Save"}
               </button>
             </div>
