@@ -7,6 +7,7 @@ import { CartProvider } from "@/components/cart/CartProvider";
 import { StockProvider } from "@/components/stock/StockProvider";
 import FirebaseAnalytics from "@/components/FirebaseAnalytics";
 import UTMTracker from "@/components/UTMTracker";
+import GlobalLoadingOverlay from "@/components/GlobalLoadingOverlay";
 
 export const metadata: Metadata = {
   title: "Dajaj",
@@ -26,6 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="overflow-x-hidden">
       <body className="overflow-x-hidden">
+        <GlobalLoadingOverlay />
         <RiderAuthProvider>
           <CustomerAuthProvider>
             <AddressProvider>
