@@ -322,27 +322,42 @@ service cloud.firestore {
       allow read, write: if isAdminOrFinanceManager();
     }
 
-    // Finance Manager gets read-only here — populating dropdowns on
-    // Daily Closing/Transactions, never creating/editing a category, which
-    // stays a Finance Settings (Admin-only) action.
+    // Finance Manager gets read-only here for managing the category itself —
+    // creating/editing/deleting a category stays a Finance Settings
+    // (Admin-only) action. But saving/removing a Daily Closing expense or
+    // posting/voiding a Transaction bumps the category's transactionCount
+    // as a bookkeeping side-effect, in the SAME transaction as the fin_
+    // write Finance Manager is otherwise allowed to make — so that one
+    // field needs to be carved out, or the whole transaction (and the
+    // Daily Closing/Transaction action along with it) gets denied.
     match /fin_expense_categories/{categoryId} {
       allow read: if isAdmin() || isFinanceUser() || isFinanceManager();
       allow write: if isAdmin();
+      allow update: if isFinanceManager()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["transactionCount"]);
     }
 
     match /fin_expense_subcategories/{subcategoryId} {
       allow read: if isAdmin() || isFinanceManager();
       allow write: if isAdmin();
+      allow update: if isFinanceManager()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["transactionCount"]);
     }
 
     match /fin_income_categories/{categoryId} {
       allow read: if isAdmin() || isFinanceManager();
       allow write: if isAdmin();
+      allow update: if isFinanceManager()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["transactionCount"]);
     }
 
+    // Same idea, but posting/voiding an expense Transaction against a
+    // vendor also rolls up totalPurchases + updatedAt, not just the count.
     match /fin_vendors/{vendorId} {
       allow read: if isAdmin() || isFinanceManager();
       allow write: if isAdmin();
+      allow update: if isFinanceManager()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["transactionCount", "totalPurchases", "updatedAt"]);
     }
 
     // Finance Defaults — maps a business event (Cash Sales, UPI Sales, a

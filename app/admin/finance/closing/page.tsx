@@ -692,8 +692,20 @@ function FinanceClosingContent() {
         >
           <div className="mx-auto max-w-2xl">
             {locked ? (
-              <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-center text-sm font-semibold text-emerald-700">
-                This day is closed and locked.
+              <div className="flex items-center justify-between gap-2 rounded-2xl bg-emerald-50 px-4 py-3">
+                <p className="min-w-0 truncate text-sm font-semibold text-emerald-700">This day is closed and locked.</p>
+                {/* Reopening is part of Finance Manager's full Daily Closing access —
+                    always logged (who, when, why) and visible to Admin on the Finance
+                    Audit Log page. Kept here in the action bar, not just the small link
+                    up top, so it's actually easy to find. */}
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={handleReopen}
+                  className="flex-shrink-0 rounded-2xl border border-emerald-600 px-4 py-2 text-sm font-bold text-emerald-700 transition active:scale-[0.98] hover:bg-emerald-100 disabled:opacity-50"
+                >
+                  Reopen
+                </button>
               </div>
             ) : (
               <div className="flex items-center justify-between gap-2">
