@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown } from 'lucide-react';
 import { requireAdmin } from '@/lib/roleGuard';
+import NativeSelectField from '@/components/ui/NativeSelectField';
 import {
   getZomatoImports,
   getAggregatedAnalytics,
@@ -190,11 +190,18 @@ export default function ZomatoAnalyticsPage() {
         </div>
 
         {/* Period selector */}
-        <div className="relative max-w-[200px]">
-          <select
+        <div className="max-w-[200px]">
+          <NativeSelectField
             value={selectedImportId}
             onChange={(e) => setSelectedImportId(e.target.value)}
-            className="appearance-none w-full px-3 py-1.5 pr-8 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            displayValue={
+              selectedImportId === 'all'
+                ? 'All Periods'
+                : (() => {
+                    const imp = imports.find((i) => i.id === selectedImportId);
+                    return imp ? `${fmtDate(imp.reportStartDate)} – ${fmtDate(imp.reportEndDate)}` : 'All Periods';
+                  })()
+            }
           >
             <option value="all">All Periods</option>
             {imports.map((imp) => (
@@ -202,8 +209,7 @@ export default function ZomatoAnalyticsPage() {
                 {fmtDate(imp.reportStartDate)} – {fmtDate(imp.reportEndDate)}
               </option>
             ))}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400" strokeWidth={2.5} />
+          </NativeSelectField>
         </div>
       </header>
 

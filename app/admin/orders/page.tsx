@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
+import NativeSelectField from "@/components/ui/NativeSelectField";
 import { formatOrderStatusLabel } from "@/lib/orderStatus";
 import { assignOrderToRider, autoAssignOrder, cancelOrder, unassignOrder } from "@/services/deliveryAssignmentService";
 import { subscribeToAllOrders, updateOrderStatus, type OrderRecord, type OrderStatus } from "@/services/orderService";
@@ -205,26 +205,27 @@ export default function AdminOrdersPage() {
 
                       {order.orderStatus === "ready" && order.deliveryStatus !== "on_the_way" ? (
                         <div className="mt-4 space-y-3">
-                          <div className="relative">
-                            <select
-                              value={selectedRiderId}
-                              onChange={(event) =>
-                                setSelectedRiderByOrder((current) => ({
-                                  ...current,
-                                  [order.id]: event.target.value,
-                                }))
-                              }
-                              className="appearance-none w-full rounded-2xl border border-slate-300 px-4 py-3 pr-9 text-sm"
-                            >
-                              <option value="">Select a rider</option>
-                              {availableRiders.map((rider) => (
-                                <option key={rider.id} value={rider.id}>
-                                  {rider.name} • {rider.currentOrderCount}/{rider.maxConcurrentOrders} active
-                                </option>
-                              ))}
-                            </select>
-                            <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-                          </div>
+                          <NativeSelectField
+                            value={selectedRiderId}
+                            onChange={(event) =>
+                              setSelectedRiderByOrder((current) => ({
+                                ...current,
+                                [order.id]: event.target.value,
+                              }))
+                            }
+                            displayValue={(() => {
+                              const rider = availableRiders.find((r) => r.id === selectedRiderId);
+                              return rider ? `${rider.name} • ${rider.currentOrderCount}/${rider.maxConcurrentOrders} active` : "Select a rider";
+                            })()}
+                            placeholder={!selectedRiderId}
+                          >
+                            <option value="">Select a rider</option>
+                            {availableRiders.map((rider) => (
+                              <option key={rider.id} value={rider.id}>
+                                {rider.name} • {rider.currentOrderCount}/{rider.maxConcurrentOrders} active
+                              </option>
+                            ))}
+                          </NativeSelectField>
 
                           <div className="flex flex-wrap gap-2">
                             <button

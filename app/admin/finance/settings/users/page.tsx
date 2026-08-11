@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, KeyRound, Plus } from "lucide-react";
+import { KeyRound, Plus } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import FinanceNav from "@/components/finance/FinanceNav";
 import Modal from "@/components/finance/Modal";
+import NativeSelectField from "@/components/ui/NativeSelectField";
 
 interface FinanceUserRow {
   id: string;
@@ -277,18 +278,15 @@ export default function FinanceUsersSettingsPage() {
               placeholder="Search by name or username…"
               className="flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
             />
-            <div className="relative">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "disabled")}
-                className="appearance-none rounded-2xl border border-slate-300 bg-white px-4 py-3 pr-9 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-              >
-                <option value="all">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="disabled">Disabled</option>
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-            </div>
+            <NativeSelectField
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "disabled")}
+              displayValue={statusFilter === "all" ? "All Statuses" : statusFilter === "active" ? "Active" : "Disabled"}
+            >
+              <option value="all">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="disabled">Disabled</option>
+            </NativeSelectField>
           </div>
           <button type="button" onClick={openAddModal} className="flex items-center gap-1.5 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
             <Plus className="h-4 w-4" /> Add Finance User

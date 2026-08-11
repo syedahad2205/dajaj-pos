@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { requireAdmin } from '@/lib/roleGuard';
+import NativeDateField from '@/components/ui/NativeDateField';
 import { parseZomatoCsv, type ParsedZomatoItem } from '@/lib/zomatoCsvParser';
 import {
   checkDateOverlap,
@@ -309,21 +310,11 @@ export default function ZomatoImportPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-neutral-500 mb-1 block">Start Date</label>
-                  <input
-                    type="date"
-                    value={manualStart}
-                    onChange={(e) => setManualStart(e.target.value)}
-                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  />
+                  <NativeDateField value={manualStart} onChange={(e) => setManualStart(e.target.value)} />
                 </div>
                 <div>
                   <label className="text-xs text-neutral-500 mb-1 block">End Date</label>
-                  <input
-                    type="date"
-                    value={manualEnd}
-                    onChange={(e) => setManualEnd(e.target.value)}
-                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  />
+                  <NativeDateField value={manualEnd} onChange={(e) => setManualEnd(e.target.value)} />
                 </div>
               </div>
             </div>

@@ -3,13 +3,14 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Calendar, ChevronDown, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Calendar, Plus, Trash2 } from "lucide-react";
 import { requireFinanceAccess } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, formatDateDisplay, todayDateKey } from "@/lib/financeFormat";
 import { roundCurrency, SUPPORTED_CASH_DEPOSIT_TYPES, CASH_DEPOSIT_TYPE_LABELS, type CashDepositType, type FinanceExpenseSubcategory } from "@/lib/finance";
 import FinanceNav from "@/components/finance/FinanceNav";
 import Modal from "@/components/finance/Modal";
+import NativeSelectField from "@/components/ui/NativeSelectField";
 
 interface ExpenseEntry {
   id: string;
@@ -751,37 +752,36 @@ function FinanceClosingContent() {
                       key={row.key}
                       className="grid grid-cols-1 gap-2 px-3 py-3 sm:grid-cols-[1.4fr_1.2fr_0.9fr_1.4fr_auto] sm:items-center sm:gap-2"
                     >
-                      <div className="relative">
-                        <select
-                          value={row.categoryId}
-                          onChange={(e) => updateExpenseRow(row.key, { categoryId: e.target.value, subcategoryId: "" })}
-                          className="appearance-none w-full rounded-xl border border-slate-300 px-3 py-2.5 pr-8 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                        >
-                          <option value="">Category…</option>
-                          {activeCategories.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-                      </div>
-                      <div className="relative">
-                        <select
-                          value={row.subcategoryId}
-                          disabled={!row.categoryId || subs.length === 0}
-                          onChange={(e) => updateExpenseRow(row.key, { subcategoryId: e.target.value })}
-                          className="appearance-none w-full rounded-xl border border-slate-300 px-3 py-2.5 pr-8 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50 disabled:text-slate-300"
-                        >
-                          <option value="">{!row.categoryId ? "—" : subs.length === 0 ? "None" : "Subcategory…"}</option>
-                          {subs.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-                      </div>
+                      <NativeSelectField
+                        value={row.categoryId}
+                        onChange={(e) => updateExpenseRow(row.key, { categoryId: e.target.value, subcategoryId: "" })}
+                        displayValue={activeCategories.find((c) => c.id === row.categoryId)?.name ?? "Category…"}
+                        placeholder={!row.categoryId}
+                      >
+                        <option value="">Category…</option>
+                        {activeCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </NativeSelectField>
+                      <NativeSelectField
+                        value={row.subcategoryId}
+                        disabled={!row.categoryId || subs.length === 0}
+                        onChange={(e) => updateExpenseRow(row.key, { subcategoryId: e.target.value })}
+                        displayValue={
+                          subs.find((s) => s.id === row.subcategoryId)?.name ??
+                          (!row.categoryId ? "—" : subs.length === 0 ? "None" : "Subcategory…")
+                        }
+                        placeholder={!row.subcategoryId}
+                      >
+                        <option value="">{!row.categoryId ? "—" : subs.length === 0 ? "None" : "Subcategory…"}</option>
+                        {subs.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </NativeSelectField>
                       <input
                         type="number"
                         inputMode="decimal"
@@ -846,20 +846,17 @@ function FinanceClosingContent() {
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">Deposit Type</label>
-              <div className="relative">
-                <select
-                  value={depositForm.type}
-                  onChange={(e) => setDepositForm((f) => ({ ...f, type: e.target.value as CashDepositType }))}
-                  className="appearance-none w-full rounded-2xl border border-slate-300 px-4 py-3 pr-9 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                >
-                  {SUPPORTED_CASH_DEPOSIT_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {CASH_DEPOSIT_TYPE_LABELS[t]}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-              </div>
+              <NativeSelectField
+                value={depositForm.type}
+                onChange={(e) => setDepositForm((f) => ({ ...f, type: e.target.value as CashDepositType }))}
+                displayValue={CASH_DEPOSIT_TYPE_LABELS[depositForm.type]}
+              >
+                {SUPPORTED_CASH_DEPOSIT_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {CASH_DEPOSIT_TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </NativeSelectField>
             </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">Amount</label>

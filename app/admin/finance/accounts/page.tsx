@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Archive, ChevronDown, Hourglass, Landmark, PiggyBank, Plus, RotateCcw, Wallet } from "lucide-react";
+import { Archive, Hourglass, Landmark, PiggyBank, Plus, RotateCcw, Wallet } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency } from "@/lib/financeFormat";
 import FinanceNav from "@/components/finance/FinanceNav";
 import Modal from "@/components/finance/Modal";
+import NativeSelectField from "@/components/ui/NativeSelectField";
 
 type AccountType = "cash" | "bank" | "pigmi" | "wallet" | "escrow" | "other";
 
@@ -388,20 +389,17 @@ export default function FinanceAccountsPage() {
             </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">Type</label>
-              <div className="relative">
-                <select
-                  value={form.type}
-                  onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as AccountType }))}
-                  className="appearance-none w-full rounded-2xl border border-slate-300 px-4 py-3 pr-9 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                >
-                  {Object.entries(TYPE_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-              </div>
+              <NativeSelectField
+                value={form.type}
+                onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as AccountType }))}
+                displayValue={TYPE_LABEL[form.type]}
+              >
+                {Object.entries(TYPE_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </NativeSelectField>
             </div>
             {!editing ? (
               <div>

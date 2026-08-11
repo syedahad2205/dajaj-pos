@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, formatDateDisplay, todayDateKey } from "@/lib/financeFormat";
 import FinanceNav from "@/components/finance/FinanceNav";
+import NativeDateField from "@/components/ui/NativeDateField";
 
 interface DailyClosingRow {
   date: string;
@@ -147,11 +148,11 @@ export default function LockSettingsPage() {
           <div className="flex flex-wrap gap-3">
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-500">From</label>
-              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400" />
+              <NativeDateField value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-500">To</label>
-              <input type="date" value={dateTo} max={todayDateKey()} onChange={(e) => setDateTo(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400" />
+              <NativeDateField value={dateTo} max={todayDateKey()} onChange={(e) => setDateTo(e.target.value)} />
             </div>
           </div>
           {needsBackfill.length > 0 ? (

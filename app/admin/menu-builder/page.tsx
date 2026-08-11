@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ChevronDown } from "lucide-react";
+import NativeSelectField from "@/components/ui/NativeSelectField";
 import {
   buildMenuTree,
   calculateVariantFinalPrice,
@@ -588,16 +588,15 @@ function NodeRow({
                     className="min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-500"
                   />
                   {inventoryModeConfigurable ? (
-                    <div className="relative min-w-0">
-                      <select
+                    <div className="min-w-0">
+                      <NativeSelectField
                         value={inventoryTrackingModeDraft}
                         onChange={(event) => setInventoryTrackingModeDraft(event.target.value as InventoryTrackingMode)}
-                        className="appearance-none w-full min-w-0 rounded-xl border border-sky-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
+                        displayValue={inventoryTrackingModeDraft === "aggregate" ? "Whole category" : "Individual items"}
                       >
                         <option value="aggregate">Whole category</option>
                         <option value="items">Individual items</option>
-                      </select>
-                      <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+                      </NativeSelectField>
                     </div>
                   ) : null}
                   <button
@@ -1099,40 +1098,41 @@ export default function AdminMenuBuilderPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">Parent</label>
-                <div className="relative">
-                  <select
-                    value={form.parentId}
-                    onChange={(event) => setForm((current) => ({ ...current, parentId: event.target.value }))}
-                    className="appearance-none w-full rounded-2xl border border-slate-300 px-4 py-3 pr-9 outline-none focus:border-orange-500"
-                  >
-                    <option value="">Top Level Category</option>
-                    {nodes.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {getTypeLabel(node.type)} • {getNodePath(node, nodes)}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-                </div>
+                <NativeSelectField
+                  value={form.parentId}
+                  onChange={(event) => setForm((current) => ({ ...current, parentId: event.target.value }))}
+                  displayValue={
+                    form.parentId
+                      ? (() => {
+                          const node = nodes.find((n) => n.id === form.parentId);
+                          return node ? `${getTypeLabel(node.type)} • ${getNodePath(node, nodes)}` : "Top Level Category";
+                        })()
+                      : "Top Level Category"
+                  }
+                >
+                  <option value="">Top Level Category</option>
+                  {nodes.map((node) => (
+                    <option key={node.id} value={node.id}>
+                      {getTypeLabel(node.type)} • {getNodePath(node, nodes)}
+                    </option>
+                  ))}
+                </NativeSelectField>
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">Type</label>
-                <div className="relative">
-                  <select
-                    value={form.type}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, type: event.target.value as MenuNodeType }))
-                    }
-                    className="appearance-none w-full rounded-2xl border border-slate-300 px-4 py-3 pr-9 outline-none focus:border-orange-500"
-                  >
-                    <option value="category">category</option>
-                    <option value="variant">variant</option>
-                    <option value="modifierGroup">modifierGroup</option>
-                    <option value="modifier">modifier</option>
-                  </select>
-                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-                </div>
+                <NativeSelectField
+                  value={form.type}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, type: event.target.value as MenuNodeType }))
+                  }
+                  displayValue={form.type}
+                >
+                  <option value="category">category</option>
+                  <option value="variant">variant</option>
+                  <option value="modifierGroup">modifierGroup</option>
+                  <option value="modifier">modifier</option>
+                </NativeSelectField>
               </div>
             </div>
 
@@ -1175,19 +1175,16 @@ export default function AdminMenuBuilderPage() {
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700">Selection Type</label>
-                  <div className="relative">
-                    <select
-                      value={form.selectionType || "single"}
-                      onChange={(event) =>
-                        setForm((current) => ({ ...current, selectionType: event.target.value as SelectionType }))
-                      }
-                      className="appearance-none w-full rounded-2xl border border-slate-300 px-4 py-3 pr-9 outline-none focus:border-orange-500"
-                    >
-                      <option value="single">single</option>
-                      <option value="multiple">multiple</option>
-                    </select>
-                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-                  </div>
+                  <NativeSelectField
+                    value={form.selectionType || "single"}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, selectionType: event.target.value as SelectionType }))
+                    }
+                    displayValue={form.selectionType || "single"}
+                  >
+                    <option value="single">single</option>
+                    <option value="multiple">multiple</option>
+                  </NativeSelectField>
                 </div>
 
                 <div>
@@ -1258,26 +1255,23 @@ export default function AdminMenuBuilderPage() {
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Global Modifier Link
                 </label>
-                <div className="relative">
-                  <select
-                    value={form.modifierMasterId}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        modifierMasterId: event.target.value,
-                      }))
-                    }
-                    className="appearance-none w-full rounded-2xl border border-violet-200 bg-white px-4 py-3 pr-9 outline-none focus:border-violet-500"
-                  >
-                    <option value="">Auto-link by name</option>
-                    {modifierMasters.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-violet-400" strokeWidth={2.5} />
-                </div>
+                <NativeSelectField
+                  value={form.modifierMasterId}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      modifierMasterId: event.target.value,
+                    }))
+                  }
+                  displayValue={modifierMasters.find((m) => m.id === form.modifierMasterId)?.name ?? "Auto-link by name"}
+                >
+                  <option value="">Auto-link by name</option>
+                  {modifierMasters.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </NativeSelectField>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   Links this modifier to a global modifier master. &ldquo;Auto-link&rdquo; will match by name or create a
                   new master. When the global master is marked out of stock, all linked modifiers are disabled everywhere.
@@ -1325,22 +1319,19 @@ export default function AdminMenuBuilderPage() {
                 {formSupportsInventoryMode ? (
                   <div className="mt-4">
                     <label className="mb-2 block text-sm font-semibold text-slate-700">Tracking mode</label>
-                    <div className="relative">
-                      <select
-                        value={form.inventoryTrackingMode}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            inventoryTrackingMode: event.target.value as InventoryTrackingMode,
-                          }))
-                        }
-                        className="appearance-none w-full rounded-2xl border border-slate-300 px-4 py-3 pr-9 outline-none focus:border-sky-500"
-                      >
-                        <option value="aggregate">Whole category stock</option>
-                        <option value="items">Individual child items</option>
-                      </select>
-                      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-                    </div>
+                    <NativeSelectField
+                      value={form.inventoryTrackingMode}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          inventoryTrackingMode: event.target.value as InventoryTrackingMode,
+                        }))
+                      }
+                      displayValue={form.inventoryTrackingMode === "aggregate" ? "Whole category stock" : "Individual child items"}
+                    >
+                      <option value="aggregate">Whole category stock</option>
+                      <option value="items">Individual child items</option>
+                    </NativeSelectField>
                   </div>
                 ) : null}
               </div>

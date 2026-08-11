@@ -7,6 +7,7 @@ import { clearAdminBypassSession } from '@/lib/devAuth';
 import { auth } from '@/lib/firebase';
 import { getBillsByDate, updateBillByNumber, type Bill } from '@/lib/firestore';
 import { requireAdmin } from '@/lib/roleGuard';
+import NativeDateField from '@/components/ui/NativeDateField';
 
 type PaymentMode = 'Cash' | 'Card' | 'UPI';
 
@@ -117,12 +118,7 @@ export default function BillsHistoryPage() {
           <h1 className="text-lg font-bold text-neutral-900">Bill History</h1>
         </div>
         <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="px-3 py-1.5 text-sm rounded-lg border border-neutral-300 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
-          />
+          <NativeDateField value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
           <button
             onClick={async () => { clearAdminBypassSession(); await signOut(auth); router.push('/admin/login'); }}
             className="px-3 py-1.5 text-sm rounded-lg bg-neutral-900 text-white hover:bg-neutral-700 transition-colors"

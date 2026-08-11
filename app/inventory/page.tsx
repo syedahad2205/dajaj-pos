@@ -5,6 +5,7 @@ import { auth } from "@/lib/firebase";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { requirePosStaff } from "@/lib/roleGuard";
 import { getPosStaffProfileByEmail } from "@/lib/firestore";
+import NativeDateField from "@/components/ui/NativeDateField";
 
 interface InventoryRow {
   itemId: string;
@@ -258,12 +259,7 @@ export default function InventoryPage() {
             </div>
             <div className="flex max-w-[320px] flex-col gap-2">
               <label className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Date</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
-                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500"
-              />
+              <NativeDateField value={date} onChange={(event) => setDate(event.target.value)} />
             </div>
           </div>
         </header>

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBillsByDate, type Bill } from '@/lib/firestore';
 import { requireAdmin } from '@/lib/roleGuard';
+import NativeDateField from '@/components/ui/NativeDateField';
 
 interface VariantRow {
   category: string;
@@ -115,12 +116,7 @@ export default function SalesPage() {
           </button>
           <h1 className="font-bold text-lg text-neutral-900">Sales Tracker</h1>
         </div>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="px-3 py-1.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-        />
+        <NativeDateField value={date} onChange={(e) => setDate(e.target.value)} />
       </header>
 
       {/* Summary cards */}

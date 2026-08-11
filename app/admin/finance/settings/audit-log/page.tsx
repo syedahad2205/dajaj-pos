@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import FinanceNav from "@/components/finance/FinanceNav";
+import NativeSelectField from "@/components/ui/NativeSelectField";
 import type { FinanceAuditAction, FinanceAuditModule } from "@/lib/finance";
 
 interface AuditLogRow {
@@ -186,21 +186,18 @@ export default function FinanceAuditLogPage() {
             placeholder="Search by person or entity…"
             className="flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
           />
-          <div className="relative">
-            <select
-              value={moduleFilter}
-              onChange={(e) => setModuleFilter(e.target.value as typeof moduleFilter)}
-              className="appearance-none rounded-2xl border border-slate-300 bg-white px-4 py-3 pr-9 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-            >
-              <option value="all">All Modules</option>
-              {(Object.keys(MODULE_LABELS) as FinanceAuditModule[]).map((m) => (
-                <option key={m} value={m}>
-                  {MODULE_LABELS[m]}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-          </div>
+          <NativeSelectField
+            value={moduleFilter}
+            onChange={(e) => setModuleFilter(e.target.value as typeof moduleFilter)}
+            displayValue={moduleFilter === "all" ? "All Modules" : MODULE_LABELS[moduleFilter]}
+          >
+            <option value="all">All Modules</option>
+            {(Object.keys(MODULE_LABELS) as FinanceAuditModule[]).map((m) => (
+              <option key={m} value={m}>
+                {MODULE_LABELS[m]}
+              </option>
+            ))}
+          </NativeSelectField>
         </div>
 
         {error ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p> : null}

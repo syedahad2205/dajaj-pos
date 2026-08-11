@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import FinanceNav from "@/components/finance/FinanceNav";
 import Modal from "@/components/finance/Modal";
+import NativeSelectField from "@/components/ui/NativeSelectField";
 
 interface FinanceDefaultRow {
   id: string;
@@ -232,22 +233,19 @@ export default function FinanceDefaultsPage() {
                     {row.description ? <p className="mt-0.5 text-xs text-slate-400">{row.description}</p> : null}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <div className="relative">
-                      <select
-                        value={row.destinationAccountId ?? ""}
-                        disabled={busyId === row.id}
-                        onChange={(e) => handleDestinationChange(row, e.target.value)}
-                        className="appearance-none rounded-xl border border-slate-300 px-3 py-2 pr-8 text-sm outline-none focus:border-orange-400 disabled:opacity-50"
-                      >
-                        <option value="">Not configured</option>
-                        {activeAccounts.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.name}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-                    </div>
+                    <NativeSelectField
+                      value={row.destinationAccountId ?? ""}
+                      disabled={busyId === row.id}
+                      onChange={(e) => handleDestinationChange(row, e.target.value)}
+                      displayValue={activeAccounts.find((a) => a.id === row.destinationAccountId)?.name ?? "Not configured"}
+                    >
+                      <option value="">Not configured</option>
+                      {activeAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </NativeSelectField>
                     <button
                       type="button"
                       disabled={busyId === row.id}
@@ -287,21 +285,18 @@ export default function FinanceDefaultsPage() {
             </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">Destination Account</label>
-              <div className="relative">
-                <select
-                  value={addForm.destinationAccountId}
-                  onChange={(e) => setAddForm((f) => ({ ...f, destinationAccountId: e.target.value }))}
-                  className="appearance-none w-full rounded-2xl border border-slate-300 px-4 py-3 pr-9 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                >
-                  <option value="">Not configured</option>
-                  {activeAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-              </div>
+              <NativeSelectField
+                value={addForm.destinationAccountId}
+                onChange={(e) => setAddForm((f) => ({ ...f, destinationAccountId: e.target.value }))}
+                displayValue={activeAccounts.find((a) => a.id === addForm.destinationAccountId)?.name ?? "Not configured"}
+              >
+                <option value="">Not configured</option>
+                {activeAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </NativeSelectField>
             </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">Description (optional)</label>

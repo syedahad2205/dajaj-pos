@@ -1,5 +1,7 @@
 "use client";
 
+import NativeDateField from "@/components/ui/NativeDateField";
+
 export default function NameForm({
   name,
   dob,
@@ -29,13 +31,7 @@ export default function NameForm({
         <label htmlFor="dob" className="mb-1 block text-sm font-medium text-slate-700">
           Date of Birth (Optional)
         </label>
-        <input
-          id="dob"
-          type="date"
-          value={dob}
-          onChange={(event) => onDobChange(event.target.value)}
-          className="w-full rounded-2xl border border-slate-300 px-4 py-3"
-        />
+        <NativeDateField id="dob" value={dob} onChange={(event) => onDobChange(event.target.value)} />
       </div>
     </div>
   );
