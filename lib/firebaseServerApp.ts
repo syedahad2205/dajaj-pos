@@ -83,18 +83,34 @@ export async function getAuthenticatedFirestoreForRequest(request: Request): Pro
   userEmail: string | null;
   userId: string;
 }> {
+  const t0 = Date.now();
   const authIdToken = readBearerToken(request);
   const serverApp = initializeServerApp(firebaseConfig, { authIdToken });
+  const t1 = Date.now();
 
   try {
     const auth = getAuth(serverApp);
     await waitForServerAuth(auth);
+    const t2 = Date.now();
 
     if (!auth.currentUser) {
       throw new FirebaseRouteAuthError("Invalid or expired Firebase session.");
     }
 
+    // Timing breakdown for diagnosing slow-save reports — remove once the
+    // dominant cost here is confirmed/fixed. initializeServerApp (t0→t1) sets
+    // up the ephemeral per-request Firebase app; waitForServerAuth (t1→t2) is
+    // the part that can hit the network (token verification / auth-state
+    // hydration) and is the most likely multi-second contributor.
+    console.log(
+      `[firebaseServerApp] initializeServerApp=${t1 - t0}ms waitForServerAuth=${t2 - t1}ms total=${t2 - t0}ms`,
+    );
+
     return {
+      // Deliberately not awaited by callers before responding — see the
+      // route handlers, which fire this after building the response instead
+      // of blocking on it. Tearing down the ephemeral app has no bearing on
+      // data that's already been committed.
       cleanup: () => deleteApp(serverApp),
       firestore: getFirestore(serverApp),
       userEmail: auth.currentUser.email ?? null,

@@ -127,6 +127,19 @@ export async function createExpenseCategory(
   return { id: ref.id, ...data } as unknown as FinanceExpenseCategory;
 }
 
+// getOrCreate{Expense,Income}CategoryIdByName are only ever called with a
+// small, fixed set of well-known auto-post category names (e.g. "Cash
+// Sales", "Daily Closing Cash Expenses") — the same name resolves to the
+// same document on every call for the lifetime of the app. Caching the
+// resolved id in memory turns what was a Firestore query on *every single*
+// Daily Closing save into a one-time lookup per warm server instance. If a
+// cached id's document is later deleted, createFinanceTransaction's own
+// existence check still catches it (surfaced as a posting warning, same as
+// today) — this cache only ever skips redundant reads, never bypasses that
+// validation.
+const expenseCategoryIdCache = new Map<string, string>();
+const incomeCategoryIdCache = new Map<string, string>();
+
 /**
  * Finds an expense category by exact name (active or not), or creates a
  * new active one. Mirrors getOrCreateIncomeCategoryIdByName — used for
@@ -140,11 +153,19 @@ export async function getOrCreateExpenseCategoryIdByName(
   db: Firestore = defaultFirestore,
   branchId: string = DEFAULT_BRANCH_ID,
 ): Promise<string> {
+  const cacheKey = `${branchId}::${name}`;
+  const cached = expenseCategoryIdCache.get(cacheKey);
+  if (cached) return cached;
+
   const existing = await getDocs(
     query(expenseCategoriesCollection(db), where("branchId", "==", branchId), where("name", "==", name)),
   );
-  if (!existing.empty) return existing.docs[0].id;
+  if (!existing.empty) {
+    expenseCategoryIdCache.set(cacheKey, existing.docs[0].id);
+    return existing.docs[0].id;
+  }
   const created = await createExpenseCategory({ name, branchId }, userId, userName, db);
+  expenseCategoryIdCache.set(cacheKey, created.id);
   return created.id;
 }
 
@@ -355,11 +376,19 @@ export async function getOrCreateIncomeCategoryIdByName(
   db: Firestore = defaultFirestore,
   branchId: string = DEFAULT_BRANCH_ID,
 ): Promise<string> {
+  const cacheKey = `${branchId}::${name}`;
+  const cached = incomeCategoryIdCache.get(cacheKey);
+  if (cached) return cached;
+
   const existing = await getDocs(
     query(incomeCategoriesCollection(db), where("branchId", "==", branchId), where("name", "==", name)),
   );
-  if (!existing.empty) return existing.docs[0].id;
+  if (!existing.empty) {
+    incomeCategoryIdCache.set(cacheKey, existing.docs[0].id);
+    return existing.docs[0].id;
+  }
   const created = await createIncomeCategory({ name, branchId }, userId, userName, db);
+  incomeCategoryIdCache.set(cacheKey, created.id);
   return created.id;
 }
 

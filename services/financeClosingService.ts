@@ -227,8 +227,12 @@ async function loadOrBootstrapClosingInTx(
   date: string,
   branchId: string,
   closingSnap: DocumentSnapshot<DocumentData>,
+  prefetchedPrevSnap?: DocumentSnapshot<DocumentData>,
 ): Promise<FinanceDailyClosing> {
-  const prevSnap = await tx.get(doc(dailyClosingCollection(db), previousDateKey(date)));
+  // Callers that already know they need yesterday's doc can fetch it in the
+  // same Promise.all as their other reads and pass it in here, saving a
+  // sequential round trip. Falls back to fetching it itself otherwise.
+  const prevSnap = prefetchedPrevSnap ?? (await tx.get(doc(dailyClosingCollection(db), previousDateKey(date))));
 
   if (closingSnap.exists()) {
     const existing = normalizeClosing(closingSnap.data());
@@ -410,23 +414,26 @@ export async function addDailyClosingExpenses(
 
   return runTransaction(db, async (tx) => {
     const closingRef = doc(dailyClosingCollection(db), date);
-    const closingSnap = await tx.get(closingRef);
 
-    // ALL READS UP FRONT — Firestore transactions require every read to finish
-    // before any write begins. Batch up the (de-duplicated) category and
-    // subcategory document reads so the subsequent writes never trigger a
-    // "reads after writes" error.
+    // ALL READS UP FRONT, IN ONE PARALLEL BATCH — Firestore transactions
+    // require every read to finish before any write begins, and each tx.get()
+    // is its own network round trip. This used to be 3 *sequential* round
+    // trips (this day's doc, then categories/subcategories, then yesterday's
+    // doc for the opening-cash chain) — firing them all together cuts that
+    // down to 1, which is most of the win on the save-latency front.
     const categoryIds = Array.from(new Set(valid.map((i) => i.categoryId)));
     const subIds = Array.from(new Set(valid.map((i) => i.subcategoryId).filter((s): s is string => !!s)));
 
-    const [categorySnaps, subSnaps] = await Promise.all([
+    const [closingSnap, prevSnap, categorySnaps, subSnaps] = await Promise.all([
+      tx.get(closingRef),
+      tx.get(doc(dailyClosingCollection(db), previousDateKey(date))),
       Promise.all(categoryIds.map((id) => tx.get(doc(expenseCategoriesCollection(db), id)))),
       Promise.all(subIds.map((id) => tx.get(doc(expenseSubcategoriesCollection(db), id)))),
     ]);
     const categoryById = new Map(categorySnaps.map((s) => [s.id, s]));
     const subById = new Map(subSnaps.map((s) => [s.id, s]));
 
-    const base = await loadOrBootstrapClosingInTx(tx, db, date, branchId, closingSnap);
+    const base = await loadOrBootstrapClosingInTx(tx, db, date, branchId, closingSnap, prevSnap);
 
     const categoryCountBumps = new Map<string, number>();
     const newEntries: DailyClosingExpenseEntry[] = [];
@@ -782,7 +789,9 @@ async function postDailyClosingToLedger(
 ): Promise<{ transactionsByEvent: Record<string, string>; warnings: string[] }> {
   const transactionsByEvent: Record<string, string> = {};
   const warnings: string[] = [];
+  const tDefaultsStart = Date.now();
   const defaultsMap = await getFinanceDefaultsMap(db, branchId);
+  const tDefaultsDone = Date.now();
   const allEvents = getExpectedPostingEvents(closing);
   const incomeEvents = allEvents.filter((e) => e.kind === "income");
   const expenseEvents = allEvents.filter((e) => e.kind === "expense");
@@ -804,107 +813,142 @@ async function postDailyClosingToLedger(
     return mapping;
   };
 
-  for (const event of incomeEvents) {
-    if (alreadyPostedEventKeys.has(event.eventKey)) continue;
-    if (!(event.amount > 0)) continue;
-    const mapping = resolveDestination(event.eventKey, event.eventName, event.amount);
-    if (!mapping || !mapping.destinationAccountId) continue;
+  // Each event below posts to its own (mostly disjoint) category/account
+  // documents, and createFinanceTransaction/getOrCreate*CategoryIdByName are
+  // each independently transactional/idempotent — Firestore transactions
+  // already handle any contention safely (e.g. two events both crediting the
+  // shared cash-drawer account retry automatically on conflict), so there's
+  // no correctness reason these needed to run one at a time. Firing every
+  // event in a bucket via Promise.all instead of a sequential for-loop is
+  // the single biggest win on Daily Closing save latency: what used to be
+  // up to ~7 sequential round trips collapses to 3 parallel batches (one per
+  // bucket). Each event still catches its own failure into a warning —
+  // nothing here can throw out of the Promise.all.
+  type PostResult = { eventKey: string; txId: string } | { eventKey: string; warning: string } | null;
 
-    try {
-      const categoryId = await getOrCreateIncomeCategoryIdByName(event.eventName, userId, userName, db, branchId);
-      const tx = await createFinanceTransaction(
-        {
-          type: "income",
-          date: closing.date,
-          categoryId,
-          amount: event.amount,
-          toAccountId: mapping.destinationAccountId,
-          remarks: "Auto-posted from Daily Closing",
-          branchId,
-          autoPosted: true,
-          autoPostedSource: "daily_closing",
-        },
-        userId,
-        userName,
-        db,
-      );
-      transactionsByEvent[event.eventKey] = tx.id;
-    } catch (err) {
-      warnings.push(`${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}`);
-    }
-  }
+  const incomeResults = await Promise.all(
+    incomeEvents.map(async (event): Promise<PostResult> => {
+      if (alreadyPostedEventKeys.has(event.eventKey)) return null;
+      if (!(event.amount > 0)) return null;
+      const mapping = resolveDestination(event.eventKey, event.eventName, event.amount);
+      if (!mapping || !mapping.destinationAccountId) return null;
 
-  for (const event of expenseEvents) {
-    if (alreadyPostedEventKeys.has(event.eventKey)) continue;
-    if (!(event.amount > 0)) continue;
+      try {
+        const categoryId = await getOrCreateIncomeCategoryIdByName(event.eventName, userId, userName, db, branchId);
+        const tx = await createFinanceTransaction(
+          {
+            type: "income",
+            date: closing.date,
+            categoryId,
+            amount: event.amount,
+            toAccountId: mapping.destinationAccountId,
+            remarks: "Auto-posted from Daily Closing",
+            branchId,
+            autoPosted: true,
+            autoPostedSource: "daily_closing",
+          },
+          userId,
+          userName,
+          db,
+        );
+        return { eventKey: event.eventKey, txId: tx.id };
+      } catch (err) {
+        return { eventKey: event.eventKey, warning: `${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}` };
+      }
+    }),
+  );
+  const tIncomeDone = Date.now();
 
-    if (!cashDrawerAccountId) {
-      warnings.push(
-        `${event.eventName}: can't determine the cash drawer account — configure "Cash Sales" in Settings > Finance Defaults first. ₹${event.amount} was not posted.`,
-      );
-      continue;
-    }
+  const expenseResults = await Promise.all(
+    expenseEvents.map(async (event): Promise<PostResult> => {
+      if (alreadyPostedEventKeys.has(event.eventKey)) return null;
+      if (!(event.amount > 0)) return null;
 
-    try {
-      const categoryId = await getOrCreateExpenseCategoryIdByName("Daily Closing Cash Expenses", userId, userName, db, branchId);
-      const tx = await createFinanceTransaction(
-        {
-          type: "expense",
-          date: closing.date,
-          categoryId,
-          amount: event.amount,
-          fromAccountId: cashDrawerAccountId,
-          remarks: "Auto-posted from Daily Closing (cash expenses paid out of the drawer)",
-          branchId,
-          autoPosted: true,
-          autoPostedSource: "daily_closing",
-        },
-        userId,
-        userName,
-        db,
-      );
-      transactionsByEvent[event.eventKey] = tx.id;
-    } catch (err) {
-      warnings.push(`${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}`);
-    }
-  }
+      if (!cashDrawerAccountId) {
+        return {
+          eventKey: event.eventKey,
+          warning: `${event.eventName}: can't determine the cash drawer account — configure "Cash Sales" in Settings > Finance Defaults first. ₹${event.amount} was not posted.`,
+        };
+      }
+
+      try {
+        const categoryId = await getOrCreateExpenseCategoryIdByName("Daily Closing Cash Expenses", userId, userName, db, branchId);
+        const tx = await createFinanceTransaction(
+          {
+            type: "expense",
+            date: closing.date,
+            categoryId,
+            amount: event.amount,
+            fromAccountId: cashDrawerAccountId,
+            remarks: "Auto-posted from Daily Closing (cash expenses paid out of the drawer)",
+            branchId,
+            autoPosted: true,
+            autoPostedSource: "daily_closing",
+          },
+          userId,
+          userName,
+          db,
+        );
+        return { eventKey: event.eventKey, txId: tx.id };
+      } catch (err) {
+        return { eventKey: event.eventKey, warning: `${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}` };
+      }
+    }),
+  );
+  const tExpenseDone = Date.now();
 
   // Cash Deposits: one Transfer per deposit type present that day, out of
   // the same cash drawer account into the deposit type's own mapped account.
-  for (const event of depositEvents) {
-    if (alreadyPostedEventKeys.has(event.eventKey)) continue;
-    const mapping = resolveDestination(event.eventKey, event.eventName, event.amount);
-    if (!mapping || !mapping.destinationAccountId) continue;
+  const depositResults = await Promise.all(
+    depositEvents.map(async (event): Promise<PostResult> => {
+      if (alreadyPostedEventKeys.has(event.eventKey)) return null;
+      const mapping = resolveDestination(event.eventKey, event.eventName, event.amount);
+      if (!mapping || !mapping.destinationAccountId) return null;
 
-    if (!cashDrawerAccountId) {
-      warnings.push(
-        `${event.eventName}: can't determine the cash drawer account — configure "Cash Sales" in Settings > Finance Defaults first. ₹${event.amount} was not posted.`,
-      );
-      continue;
-    }
+      if (!cashDrawerAccountId) {
+        return {
+          eventKey: event.eventKey,
+          warning: `${event.eventName}: can't determine the cash drawer account — configure "Cash Sales" in Settings > Finance Defaults first. ₹${event.amount} was not posted.`,
+        };
+      }
 
-    try {
-      const tx = await createFinanceTransaction(
-        {
-          type: "transfer",
-          date: closing.date,
-          amount: event.amount,
-          fromAccountId: cashDrawerAccountId,
-          toAccountId: mapping.destinationAccountId,
-          remarks: `Auto-posted from Daily Closing (${event.eventName})`,
-          branchId,
-          autoPosted: true,
-          autoPostedSource: "daily_closing",
-        },
-        userId,
-        userName,
-        db,
-      );
-      transactionsByEvent[event.eventKey] = tx.id;
-    } catch (err) {
-      warnings.push(`${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}`);
+      try {
+        const tx = await createFinanceTransaction(
+          {
+            type: "transfer",
+            date: closing.date,
+            amount: event.amount,
+            fromAccountId: cashDrawerAccountId,
+            toAccountId: mapping.destinationAccountId,
+            remarks: `Auto-posted from Daily Closing (${event.eventName})`,
+            branchId,
+            autoPosted: true,
+            autoPostedSource: "daily_closing",
+          },
+          userId,
+          userName,
+          db,
+        );
+        return { eventKey: event.eventKey, txId: tx.id };
+      } catch (err) {
+        return { eventKey: event.eventKey, warning: `${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}` };
+      }
+    }),
+  );
+  const tDepositDone = Date.now();
+
+  for (const result of [...incomeResults, ...expenseResults, ...depositResults]) {
+    if (!result) continue;
+    if ("txId" in result) {
+      transactionsByEvent[result.eventKey] = result.txId;
+    } else {
+      warnings.push(result.warning);
     }
   }
+
+  console.log(
+    `[postDailyClosingToLedger] defaults=${tDefaultsDone - tDefaultsStart}ms income(${incomeEvents.length})=${tIncomeDone - tDefaultsDone}ms expense(${expenseEvents.length})=${tExpenseDone - tIncomeDone}ms deposit(${depositEvents.length})=${tDepositDone - tExpenseDone}ms`,
+  );
 
   return { transactionsByEvent, warnings };
 }
@@ -938,8 +982,10 @@ export async function closeDailyClosing(
   if (!Number.isFinite(closingCash)) throw new Error("Closing Cash is required.");
   if (!isValidDateKey(date)) throw new Error("Invalid date.");
 
+  const tLoadStart = Date.now();
   const base = await loadOrBootstrapClosing(date, db, branchId);
   if (base.locked) throw new Error(`${date} is already closed. Ask an admin to reopen it first.`);
+  const tLoaded = Date.now();
 
   const merged = { ...base, closingCash: roundCurrency(closingCash) };
   const totals = computeDerivedTotals(merged);
@@ -953,16 +999,28 @@ export async function closeDailyClosing(
   // twice (once by the un-voided old transaction, once by the new one). Instead
   // leave that event's old transaction reference exactly as it was.
   const unvoidableEventKeys = new Set<string>();
-  for (const [eventKey, txId] of Object.entries(draft.autoPostedTransactionsByEvent)) {
-    try {
-      await voidFinanceTransaction(txId, userId, userName, `Daily Closing for ${date} was re-saved`, db);
-    } catch (err) {
-      unvoidableEventKeys.add(eventKey);
-      warnings.push(
-        `Could not clean up a previous posting for this event (kept as-is to avoid double-counting): ${err instanceof Error ? err.message : "unknown error"}`,
-      );
-    }
+  // Each void touches only that one old transaction's own accounts/category
+  // (Firestore transactions handle any overlap safely) — no reason to wait
+  // on them one at a time. Only matters on a re-close (admin reopened the
+  // day), but that's a normal workflow, and this can be ~7 round trips.
+  const voidResults = await Promise.all(
+    Object.entries(draft.autoPostedTransactionsByEvent).map(async ([eventKey, txId]) => {
+      try {
+        await voidFinanceTransaction(txId, userId, userName, `Daily Closing for ${date} was re-saved`, db);
+        return null;
+      } catch (err) {
+        return { eventKey, message: err instanceof Error ? err.message : "unknown error" };
+      }
+    }),
+  );
+  for (const failure of voidResults) {
+    if (!failure) continue;
+    unvoidableEventKeys.add(failure.eventKey);
+    warnings.push(
+      `Could not clean up a previous posting for this event (kept as-is to avoid double-counting): ${failure.message}`,
+    );
   }
+  const tVoided = Date.now();
 
   const { transactionsByEvent, warnings: postingWarnings } = await postDailyClosingToLedger(
     draft,
@@ -973,6 +1031,7 @@ export async function closeDailyClosing(
     unvoidableEventKeys,
   );
   warnings.push(...postingWarnings);
+  const tPosted = Date.now();
 
   // Keep the old (un-voidable) transaction references alongside whatever posted fresh this round.
   const mergedAutoPosted: Record<string, string> = { ...transactionsByEvent };
@@ -981,7 +1040,6 @@ export async function closeDailyClosing(
   }
 
   const closingRef = doc(dailyClosingCollection(db), date);
-  const existingSnap = await getDoc(closingRef);
   const final: FinanceDailyClosing = {
     ...draft,
     locked: true,
@@ -992,13 +1050,22 @@ export async function closeDailyClosing(
     postingWarnings: warnings,
   };
 
+  // base (loaded once, up top) already carries this doc's existing createdAt
+  // forward through normalizeClosing — no need for a second read here just
+  // to recover a field we already have.
   await setDoc(closingRef, {
     ...final,
-    createdAt: existingSnap.exists() ? existingSnap.data()?.createdAt ?? serverTimestamp() : serverTimestamp(),
+    createdAt: base.createdAt ?? serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  const tSet = Date.now();
 
   await logFinanceAudit({ module: "closing", entityId: date, entityLabel: date, action: "close", userId, userName, newValue: final }, db);
+  const tAudited = Date.now();
+
+  console.log(
+    `[closeDailyClosing] load=${tLoaded - tLoadStart}ms void(${voidResults.length})=${tVoided - tLoaded}ms post=${tPosted - tVoided}ms setDoc=${tSet - tPosted}ms audit=${tAudited - tSet}ms total=${tAudited - tLoadStart}ms`,
+  );
 
   return final;
 }
