@@ -97,6 +97,8 @@ function validateInput(input: CreateFinanceTransactionInput) {
  * transaction. This is the only path by which money should ever move in
  * DAJAJ's books — nothing should bypass this function.
  */
+let ftxCallCounter = 0;
+
 export async function createFinanceTransaction(
   input: CreateFinanceTransactionInput,
   userId: string,
@@ -112,7 +114,21 @@ export async function createFinanceTransaction(
   const amount = roundCurrency(input.amount);
   const txRef = doc(transactionsCollection(db));
 
+  // Diagnostic instrumentation for a latency investigation — logs each
+  // attempt (runTransaction retries its callback on document-version
+  // conflicts, so >1 attempt here means real Firestore-level contention,
+  // not just slow network) plus a wall-clock start/end so overlapping
+  // calls are visible across concurrent createFinanceTransaction/
+  // voidFinanceTransaction invocations. Remove once the root cause of the
+  // Daily Closing save latency is confirmed.
+  const callId = `ftx${++ftxCallCounter}`;
+  const tCallStart = Date.now();
+  let attempt = 0;
+
   const result = await runTransaction(db, async (tx) => {
+    attempt += 1;
+    const tAttemptStart = Date.now();
+    console.log(`[createFinanceTransaction:${callId}] attempt ${attempt} start at +${tAttemptStart - tCallStart}ms (type=${input.type})`);
     const fromAccountRef = input.fromAccountId ? doc(accountsCollection(db), input.fromAccountId) : null;
     const toAccountRef = input.toAccountId ? doc(accountsCollection(db), input.toAccountId) : null;
     const categoryRef =
@@ -225,6 +241,10 @@ export async function createFinanceTransaction(
     return { id: txRef.id, ...transactionData };
   });
 
+  console.log(
+    `[createFinanceTransaction:${callId}] done attempts=${attempt} totalMs=${Date.now() - tCallStart} (type=${input.type})`,
+  );
+
   return result as FinanceTransaction;
 }
 
@@ -241,6 +261,8 @@ function describeTransactionForAudit(
 }
 
 /** Soft-reverses a posted transaction: flips its status to 'void' and undoes its balance/rollup effects atomically. The ledger row is never deleted. */
+let voidCallCounter = 0;
+
 export async function voidFinanceTransaction(
   transactionId: string,
   userId: string,
@@ -250,9 +272,20 @@ export async function voidFinanceTransaction(
 ): Promise<void> {
   if (!reason?.trim()) throw new Error("A reason is required to void a transaction.");
 
+  // Same diagnostic instrumentation as createFinanceTransaction — remove
+  // once the Daily Closing latency root cause is confirmed.
+  const callId = `void${++voidCallCounter}`;
+  const tCallStart = Date.now();
+  let attempt = 0;
+
   await runTransaction(db, async (tx) => {
+    attempt += 1;
+    const tAttemptStart = Date.now();
+    console.log(`[voidFinanceTransaction:${callId}] attempt ${attempt} start at +${tAttemptStart - tCallStart}ms (txId=${transactionId})`);
     const txRef = doc(transactionsCollection(db), transactionId);
+    const tGetTxStart = Date.now();
     const txSnap = await tx.get(txRef);
+    console.log(`[voidFinanceTransaction:${callId}] tx.get(txRef) took ${Date.now() - tGetTxStart}ms`);
     if (!txSnap.exists()) throw new Error("Transaction not found.");
     const data = txSnap.data() as FinanceTransaction;
     if (data.status === "void") throw new Error("This transaction has already been voided.");
@@ -268,6 +301,7 @@ export async function voidFinanceTransaction(
     const subcategoryRef = data.subcategoryId ? doc(expenseSubcategoriesCollection(db), data.subcategoryId) : null;
     const vendorRef = data.vendorId ? doc(vendorsCollection(db), data.vendorId) : null;
 
+    const tRelatedReadsStart = Date.now();
     const [fromAccountSnap, toAccountSnap, categorySnap, subcategorySnap, vendorSnap] = await Promise.all([
       fromAccountRef ? tx.get(fromAccountRef) : Promise.resolve(null),
       toAccountRef ? tx.get(toAccountRef) : Promise.resolve(null),
@@ -275,6 +309,7 @@ export async function voidFinanceTransaction(
       subcategoryRef ? tx.get(subcategoryRef) : Promise.resolve(null),
       vendorRef ? tx.get(vendorRef) : Promise.resolve(null),
     ]);
+    console.log(`[voidFinanceTransaction:${callId}] related-docs Promise.all took ${Date.now() - tRelatedReadsStart}ms`);
 
     // Reverse the original balance effect (mirror image of createFinanceTransaction).
     if (fromAccountRef && fromAccountSnap?.exists()) {
@@ -326,6 +361,8 @@ export async function voidFinanceTransaction(
       reason: reason.trim(),
     });
   });
+
+  console.log(`[voidFinanceTransaction:${callId}] done attempts=${attempt} totalMs=${Date.now() - tCallStart} (txId=${transactionId})`);
 }
 
 export interface FinanceTransactionFilters {
