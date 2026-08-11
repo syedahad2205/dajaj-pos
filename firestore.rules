@@ -83,11 +83,14 @@ service cloud.firestore {
     // isFinanceUser() above) scoped to only the Finance collections this file
     // explicitly grants below. Absence of `active` on the doc means active,
     // matching a record created manually via the Firebase Console with no
-    // active field set at all.
+    // active field set at all — hence .get('active', true), NOT .active:
+    // dot-notation on a map key that doesn't exist THROWS in Firestore Rules
+    // (an evaluation error, which denies the request), it does not
+    // gracefully return null like plain data access elsewhere in this file.
     function isFinanceManager() {
       return isSignedIn()
         && exists(/databases/$(database)/documents/finance_managers/$(request.auth.uid))
-        && get(/databases/$(database)/documents/finance_managers/$(request.auth.uid)).data.active != false;
+        && get(/databases/$(database)/documents/finance_managers/$(request.auth.uid)).data.get('active', true) != false;
     }
 
     function isAdminOrFinanceManager() {
