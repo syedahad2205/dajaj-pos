@@ -398,6 +398,13 @@ export function previousDateKey(dateKey: string): string {
   return toDateKey(d);
 }
 
+/** Tomorrow's date key relative to a given YYYY-MM-DD date key — used to walk forward through the Opening Cash chain. */
+export function nextDateKey(dateKey: string): string {
+  const d = new Date(`${dateKey}T00:00:00`);
+  d.setDate(d.getDate() + 1);
+  return toDateKey(d);
+}
+
 export function isValidDateKey(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }

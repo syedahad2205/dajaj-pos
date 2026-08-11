@@ -21,6 +21,7 @@ import {
   depositEventKey,
   generateLocalId,
   isValidDateKey,
+  nextDateKey,
   previousDateKey,
   roundCurrency,
   toTimeKey,
@@ -974,6 +975,146 @@ async function postDailyClosingToLedger(
  * independent calls like that. Same accepted-risk trade-off as the rest of
  * this function for a single-manager, once-a-day action.
  */
+// Real chains stop as soon as they resync (see below) — this is just a
+// sane upper bound so a data anomaly can never turn into an unbounded loop.
+const MAX_CASCADE_DAYS = 3650;
+
+/**
+ * After a day's Closing Cash is set or corrected (see closeDailyClosing),
+ * walks forward through any already-LOCKED days chained off it and re-syncs
+ * each one's Opening Cash against what it should be right now — the same
+ * self-healing resolveOpeningCash() already does automatically for an
+ * *unlocked* day, just applied here without waiting for someone to Reopen
+ * every downstream day by hand.
+ *
+ * Only Opening Cash — and therefore Cash Revenue/Total Revenue, and the
+ * "Cash Sales" ledger posting derived from Cash Revenue — ever changes
+ * here. Closing Cash itself (the manager's physical count), expenses, and
+ * deposits are historical fact for that day and are never touched, which is
+ * exactly why the walk can stop the moment it finds a day whose Opening
+ * Cash is already correct: that day's Closing Cash never changed, so
+ * nothing further downstream is affected either. Expense/deposit ledger
+ * postings don't depend on Opening Cash, so only "cash_sales" ever needs
+ * voiding and re-posting.
+ *
+ * Stops at the first unlocked day (it'll self-heal the next time it's
+ * touched), the first date with no record at all, or the first day already
+ * in sync — whichever comes first. Never throws: a failure re-posting one
+ * day's Cash Sales is recorded as a warning on that day and the walk
+ * continues, so one bad day can't block correcting the rest of the chain.
+ * Returns the dates it actually updated, for the caller to surface.
+ */
+async function cascadeOpeningCashForward(
+  fromDate: string,
+  userId: string,
+  userName: string,
+  db: Firestore,
+  branchId: string,
+): Promise<string[]> {
+  const updatedDates: string[] = [];
+  let currentDate = nextDateKey(fromDate);
+
+  for (let i = 0; i < MAX_CASCADE_DAYS; i++) {
+    const ref = doc(dailyClosingCollection(db), currentDate);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) break;
+
+    const current = normalizeClosing(snap.data());
+    if (!current.locked) break;
+
+    const prevSnap = await getDoc(doc(dailyClosingCollection(db), previousDateKey(currentDate)));
+    const resolved = resolveOpeningCash(prevSnap.exists() ? prevSnap.data() : undefined, 0);
+
+    if (resolved.openingCash === current.openingCash && resolved.openingCashSource === current.openingCashSource) {
+      break;
+    }
+
+    const merged = { ...current, openingCash: resolved.openingCash, openingCashSource: resolved.openingCashSource };
+    const totals = computeDerivedTotals(merged);
+    const draft: FinanceDailyClosing = { ...merged, ...totals };
+
+    // Drop any previous "Cash Sales" warning before deciding fresh below —
+    // otherwise a stale complaint (e.g. from before Finance Defaults was
+    // configured) would keep piling up forever across repeated corrections.
+    const warnings = draft.postingWarnings.filter((w) => !w.startsWith("Cash Sales:"));
+    const autoPosted = { ...draft.autoPostedTransactionsByEvent };
+    const oldCashSalesTxId = autoPosted.cash_sales;
+
+    if (oldCashSalesTxId) {
+      try {
+        await voidFinanceTransaction(
+          oldCashSalesTxId,
+          userId,
+          userName,
+          `Daily Closing for ${currentDate} was automatically re-chained after a Closing Cash correction on ${fromDate}`,
+          db,
+        );
+        delete autoPosted.cash_sales;
+      } catch (err) {
+        warnings.push(
+          `Cash Sales: could not void the previous posting while re-chaining from ${fromDate} — left as-is (${err instanceof Error ? err.message : "unknown error"}).`,
+        );
+      }
+    }
+
+    if (!("cash_sales" in autoPosted) && draft.cashRevenue > 0) {
+      try {
+        const defaultsMap = await getFinanceDefaultsMap(db, branchId);
+        const mapping = defaultsMap.get("cash_sales");
+        if (mapping?.isActive && mapping.destinationAccountId) {
+          const categoryId = await getOrCreateIncomeCategoryIdByName("Cash Sales", userId, userName, db, branchId);
+          const tx = await createFinanceTransaction(
+            {
+              type: "income",
+              date: currentDate,
+              categoryId,
+              amount: draft.cashRevenue,
+              toAccountId: mapping.destinationAccountId,
+              remarks: "Auto-posted from Daily Closing",
+              branchId,
+              autoPosted: true,
+              autoPostedSource: "daily_closing",
+            },
+            userId,
+            userName,
+            db,
+          );
+          autoPosted.cash_sales = tx.id;
+        } else {
+          warnings.push(
+            `Cash Sales: no active Finance Defaults mapping configured — ₹${draft.cashRevenue} was not re-posted while re-chaining from ${fromDate}.`,
+          );
+        }
+      } catch (err) {
+        warnings.push(`Cash Sales: failed to re-post while re-chaining from ${fromDate} — ${err instanceof Error ? err.message : "unknown error"}.`);
+      }
+    }
+
+    const final: FinanceDailyClosing = { ...draft, autoPostedTransactionsByEvent: autoPosted, postingWarnings: warnings };
+    await setDoc(ref, { ...final, updatedAt: serverTimestamp() }, { merge: true });
+
+    await logFinanceAudit(
+      {
+        module: "closing",
+        entityId: currentDate,
+        entityLabel: currentDate,
+        action: "update",
+        userId,
+        userName,
+        oldValue: { openingCash: current.openingCash, cashRevenue: current.cashRevenue, totalRevenue: current.totalRevenue },
+        newValue: { openingCash: final.openingCash, cashRevenue: final.cashRevenue, totalRevenue: final.totalRevenue },
+        reason: `Automatically re-chained after ${fromDate}'s Closing Cash was corrected`,
+      },
+      db,
+    );
+
+    updatedDates.push(currentDate);
+    currentDate = nextDateKey(currentDate);
+  }
+
+  return updatedDates;
+}
+
 export async function closeDailyClosing(
   date: string,
   closingCash: number,
@@ -1058,7 +1199,7 @@ export async function closeDailyClosing(
   }
 
   const closingRef = doc(dailyClosingCollection(db), date);
-  const final: FinanceDailyClosing = {
+  let final: FinanceDailyClosing = {
     ...draft,
     locked: true,
     closingTime: toTimeKey(),
@@ -1078,6 +1219,17 @@ export async function closeDailyClosing(
   });
 
   await logFinanceAudit({ module: "closing", entityId: date, entityLabel: date, action: "close", userId, userName, newValue: final }, db);
+
+  // This day's Closing Cash is now final — if any already-closed later days
+  // were chained off a stale value (e.g. this was a re-close after Reopen),
+  // bring them back in sync automatically instead of requiring an admin to
+  // Reopen each one by hand.
+  const cascadedDates = await cascadeOpeningCashForward(date, userId, userName, db, branchId);
+  if (cascadedDates.length > 0) {
+    const note = `Automatically re-chained Opening Cash and Cash Sales for ${cascadedDates.length} already-closed day(s) after this save: ${cascadedDates.join(", ")}.`;
+    final = { ...final, postingWarnings: [...final.postingWarnings, note] };
+    await setDoc(closingRef, { postingWarnings: final.postingWarnings, updatedAt: serverTimestamp() }, { merge: true });
+  }
 
   return final;
 }
