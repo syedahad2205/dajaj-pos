@@ -813,131 +813,148 @@ async function postDailyClosingToLedger(
     return mapping;
   };
 
-  // Each event below posts to its own (mostly disjoint) category/account
-  // documents, and createFinanceTransaction/getOrCreate*CategoryIdByName are
-  // each independently transactional/idempotent — Firestore transactions
-  // already handle any contention safely (e.g. two events both crediting the
-  // shared cash-drawer account retry automatically on conflict), so there's
-  // no correctness reason these needed to run one at a time. Firing every
-  // event in a bucket via Promise.all instead of a sequential for-loop is
-  // the single biggest win on Daily Closing save latency: what used to be
-  // up to ~7 sequential round trips collapses to 3 parallel batches (one per
-  // bucket). Each event still catches its own failure into a warning —
-  // nothing here can throw out of the Promise.all.
+  // IMPORTANT: cash_sales (income), cash_expenses, and every deposit event
+  // all read-modify-write the SAME cash-drawer account balance. Running
+  // those concurrently doesn't just "retry safely" — Firestore aborts and
+  // re-runs a transaction's *entire* body (including its reads) from
+  // scratch on conflict, and with 3+ transactions all colliding on one
+  // document at once, that can cascade into repeated retries and end up
+  // slower than doing them one at a time. So: events that share the cash
+  // drawer are posted sequentially (never overlapping each other), while
+  // events with their own distinct destination account (UPI/Zomato/Swiggy/
+  // Other Income) still post concurrently, and the two groups run at the
+  // same time as each other. Each event still catches its own failure into
+  // a warning — nothing here throws out of the surrounding Promise.all.
   type PostResult = { eventKey: string; txId: string } | { eventKey: string; warning: string } | null;
 
-  const incomeResults = await Promise.all(
-    incomeEvents.map(async (event): Promise<PostResult> => {
-      if (alreadyPostedEventKeys.has(event.eventKey)) return null;
-      if (!(event.amount > 0)) return null;
-      const mapping = resolveDestination(event.eventKey, event.eventName, event.amount);
-      if (!mapping || !mapping.destinationAccountId) return null;
+  const postIncomeEvent = async (event: (typeof incomeEvents)[number]): Promise<PostResult> => {
+    if (alreadyPostedEventKeys.has(event.eventKey)) return null;
+    if (!(event.amount > 0)) return null;
+    const mapping = resolveDestination(event.eventKey, event.eventName, event.amount);
+    if (!mapping || !mapping.destinationAccountId) return null;
 
-      try {
-        const categoryId = await getOrCreateIncomeCategoryIdByName(event.eventName, userId, userName, db, branchId);
-        const tx = await createFinanceTransaction(
-          {
-            type: "income",
-            date: closing.date,
-            categoryId,
-            amount: event.amount,
-            toAccountId: mapping.destinationAccountId,
-            remarks: "Auto-posted from Daily Closing",
-            branchId,
-            autoPosted: true,
-            autoPostedSource: "daily_closing",
-          },
-          userId,
-          userName,
-          db,
-        );
-        return { eventKey: event.eventKey, txId: tx.id };
-      } catch (err) {
-        return { eventKey: event.eventKey, warning: `${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}` };
-      }
-    }),
-  );
-  const tIncomeDone = Date.now();
+    try {
+      const categoryId = await getOrCreateIncomeCategoryIdByName(event.eventName, userId, userName, db, branchId);
+      const tx = await createFinanceTransaction(
+        {
+          type: "income",
+          date: closing.date,
+          categoryId,
+          amount: event.amount,
+          toAccountId: mapping.destinationAccountId,
+          remarks: "Auto-posted from Daily Closing",
+          branchId,
+          autoPosted: true,
+          autoPostedSource: "daily_closing",
+        },
+        userId,
+        userName,
+        db,
+      );
+      return { eventKey: event.eventKey, txId: tx.id };
+    } catch (err) {
+      return { eventKey: event.eventKey, warning: `${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}` };
+    }
+  };
 
-  const expenseResults = await Promise.all(
-    expenseEvents.map(async (event): Promise<PostResult> => {
-      if (alreadyPostedEventKeys.has(event.eventKey)) return null;
-      if (!(event.amount > 0)) return null;
+  const postExpenseEvent = async (event: (typeof expenseEvents)[number]): Promise<PostResult> => {
+    if (alreadyPostedEventKeys.has(event.eventKey)) return null;
+    if (!(event.amount > 0)) return null;
 
-      if (!cashDrawerAccountId) {
-        return {
-          eventKey: event.eventKey,
-          warning: `${event.eventName}: can't determine the cash drawer account — configure "Cash Sales" in Settings > Finance Defaults first. ₹${event.amount} was not posted.`,
-        };
-      }
+    if (!cashDrawerAccountId) {
+      return {
+        eventKey: event.eventKey,
+        warning: `${event.eventName}: can't determine the cash drawer account — configure "Cash Sales" in Settings > Finance Defaults first. ₹${event.amount} was not posted.`,
+      };
+    }
 
-      try {
-        const categoryId = await getOrCreateExpenseCategoryIdByName("Daily Closing Cash Expenses", userId, userName, db, branchId);
-        const tx = await createFinanceTransaction(
-          {
-            type: "expense",
-            date: closing.date,
-            categoryId,
-            amount: event.amount,
-            fromAccountId: cashDrawerAccountId,
-            remarks: "Auto-posted from Daily Closing (cash expenses paid out of the drawer)",
-            branchId,
-            autoPosted: true,
-            autoPostedSource: "daily_closing",
-          },
-          userId,
-          userName,
-          db,
-        );
-        return { eventKey: event.eventKey, txId: tx.id };
-      } catch (err) {
-        return { eventKey: event.eventKey, warning: `${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}` };
-      }
-    }),
-  );
-  const tExpenseDone = Date.now();
+    try {
+      const categoryId = await getOrCreateExpenseCategoryIdByName("Daily Closing Cash Expenses", userId, userName, db, branchId);
+      const tx = await createFinanceTransaction(
+        {
+          type: "expense",
+          date: closing.date,
+          categoryId,
+          amount: event.amount,
+          fromAccountId: cashDrawerAccountId,
+          remarks: "Auto-posted from Daily Closing (cash expenses paid out of the drawer)",
+          branchId,
+          autoPosted: true,
+          autoPostedSource: "daily_closing",
+        },
+        userId,
+        userName,
+        db,
+      );
+      return { eventKey: event.eventKey, txId: tx.id };
+    } catch (err) {
+      return { eventKey: event.eventKey, warning: `${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}` };
+    }
+  };
 
   // Cash Deposits: one Transfer per deposit type present that day, out of
   // the same cash drawer account into the deposit type's own mapped account.
-  const depositResults = await Promise.all(
-    depositEvents.map(async (event): Promise<PostResult> => {
-      if (alreadyPostedEventKeys.has(event.eventKey)) return null;
-      const mapping = resolveDestination(event.eventKey, event.eventName, event.amount);
-      if (!mapping || !mapping.destinationAccountId) return null;
+  const postDepositEvent = async (event: (typeof depositEvents)[number]): Promise<PostResult> => {
+    if (alreadyPostedEventKeys.has(event.eventKey)) return null;
+    const mapping = resolveDestination(event.eventKey, event.eventName, event.amount);
+    if (!mapping || !mapping.destinationAccountId) return null;
 
-      if (!cashDrawerAccountId) {
-        return {
-          eventKey: event.eventKey,
-          warning: `${event.eventName}: can't determine the cash drawer account — configure "Cash Sales" in Settings > Finance Defaults first. ₹${event.amount} was not posted.`,
-        };
-      }
+    if (!cashDrawerAccountId) {
+      return {
+        eventKey: event.eventKey,
+        warning: `${event.eventName}: can't determine the cash drawer account — configure "Cash Sales" in Settings > Finance Defaults first. ₹${event.amount} was not posted.`,
+      };
+    }
 
-      try {
-        const tx = await createFinanceTransaction(
-          {
-            type: "transfer",
-            date: closing.date,
-            amount: event.amount,
-            fromAccountId: cashDrawerAccountId,
-            toAccountId: mapping.destinationAccountId,
-            remarks: `Auto-posted from Daily Closing (${event.eventName})`,
-            branchId,
-            autoPosted: true,
-            autoPostedSource: "daily_closing",
-          },
-          userId,
-          userName,
-          db,
-        );
-        return { eventKey: event.eventKey, txId: tx.id };
-      } catch (err) {
-        return { eventKey: event.eventKey, warning: `${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}` };
-      }
+    try {
+      const tx = await createFinanceTransaction(
+        {
+          type: "transfer",
+          date: closing.date,
+          amount: event.amount,
+          fromAccountId: cashDrawerAccountId,
+          toAccountId: mapping.destinationAccountId,
+          remarks: `Auto-posted from Daily Closing (${event.eventName})`,
+          branchId,
+          autoPosted: true,
+          autoPostedSource: "daily_closing",
+        },
+        userId,
+        userName,
+        db,
+      );
+      return { eventKey: event.eventKey, txId: tx.id };
+    } catch (err) {
+      return { eventKey: event.eventKey, warning: `${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}` };
+    }
+  };
+
+  const cashDrawerIncomeEvents = incomeEvents.filter((e) => e.eventKey === "cash_sales");
+  const otherIncomeEvents = incomeEvents.filter((e) => e.eventKey !== "cash_sales");
+
+  const tGroupsStart = Date.now();
+  let tCashDrawerDone = tGroupsStart;
+  let tOtherIncomeDone = tGroupsStart;
+
+  const [cashDrawerResults, otherIncomeResults] = await Promise.all([
+    // Cash-drawer group: strictly one at a time — these are the events that
+    // actually collide with each other.
+    (async () => {
+      const results: PostResult[] = [];
+      for (const event of cashDrawerIncomeEvents) results.push(await postIncomeEvent(event));
+      for (const event of expenseEvents) results.push(await postExpenseEvent(event));
+      for (const event of depositEvents) results.push(await postDepositEvent(event));
+      tCashDrawerDone = Date.now();
+      return results;
+    })(),
+    // Everything else posts to its own distinct account — safe to overlap.
+    Promise.all(otherIncomeEvents.map(postIncomeEvent)).then((r) => {
+      tOtherIncomeDone = Date.now();
+      return r;
     }),
-  );
-  const tDepositDone = Date.now();
+  ]);
 
-  for (const result of [...incomeResults, ...expenseResults, ...depositResults]) {
+  for (const result of [...cashDrawerResults, ...otherIncomeResults]) {
     if (!result) continue;
     if ("txId" in result) {
       transactionsByEvent[result.eventKey] = result.txId;
@@ -947,7 +964,7 @@ async function postDailyClosingToLedger(
   }
 
   console.log(
-    `[postDailyClosingToLedger] defaults=${tDefaultsDone - tDefaultsStart}ms income(${incomeEvents.length})=${tIncomeDone - tDefaultsDone}ms expense(${expenseEvents.length})=${tExpenseDone - tIncomeDone}ms deposit(${depositEvents.length})=${tDepositDone - tExpenseDone}ms`,
+    `[postDailyClosingToLedger] defaults=${tDefaultsDone - tDefaultsStart}ms cashDrawerGroup(${cashDrawerIncomeEvents.length + expenseEvents.length + depositEvents.length},sequential)=${tCashDrawerDone - tGroupsStart}ms otherIncomeGroup(${otherIncomeEvents.length},parallel)=${tOtherIncomeDone - tGroupsStart}ms`,
   );
 
   return { transactionsByEvent, warnings };
@@ -999,21 +1016,40 @@ export async function closeDailyClosing(
   // twice (once by the un-voided old transaction, once by the new one). Instead
   // leave that event's old transaction reference exactly as it was.
   const unvoidableEventKeys = new Set<string>();
-  // Each void touches only that one old transaction's own accounts/category
-  // (Firestore transactions handle any overlap safely) — no reason to wait
-  // on them one at a time. Only matters on a re-close (admin reopened the
-  // day), but that's a normal workflow, and this can be ~7 round trips.
-  const voidResults = await Promise.all(
-    Object.entries(draft.autoPostedTransactionsByEvent).map(async ([eventKey, txId]) => {
-      try {
-        await voidFinanceTransaction(txId, userId, userName, `Daily Closing for ${date} was re-saved`, db);
-        return null;
-      } catch (err) {
-        return { eventKey, message: err instanceof Error ? err.message : "unknown error" };
-      }
-    }),
-  );
-  for (const failure of voidResults) {
+  // cash_sales, cash_expenses, and every *_deposit event all reverse a
+  // balance on the SAME cash-drawer account — voiding them concurrently
+  // means several Firestore transactions fighting over one document, and a
+  // conflicted transaction gets retried from scratch, not just delayed. So:
+  // cash-drawer voids run one at a time (never overlapping each other),
+  // while voids for events with their own distinct account (UPI/Zomato/
+  // Swiggy/Other Income) still run concurrently — and the two groups run
+  // at the same time as each other.
+  const isCashDrawerEventKey = (eventKey: string) =>
+    eventKey === "cash_sales" || eventKey === "cash_expenses" || eventKey.endsWith("_deposit");
+
+  const voidEvent = async (eventKey: string, txId: string) => {
+    try {
+      await voidFinanceTransaction(txId, userId, userName, `Daily Closing for ${date} was re-saved`, db);
+      return null;
+    } catch (err) {
+      return { eventKey, message: err instanceof Error ? err.message : "unknown error" };
+    }
+  };
+
+  const allVoidEntries = Object.entries(draft.autoPostedTransactionsByEvent);
+  const cashDrawerVoidEntries = allVoidEntries.filter(([eventKey]) => isCashDrawerEventKey(eventKey));
+  const otherVoidEntries = allVoidEntries.filter(([eventKey]) => !isCashDrawerEventKey(eventKey));
+
+  const [cashDrawerVoidResults, otherVoidResults] = await Promise.all([
+    (async () => {
+      const results = [];
+      for (const [eventKey, txId] of cashDrawerVoidEntries) results.push(await voidEvent(eventKey, txId));
+      return results;
+    })(),
+    Promise.all(otherVoidEntries.map(([eventKey, txId]) => voidEvent(eventKey, txId))),
+  ]);
+
+  for (const failure of [...cashDrawerVoidResults, ...otherVoidResults]) {
     if (!failure) continue;
     unvoidableEventKeys.add(failure.eventKey);
     warnings.push(
@@ -1064,7 +1100,7 @@ export async function closeDailyClosing(
   const tAudited = Date.now();
 
   console.log(
-    `[closeDailyClosing] load=${tLoaded - tLoadStart}ms void(${voidResults.length})=${tVoided - tLoaded}ms post=${tPosted - tVoided}ms setDoc=${tSet - tPosted}ms audit=${tAudited - tSet}ms total=${tAudited - tLoadStart}ms`,
+    `[closeDailyClosing] load=${tLoaded - tLoadStart}ms void(cashDrawer=${cashDrawerVoidEntries.length},other=${otherVoidEntries.length})=${tVoided - tLoaded}ms post=${tPosted - tVoided}ms setDoc=${tSet - tPosted}ms audit=${tAudited - tSet}ms total=${tAudited - tLoadStart}ms`,
   );
 
   return final;
