@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedFirestoreForRequest } from "@/lib/firebaseServerApp";
-import { requireAdminCaller } from "@/lib/financeRouteAuth";
 import { financeErrorResponse } from "@/lib/financeApiError";
 import { reopenDailyClosing } from "@/services/financeClosingService";
 
 export const dynamic = "force-dynamic";
 
-// Admin-only, even for a Finance Manager who otherwise has write access to
-// fin_daily_closing — reopening a locked day is a correction action.
+// Admin or Finance Manager — reopening a locked day is now part of Finance
+// Manager's full Daily Closing access. Every reopen is written to
+// fin_audit_logs (module "closing", action "reopen") with the reason,
+// who did it, and the before/after state — visible to Admin on the
+// Finance Audit Log page.
 export async function POST(request: Request, { params }: { params: { date: string } }) {
   try {
     const body = await request.json();
     const { cleanup, firestore, userId, userEmail } = await getAuthenticatedFirestoreForRequest(request);
     try {
-      await requireAdminCaller(firestore, userId);
       await reopenDailyClosing(params.date, userId, userEmail ?? "Unknown", body.reason ?? "", firestore);
       return NextResponse.json({ success: true });
     } finally {

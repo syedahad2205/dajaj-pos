@@ -12,6 +12,7 @@ const links = [
   { href: "/admin/finance/settings/locks", title: "Lock Settings", description: "See which days are locked and reopen a day if it needs correcting." },
   { href: "/admin/finance/settings/users", title: "Finance Users", description: "Create logins for the Daily Closing mobile app — cashiers and managers, separate from DAJAJ Admin accounts." },
   { href: "/admin/finance/vendors", title: "Vendors", description: "Supplier records and purchase history — vendor tagging on Transactions is planned for a later phase." },
+  { href: "/admin/finance/settings/audit-log", title: "Audit Log", description: "Every finance change, from every account — Admin and Finance Manager. Who did what, when, and the before/after values." },
 ];
 
 export default function FinanceSettingsPage() {

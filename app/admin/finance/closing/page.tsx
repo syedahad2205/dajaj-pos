@@ -415,20 +415,17 @@ function FinanceClosingContent() {
             <p className="truncate text-xs font-semibold text-emerald-700">
               Closed at {closing?.closingTime} by {closing?.closedByName}
             </p>
-            {/* Reopening a locked day is a correction action — Admin-only, even
-                though a Finance Manager can otherwise save/edit this page. The
-                API route enforces this too (requireAdminCaller), this just
-                keeps the affordance from being offered in the first place. */}
-            {role === "admin" ? (
-              <button
-                type="button"
-                disabled={saving}
-                onClick={handleReopen}
-                className="flex-shrink-0 rounded-full px-2 py-1 text-xs font-semibold text-slate-500 underline hover:bg-emerald-100 hover:text-slate-800"
-              >
-                Reopen
-              </button>
-            ) : null}
+            {/* Reopening is part of Finance Manager's full Daily Closing access
+                now — always logged (who, when, why) and visible to Admin on
+                the Finance Audit Log page. */}
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleReopen}
+              className="flex-shrink-0 rounded-full px-2 py-1 text-xs font-semibold text-slate-500 underline hover:bg-emerald-100 hover:text-slate-800"
+            >
+              Reopen
+            </button>
           </div>
         ) : null}
 

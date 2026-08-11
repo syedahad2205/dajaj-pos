@@ -1153,7 +1153,7 @@ export async function backfillDailyClosingPostings(
   return { closing: finalClosing, postedEventKeys };
 }
 
-/** Admin-only: reopens a locked day so it can be edited again. Values are left in place (not wiped) so the day can just be tweaked and re-saved. */
+/** Reopens a locked day so it can be edited again. Values are left in place (not wiped) so the day can just be tweaked and re-saved. Callable by Admin or Finance Manager — always logged (module "closing", action "reopen") with the reason and before/after state. */
 export async function reopenDailyClosing(
   date: string,
   userId: string,
