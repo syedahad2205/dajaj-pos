@@ -123,11 +123,11 @@ export default function FinanceDashboardPage() {
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
               <p className="mb-4 text-sm font-black text-slate-900">Revenue vs Expense — last 14 days</p>
-              <div className="flex h-40 items-end gap-1.5 sm:gap-2">
+              <div className="flex h-40 items-end gap-0.5 sm:gap-2">
                 {summary.revenueExpenseTrend.map((day) => (
-                  <div key={day.date} className="flex flex-1 flex-col items-center gap-1">
+                  <div key={day.date} className="flex min-w-0 flex-1 flex-col items-center gap-1">
                     <div className="flex h-32 w-full items-end justify-center gap-0.5">
                       <div
                         className="w-1/2 rounded-t bg-emerald-400"
@@ -140,7 +140,7 @@ export default function FinanceDashboardPage() {
                         title={`Expense: ${formatCurrency(day.expense)}`}
                       />
                     </div>
-                    <span className="text-[10px] text-slate-400">{formatDateShort(day.date)}</span>
+                    <span className="w-full truncate text-center text-[9px] text-slate-400 sm:text-[10px]">{formatDateShort(day.date)}</span>
                   </div>
                 ))}
               </div>

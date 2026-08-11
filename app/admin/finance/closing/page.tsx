@@ -3,10 +3,10 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Calendar, Plus, Trash2 } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
-import { formatCurrency, todayDateKey } from "@/lib/financeFormat";
+import { formatCurrency, formatDateDisplay, todayDateKey } from "@/lib/financeFormat";
 import { roundCurrency, SUPPORTED_CASH_DEPOSIT_TYPES, CASH_DEPOSIT_TYPE_LABELS, type CashDepositType, type FinanceExpenseSubcategory } from "@/lib/finance";
 import FinanceNav from "@/components/finance/FinanceNav";
 import Modal from "@/components/finance/Modal";
@@ -386,14 +386,27 @@ function FinanceClosingContent() {
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <h1 className="min-w-0 flex-1 truncate text-lg font-black leading-tight sm:text-2xl">Daily Closing</h1>
-          <input
-            type="date"
-            value={date}
-            max={today}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-[8.5rem] flex-shrink-0 rounded-xl border border-slate-300 px-2 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-orange-400 sm:w-auto sm:px-3 sm:py-2.5 sm:text-base"
-          />
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-lg font-black leading-tight sm:text-2xl">Daily Closing</h1>
+            <p className="truncate text-xs text-slate-400">
+              {formatDateDisplay(date)}
+              {date === today ? " · Today" : ""}
+            </p>
+          </div>
+          {/* Fixed-size icon trigger — its width never competes with the title, regardless of
+              the selected date's string length. The real <input type="date"> sits invisibly
+              on top so tapping the icon opens the native picker. */}
+          <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-slate-300 text-slate-500 sm:h-10 sm:w-10">
+            <Calendar className="h-4 w-4" />
+            <input
+              type="date"
+              value={date}
+              max={today}
+              onChange={(e) => setDate(e.target.value)}
+              aria-label="Choose date"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+          </div>
         </div>
 
         {locked ? (
