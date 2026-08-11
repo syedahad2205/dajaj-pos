@@ -10,6 +10,17 @@ import { getFinanceManagerProfile } from "@/services/financeManagerService";
 import { getPosStaffProfile, getPosStaffProfileByEmail } from "@/lib/firestore";
 import type { UserRole } from "@/lib/firebase";
 
+// Every finance/admin/pos page calls useRequireAuth independently, and none
+// of them share a layout — so navigating between, say, Daily Closing and
+// Transactions remounts this hook and, without a cache, re-runs a fresh
+// Firestore read (admins/{uid}, then finance_managers/{uid}, ...) on every
+// single tab switch. That round trip is what "Checking your session…" was
+// waiting on, every time. This is a UI-perf cache only: the actual security
+// boundary is still Firestore Rules on every real read/write, so serving a
+// stale role for the rest of this tab's session (until a hard refresh)
+// cannot grant access to anything the rules wouldn't already allow.
+const roleResolutionCache = new Map<string, UserRole | null>();
+
 export function useRequireAuth(requiredRole?: UserRole) {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,11 +48,24 @@ export function useRequireAuth(requiredRole?: UserRole) {
         return;
       }
 
+      const cacheKey = `${user.uid}:${requiredRole ?? ""}`;
+      const cachedRole = roleResolutionCache.get(cacheKey);
+
       if (requiredRole === "financeManager") {
+        // Only a granted role is ever cached (see roleResolutionCache above),
+        // never a denial, so a cache hit here is always safe to trust.
+        if (cachedRole) {
+          setAuthenticated(true);
+          setRole(cachedRole);
+          setLoading(false);
+          return;
+        }
+
         // Admins can always access Finance too — Finance Manager is a
         // narrower role layered on top of the same login, not a replacement.
         const adminProfile = await getAdminProfile(user.uid);
         if (adminProfile) {
+          roleResolutionCache.set(cacheKey, "admin");
           setAuthenticated(true);
           setRole("admin");
           setLoading(false);
@@ -57,6 +81,7 @@ export function useRequireAuth(requiredRole?: UserRole) {
           setLoading(false);
           return;
         }
+        roleResolutionCache.set(cacheKey, "financeManager");
         setAuthenticated(true);
         setRole("financeManager");
         setLoading(false);
@@ -64,9 +89,17 @@ export function useRequireAuth(requiredRole?: UserRole) {
       }
 
       if (requiredRole === "pos") {
+        if (cachedRole) {
+          setAuthenticated(true);
+          setRole(cachedRole);
+          setLoading(false);
+          return;
+        }
+
         // Admins can also access POS
         const adminProfile = await getAdminProfile(user.uid);
         if (adminProfile) {
+          roleResolutionCache.set(cacheKey, "admin");
           setAuthenticated(true);
           setRole("admin");
           setLoading(false);
@@ -88,8 +121,19 @@ export function useRequireAuth(requiredRole?: UserRole) {
           setLoading(false);
           return;
         }
+        roleResolutionCache.set(cacheKey, "pos");
         setAuthenticated(true);
         setRole("pos");
+        setLoading(false);
+        return;
+      }
+
+      if (cachedRole) {
+        setAuthenticated(true);
+        setRole(cachedRole);
+        if (requiredRole && cachedRole !== requiredRole) {
+          router.push(cachedRole === "admin" ? "/admin" : "/menu");
+        }
         setLoading(false);
         return;
       }
@@ -107,6 +151,7 @@ export function useRequireAuth(requiredRole?: UserRole) {
         return;
       }
 
+      roleResolutionCache.set(cacheKey, nextRole);
       setAuthenticated(true);
       setRole(nextRole);
 
