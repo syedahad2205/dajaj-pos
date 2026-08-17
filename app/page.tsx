@@ -8,7 +8,7 @@ import LocationLink from "@/components/LocationLink";
 import { trackEvent } from "@/lib/analytics";
 
 const ZOMATO_URL = "https://zomato.onelink.me/xqzv/9rjiq535";
-
+const SWIGGY_URL = "https://www.swiggy.com/city/manipal/dajaj-kundapura-rest1418768";
 const MAPS_URL = "https://maps.app.goo.gl/NGaUPwQMD8P2UDbk9?g_st=ic";
 
 export default function Home() {
@@ -45,42 +45,69 @@ export default function Home() {
           <span className="h-px w-12 bg-[#c6533f]/25" />
         </div>
 
-        {/* Order cards — symmetrical 2-column grid */}
-        <div className="mt-10 grid w-full max-w-md grid-cols-2 gap-4">
+        {/* Pickup card — full width */}
+        <div className="mt-10 w-full max-w-md">
           <Link
             href="/menu"
             onClick={() => void trackEvent("cta_pickup")}
-            className="group relative flex flex-col items-center justify-between overflow-hidden rounded-2xl bg-[#c6533f] px-5 py-8 text-center text-white shadow-[0_8px_32px_rgba(198,83,63,0.35)] transition-all hover:shadow-[0_12px_40px_rgba(198,83,63,0.45)] active:scale-[0.98]"
+            className="group relative flex flex-col items-center justify-between overflow-hidden rounded-2xl bg-[#c6533f] px-6 py-10 text-center text-white shadow-[0_8px_32px_rgba(198,83,63,0.35)] transition-all hover:shadow-[0_12px_40px_rgba(198,83,63,0.45)] active:scale-[0.98]"
           >
             <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
             <div className="pointer-events-none absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-white/[0.07]" />
             <div className="relative">
-              <p className={`text-2xl tracking-wide ${styles.sectionTitle}`}>PICKUP</p>
-              <p className="mt-2 text-sm leading-snug text-white/70">Order online and pick up fresh from our store</p>
+              <p className={`text-3xl tracking-wide ${styles.sectionTitle}`}>PICKUP</p>
+              <p className="mt-3 text-base leading-snug text-white/80">Order online and pick up fresh from our store</p>
             </div>
-            <span className="relative mt-5 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-white/20 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/30">
-              Order Pickup
+            <span className="relative mt-6 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-white/20 px-6 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/30">
+              View Menu & Order
             </span>
           </Link>
+        </div>
 
-          <a
-            href={ZOMATO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => void trackEvent("cta_delivery_zomato")}
-            className="group relative flex flex-col items-center justify-between overflow-hidden rounded-2xl px-5 py-8 text-center text-white shadow-[0_8px_32px_rgba(226,55,68,0.35)] transition-all hover:shadow-[0_12px_40px_rgba(226,55,68,0.45)] active:scale-[0.98]"
-            style={{ backgroundColor: "#E23744" }}
-          >
-            <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
-            <div className="pointer-events-none absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-white/[0.07]" />
-            <div className="relative">
-              <p className={`text-2xl tracking-wide ${styles.sectionTitle}`}>DELIVERY</p>
-              <p className="mt-2 text-sm leading-snug text-white/70">Home delivery available through Zomato</p>
-            </div>
-            <span className="relative mt-5 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-white/20 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/30">
-              Order on Zomato ↗
-            </span>
-          </a>
+        {/* Delivery section */}
+        <div className="mt-6 w-full max-w-md">
+          <p className="mb-3 text-center text-sm font-medium uppercase tracking-wider text-[#2f2a25]/40">Order Delivery</p>
+          
+          {/* Delivery cards — 2-column grid */}
+          <div className="grid grid-cols-2 gap-4">
+            <a
+              href={ZOMATO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => void trackEvent("cta_delivery_zomato")}
+              className="group relative flex flex-col items-center justify-between overflow-hidden rounded-2xl px-5 py-8 text-center text-white shadow-[0_8px_32px_rgba(226,55,68,0.35)] transition-all hover:shadow-[0_12px_40px_rgba(226,55,68,0.45)] active:scale-[0.98]"
+              style={{ backgroundColor: "#E23744" }}
+            >
+              <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+              <div className="pointer-events-none absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-white/[0.07]" />
+              <div className="relative">
+                <p className={`text-2xl tracking-wide ${styles.sectionTitle}`}>ZOMATO</p>
+                <p className="mt-2 text-xs leading-snug text-white/70">Fast delivery to your doorstep</p>
+              </div>
+              <span className="relative mt-5 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-white/20 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/30">
+                Order Now ↗
+              </span>
+            </a>
+
+            <a
+              href={SWIGGY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => void trackEvent("cta_delivery_swiggy")}
+              className="group relative flex flex-col items-center justify-between overflow-hidden rounded-2xl px-5 py-8 text-center text-white shadow-[0_8px_32px_rgba(252,119,83,0.35)] transition-all hover:shadow-[0_12px_40px_rgba(252,119,83,0.45)] active:scale-[0.98]"
+              style={{ backgroundColor: "#FC7753" }}
+            >
+              <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+              <div className="pointer-events-none absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-white/[0.07]" />
+              <div className="relative">
+                <p className={`text-2xl tracking-wide ${styles.sectionTitle}`}>SWIGGY</p>
+                <p className="mt-2 text-xs leading-snug text-white/70">Quick delivery to your home</p>
+              </div>
+              <span className="relative mt-5 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-white/20 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/30">
+                Order Now ↗
+              </span>
+            </a>
+          </div>
         </div>
 
         {/* Find Us — full width, aligned with grid */}
