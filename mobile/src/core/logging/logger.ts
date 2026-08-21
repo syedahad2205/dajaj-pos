@@ -15,13 +15,13 @@
  *   logger.network.request(42, 'POST', '/api/...', headers, body);
  *   logger.auth.loginStart('cashier');
  */
-import { MMKV } from 'react-native-mmkv';
+import { createSafeStorage } from '@/core/storage/safeStorage';
 import { Platform } from 'react-native';
 import { APP_VERSION, ENVIRONMENT, getDeviceId } from '@/core/diagnostics/deviceInfo';
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
-const storage = new MMKV({ id: 'dajaj-finance-app-log' });
+const storage = createSafeStorage({ id: 'dajaj-finance-app-log' });
 const LOG_KEY = 'app_log';
 
 // ─── Configuration ────────────────────────────────────────────────────────────

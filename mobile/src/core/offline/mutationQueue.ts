@@ -9,11 +9,11 @@
  *   closeDailyClosing mutations are always appended AFTER any other pending/failed
  *   mutations for the same date — never reordered ahead.
  */
-import { MMKV } from 'react-native-mmkv';
+import { createSafeStorage } from '@/core/storage/safeStorage';
 import { generateIdempotencyKey } from '@/core/offline/idempotency';
 import { logger } from '@/core/logging/logger';
 
-export const storage = new MMKV({ id: 'dajaj-finance-offline-queue' });
+export const storage = createSafeStorage({ id: 'dajaj-finance-offline-queue' });
 
 const QUEUE_KEY = 'mutation_queue';
 

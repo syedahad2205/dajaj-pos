@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bottom-tabs/react-navigation": "^1.4.0",
     "@react-native-async-storage/async-storage": "^1.24.0",
     "@react-native-community/datetimepicker": "8.2.0",
     "@react-native-community/netinfo": "11.4.1",
@@ -24,11 +25,12 @@
     "react": "18.3.1",
     "react-hook-form": "7.53.0",
     "react-native": "0.75.4",
+    "react-native-bottom-tabs": "^1.4.0",
     "react-native-keychain": "8.2.0",
-    "react-native-mmkv": "^2.12.2",
+    "react-native-mmkv": "^3.0.2",
     "react-native-safe-area-context": "4.11.0",
     "react-native-screens": "3.34.0",
-    "react-native-svg": "^15.15.5",
+    "react-native-svg": "^15.8.0",
     "react-native-toast-message": "2.2.1",
     "react-native-vector-icons": "^10.3.0",
     "zustand": "5.0.0"

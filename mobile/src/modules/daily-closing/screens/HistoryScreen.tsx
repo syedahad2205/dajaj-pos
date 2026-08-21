@@ -9,6 +9,7 @@ import {
   View, Text, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator,
   StatusBar, RefreshControl, ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -45,6 +46,7 @@ function presetRange(preset: RangePreset): { dateFrom: string; dateTo: string } 
 }
 
 export function HistoryScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const [preset, setPreset] = useState<RangePreset>('month');
   const { dateFrom, dateTo } = useMemo(() => presetRange(preset), [preset]);
 
@@ -75,7 +77,7 @@ export function HistoryScreen({ navigation }: Props) {
       <StatusBar barStyle="dark-content" backgroundColor={colors.pageBg} />
 
       {/* Header */}
-      <View style={styles.headerCard}>
+      <View style={[styles.headerCard, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.financeLabel}>Finance</Text>
         <Text style={styles.pageTitle}>History</Text>
 

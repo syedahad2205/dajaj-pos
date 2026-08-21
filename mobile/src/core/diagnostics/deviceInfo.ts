@@ -2,10 +2,10 @@
  * Device and app diagnostics helpers (Requirement 14.1, design §10.6).
  * No sensitive data — only public build metadata and queue stats.
  */
-import { MMKV } from 'react-native-mmkv';
+import { createSafeStorage } from '@/core/storage/safeStorage';
 import { API_VERSION } from '@/core/api/apiClient';
 
-const storage = new MMKV({ id: 'dajaj-finance-diagnostics' });
+const storage = createSafeStorage({ id: 'dajaj-finance-diagnostics' });
 const LAST_SYNC_KEY = 'last_successful_sync';
 const DEVICE_ID_KEY = 'device_id';
 

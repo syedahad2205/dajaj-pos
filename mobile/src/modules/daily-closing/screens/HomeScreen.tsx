@@ -5,6 +5,7 @@ import React from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -37,6 +38,7 @@ const STATUS_CONFIG: Record<ClosingStatus, { bg: string; fg: string; border: str
 };
 
 export function HomeScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const today = toDateKey();
   const { data: closing, isLoading, refetch, isRefetching } = useTodaysClosing();
   const status = deriveStatus(closing);
@@ -52,7 +54,7 @@ export function HomeScreen({ navigation }: Props) {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={colors.orange600} />}
     >
       <StatusBar barStyle="dark-content" backgroundColor={colors.pageBg} />

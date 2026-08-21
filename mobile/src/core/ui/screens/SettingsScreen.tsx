@@ -4,6 +4,7 @@
  */
 import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity, StatusBar, Share } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOut as firebaseSignOut } from 'firebase/auth';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -30,6 +31,7 @@ const SYNC_LABEL: Record<string, string> = {
 type SettingsNavProp = NativeStackNavigationProp<RootStackParamList>;
 
 export function SettingsScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<SettingsNavProp>();
   const { user, signOut } = useAuthStore();
   const { syncStatus } = useConnectivityStore();
@@ -90,7 +92,7 @@ export function SettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.screen} contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.pageBg} />
 
       {/* Page header */}

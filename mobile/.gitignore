@@ -17,6 +17,10 @@ ios/build/
 ios/Pods/
 ios/DerivedData/
 ios/*.xcworkspace/xcuserdata/
+ios/**/*.xcworkspace/xcuserdata/
+
+# Android build cache
+android/app/.cxx/
 
 # Environment
 .env

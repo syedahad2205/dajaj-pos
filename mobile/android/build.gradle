@@ -1,10 +1,10 @@
 buildscript {
     ext {
-        buildToolsVersion = "34.0.0"
+        buildToolsVersion = "35.0.0"
         minSdkVersion = 24
-        compileSdkVersion = 34
+        compileSdkVersion = 35
         targetSdkVersion = 34
-        ndkVersion = "25.1.8937393"
+        ndkVersion = "27.1.12297006"
         kotlinVersion = "1.9.24"
     }
     repositories {
@@ -12,7 +12,8 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle")
+        // Pinned ≥8.6 — required by androidx.core:core-ktx:1.16.0 (pulled in by react-native-bottom-tabs)
+        classpath("com.android.tools.build:gradle:8.6.1")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
     }

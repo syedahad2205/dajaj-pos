@@ -10,9 +10,9 @@
  * The MMKV store here is kept for backwards compatibility and as a secondary
  * dedicated error-only store.
  */
-import { MMKV } from 'react-native-mmkv';
+import { createSafeStorage } from '@/core/storage/safeStorage';
 
-const storage = new MMKV({ id: 'dajaj-finance-error-log' });
+const storage = createSafeStorage({ id: 'dajaj-finance-error-log' });
 const LOG_KEY = 'error_log';
 const MAX_ENTRIES = 200; // Requirement 17.2: bounded size, oldest-first eviction
 

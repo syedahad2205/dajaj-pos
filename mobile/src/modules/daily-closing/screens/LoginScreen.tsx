@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '@/navigation/AuthNavigator';
 import { whoami } from '@/core/auth/authApi';
@@ -40,6 +41,7 @@ function firebaseErrorMessage(error: unknown): string {
 }
 
 export function LoginScreen({ route }: Props) {
+  const insets = useSafeAreaInsets();
   const sessionExpiredMessage = route.params?.sessionExpiredMessage;
   const { setUser, setStatus } = useAuthStore();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function LoginScreen({ route }: Props) {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.pageBg} />
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 40 }]} keyboardShouldPersistTaps="handled">
 
         <View style={styles.logoArea}>
           <DajajLogo width={140} height={200} />

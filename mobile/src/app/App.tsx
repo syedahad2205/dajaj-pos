@@ -8,6 +8,7 @@
  * AppNavigator iterates REGISTERED_MODULES for tabs, not hard-coded screens (Task 30.2).
  */
 import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/core/logging/ErrorBoundary';
 import { installGlobalErrorHandlers } from '@/core/logging/errorLogStore';
 import { logger } from '@/core/logging/logger';
@@ -24,13 +25,15 @@ logger.info('app', 'App started');
 export default function App() {
   return (
     <ErrorBoundary>
-      <QueryProvider>
-        <AuthProvider>
-          <ConnectivityProvider>
-            <RootNavigator />
-          </ConnectivityProvider>
-        </AuthProvider>
-      </QueryProvider>
+      <SafeAreaProvider>
+        <QueryProvider>
+          <AuthProvider>
+            <ConnectivityProvider>
+              <RootNavigator />
+            </ConnectivityProvider>
+          </AuthProvider>
+        </QueryProvider>
+      </SafeAreaProvider>
     </ErrorBoundary>
   );
 }

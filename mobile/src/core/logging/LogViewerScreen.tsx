@@ -18,6 +18,7 @@ import {
   FlatList,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getPersistedLogs,
   clearPersistedLogs,
@@ -59,6 +60,7 @@ const ALL_LEVELS: LogLevel[] = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR'];
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function LogViewerScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const [entries, setEntries] = useState<LogEntry[]>(() => getPersistedLogs());
   const [search, setSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState<LogLevel | null>(null);
@@ -149,7 +151,7 @@ export function LogViewerScreen({ navigation }: Props) {
       <StatusBar barStyle="dark-content" backgroundColor={colors.pageBg} />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
@@ -180,7 +182,7 @@ export function LogViewerScreen({ navigation }: Props) {
       </View>
 
       {/* Level filter pills */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pills} contentContainerStyle={styles.pillsContent}>
+      <View style={styles.pills}>
         <TouchableOpacity
           onPress={() => setLevelFilter(null)}
           style={[styles.pill, levelFilter === null && styles.pillActive]}
@@ -196,7 +198,7 @@ export function LogViewerScreen({ navigation }: Props) {
             <Text style={[styles.pillText, levelFilter === level && { color: LEVEL_COLOR[level] }]}>{level}</Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
       {/* Log list */}
       {filtered.length === 0 ? (
@@ -272,18 +274,27 @@ const styles = StyleSheet.create({
   clearBtn: { borderColor: '#fecaca' },
   toolBtnText: { fontSize: 16, color: colors.slate700 },
 
-  pills: { flexGrow: 0, backgroundColor: colors.white, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.cardBorder },
-  pillsContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 6 },
+  pills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.white,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.cardBorder,
+  },
   pill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: 99,
     borderWidth: 1,
     borderColor: colors.slate200,
     backgroundColor: colors.slate50,
   },
   pillActive: { backgroundColor: colors.slate900, borderColor: colors.slate900 },
-  pillText: { fontSize: 11, fontWeight: '700', color: colors.slate500 },
+  pillText: { fontSize: 10, fontWeight: '700', color: colors.slate500 },
   pillTextActive: { color: '#fff' },
 
   list: { padding: 8, gap: 4 },

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, Image } from 'react-native';
+import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { HomeScreen } from '@/modules/daily-closing/screens/HomeScreen';
@@ -8,6 +9,48 @@ import { SettingsScreen } from '@/core/ui/screens/SettingsScreen';
 import { DailyClosingScreen } from '@/modules/daily-closing/screens/DailyClosingScreen';
 import { LogViewerScreen } from '@/core/logging/LogViewerScreen';
 import { colors } from '@/core/ui/theme/colors';
+
+// SF Symbols are iOS-only — Android uses bundled PNGs (tinted natively)
+const TAB_ICONS = {
+  Home: {
+    ios: 'house.fill',
+    android: require('@/assets/icons/home.png'),
+  },
+  History: {
+    ios: 'clock.arrow.circlepath',
+    android: require('@/assets/icons/history.png'),
+  },
+  Settings: {
+    ios: 'gearshape',
+    android: require('@/assets/icons/settings.png'),
+  },
+} as const;
+
+function tabIcon(name: keyof typeof TAB_ICONS) {
+  return () =>
+    Platform.OS === 'ios'
+      ? { sfSymbol: TAB_ICONS[name].ios }
+      : TAB_ICONS[name].android;
+}
+
+// Tinted PNG icon for Android JS tab bar
+function AndroidTabIcon({
+  source,
+  color,
+  size,
+}: {
+  source: ReturnType<typeof require>;
+  color: string;
+  size: number;
+}) {
+  return (
+    <Image
+      source={source}
+      style={{ width: size, height: size, tintColor: color }}
+      resizeMode="contain"
+    />
+  );
+}
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -22,70 +65,97 @@ export type TabParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator<TabParamList>();
+// iOS: native UITabBarController (Liquid Glass on iOS 26)
+// Android: JS bottom tabs — native tab navigator doesn't render correctly on Android
+const NativeTab = createNativeBottomTabNavigator<TabParamList>();
+const JSTab = createBottomTabNavigator<TabParamList>();
 
-// Simple text-based tab icons that work without a native icon library
-function TabIcon({ icon, focused }: { icon: string; focused: boolean }) {
-  return (
-    <Text style={[styles.tabIcon, { color: focused ? colors.slateBtnBg : colors.slate400 }]}>
-      {icon}
-    </Text>
-  );
-}
+const ANDROID_TAB_SCREEN_OPTIONS = {
+  headerStyle: { backgroundColor: colors.pageBg },
+  headerTitleStyle: { fontWeight: '900' as const, color: colors.slate900, fontSize: 17 },
+  headerTintColor: colors.slate900,
+  tabBarActiveTintColor: colors.slateBtnBg,
+  tabBarInactiveTintColor: colors.slate400,
+  tabBarLabelStyle: { fontSize: 10, fontWeight: '700' as const },
+  tabBarStyle: {
+    backgroundColor: '#ffffff',
+    borderTopColor: colors.slate200,
+    borderTopWidth: 1,
+    elevation: 0,
+  },
+};
 
 function TabNavigator() {
+  if (Platform.OS === 'android') {
+    return (
+      <JSTab.Navigator screenOptions={ANDROID_TAB_SCREEN_OPTIONS}>
+        <JSTab.Screen
+          name="Home"
+          component={HomeScreen}
+          options={{
+            title: 'Today',
+            headerShown: false,
+            tabBarIcon: ({ color, size }) => TAB_ICONS.Home.android
+              ? <AndroidTabIcon source={TAB_ICONS.Home.android} color={color} size={size} />
+              : null,
+          }}
+        />
+        <JSTab.Screen
+          name="History"
+          component={HistoryScreen}
+          options={{
+            title: 'History',
+            headerShown: false,
+            tabBarIcon: ({ color, size }) => TAB_ICONS.History.android
+              ? <AndroidTabIcon source={TAB_ICONS.History.android} color={color} size={size} />
+              : null,
+          }}
+        />
+        <JSTab.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{
+            title: 'Settings',
+            headerShown: false,
+            tabBarIcon: ({ color, size }) => TAB_ICONS.Settings.android
+              ? <AndroidTabIcon source={TAB_ICONS.Settings.android} color={color} size={size} />
+              : null,
+          }}
+        />
+      </JSTab.Navigator>
+    );
+  }
+
   return (
-    <Tab.Navigator
+    <NativeTab.Navigator
+      labeled
+      tabBarStyle={{ backgroundColor: '#ffffff' }}
+      tabLabelStyle={{ color: colors.slate500 }}
       screenOptions={{
-        tabBarStyle: {
-          backgroundColor: '#fff',
-          borderTopColor: colors.slate200,
-          borderTopWidth: 1,
-          elevation: 0,
-          shadowOpacity: 0,
-          height: 60,
-          paddingBottom: 8,
-        },
-        tabBarActiveTintColor: colors.slateBtnBg,
-        tabBarInactiveTintColor: colors.slate400,
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
-        headerStyle: {
-          backgroundColor: colors.pageBg,
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 0,
-        },
+        headerStyle: { backgroundColor: colors.pageBg },
         headerTitleStyle: { fontWeight: '900', color: colors.slate900, fontSize: 17 },
         headerTintColor: colors.slate900,
-        headerTitleAlign: 'center',
+        tabBarActiveTintColor: colors.slateBtnBg,
+        tabBarInactiveTintColor: colors.slate400,
+        sceneStyle: { backgroundColor: colors.pageBg },
       }}
     >
-      <Tab.Screen
+      <NativeTab.Screen
         name="Home"
         component={HomeScreen}
-        options={{
-          title: 'Today',
-          headerShown: false,
-          tabBarIcon: ({ focused }) => <TabIcon icon="⊙" focused={focused} />,
-        }}
+        options={{ title: 'Today', headerShown: false, tabBarIcon: tabIcon('Home') }}
       />
-      <Tab.Screen
+      <NativeTab.Screen
         name="History"
         component={HistoryScreen}
-        options={{
-          title: 'History',
-          tabBarIcon: ({ focused }) => <TabIcon icon="☰" focused={focused} />,
-        }}
+        options={{ title: 'History', headerShown: false, tabBarIcon: tabIcon('History') }}
       />
-      <Tab.Screen
+      <NativeTab.Screen
         name="Settings"
         component={SettingsScreen}
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ focused }) => <TabIcon icon="⚙" focused={focused} />,
-        }}
+        options={{ title: 'Settings', headerShown: false, tabBarIcon: tabIcon('Settings') }}
       />
-    </Tab.Navigator>
+    </NativeTab.Navigator>
   );
 }
 
@@ -115,10 +185,4 @@ export function AppNavigator() {
   );
 }
 
-const styles = StyleSheet.create({
-  tabIcon: {
-    fontSize: 20,
-    lineHeight: 24,
-    textAlign: 'center',
-  },
-});
+const styles = StyleSheet.create({});
