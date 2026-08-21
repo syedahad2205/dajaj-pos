@@ -139,11 +139,17 @@ export async function verifyFinanceAccessRequest(request: Request): Promise<Veri
 }
 
 /**
- * Extracts the bearer token from an Authorization header without verifying it.
+ * Extracts the bearer token without verifying it.
+ * Accepts the same headers as verifyFinanceAccessRequest — including
+ * X-Auth-Token, because Vercel has been observed stripping Authorization.
  * Call only after verifyFinanceAccessRequest() has already validated the token.
  */
 export function extractBearerToken(request: Request): string | null {
-  const authorization = request.headers.get("authorization") ?? request.headers.get("Authorization");
+  const authorization =
+    request.headers.get("authorization") ??
+    request.headers.get("Authorization") ??
+    request.headers.get("x-auth-token") ??
+    request.headers.get("X-Auth-Token");
   if (!authorization?.startsWith("Bearer ")) return null;
   return authorization.slice("Bearer ".length).trim() || null;
 }
