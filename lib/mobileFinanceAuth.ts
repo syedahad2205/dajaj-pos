@@ -162,15 +162,43 @@ export async function getFinanceUserFirestoreClient(idToken: string): Promise<{
   cleanup: () => Promise<void>;
 }> {
   const serverApp = initializeServerApp(firebaseConfig, { authIdToken: idToken });
-  // Auth state is needed so the Firestore SDK recognizes the session.
-  await new Promise<void>((resolve) => {
-    const unsubscribe = getAuth(serverApp).onAuthStateChanged(() => {
-      unsubscribe();
-      resolve();
-    });
-  });
+  const auth = getAuth(serverApp);
+
+  // Token-based server apps often hydrate the user synchronously; avoid
+  // waiting on a listener in that case.
+  await Promise.resolve();
+  if (!auth.currentUser) {
+    const ready = (auth as { authStateReady?: () => Promise<void> }).authStateReady;
+    if (typeof ready === "function") {
+      // Resolves once the initial auth state (from the injected ID token)
+      // is fully loaded — proceeding earlier risks running unauthenticated.
+      await ready.call(auth);
+    } else {
+      await new Promise<void>((resolve) => {
+        const unsubscribe = getAuth(serverApp).onAuthStateChanged((user) => {
+          if (!user) return; // keep waiting until the token hydrates
+          unsubscribe();
+          resolve();
+        });
+      });
+    }
+  }
+
+  if (!auth.currentUser) {
+    await cleanupApp(serverApp);
+    throw new Error("Identity forwarding failed: no authenticated user for the supplied ID token.");
+  }
+
   return {
     firestore: getFirestore(serverApp),
-    cleanup: () => deleteApp(serverApp),
+    cleanup: () => cleanupApp(serverApp),
   };
+}
+
+async function cleanupApp(serverApp: ReturnType<typeof initializeServerApp>): Promise<void> {
+  try {
+    await deleteApp(serverApp);
+  } catch {
+    // app may already be deleted — nothing to do
+  }
 }
