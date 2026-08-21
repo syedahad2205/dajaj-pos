@@ -47,9 +47,12 @@ export async function apiCall(options: ApiCallOptions): Promise<MutationResponse
   if (idempotencyKey) payload.idempotencyKey = idempotencyKey;
 
   const url = `${API_BASE}${path}`;
+  // X-Auth-Token duplicates the token: Vercel has been observed stripping the
+  // Authorization header; the server accepts either (see lib/mobileFinanceAuth.ts).
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${idToken}`,
+    'X-Auth-Token': `Bearer ${idToken}`,
   };
   const requestId = nextRequestId();
 

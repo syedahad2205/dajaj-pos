@@ -23,9 +23,12 @@ export type WhoamiResult = MobileIdentity;
 export async function whoami(idToken: string): Promise<WhoamiResult> {
   const requestId = nextRequestId();
   const url = `${API_BASE}/finance/auth/whoami`;
+  // X-Auth-Token duplicates the token: Vercel has been observed stripping the
+  // Authorization header; the server accepts either (see lib/mobileFinanceAuth.ts).
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${idToken}`,
+    'X-Auth-Token': `Bearer ${idToken}`,
   };
 
   logger.network.request(requestId, 'GET', url, headers, undefined);

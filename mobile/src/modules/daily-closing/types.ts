@@ -157,3 +157,34 @@ export interface MobileIdentity {
   fullName: string;
   email: string | null;
 }
+
+// ─── FinanceDashboardSummary ──────────────────────────────────────────────────
+// Type-only mirror of services/financeDashboardService.ts (web project).
+// Same rules as above: field names/types MUST match the server exactly.
+export interface FinanceDashboardBreakdownItem {
+  label: string;
+  amount: number;
+}
+
+export interface FinanceDashboardCards {
+  todayCashRevenue: number;
+  todayCashExpense: number;
+  todayPigmiDeposit: number;
+  todayTotalRevenue: number;
+  todayProfit: number;
+  cashOnHand: number;
+  pigmiBalance: number;
+  bankBalance: number;
+  pendingSettlements: number;
+  monthlyRevenue: number;
+  monthlyExpense: number;
+  monthlyProfit: number;
+}
+
+export interface FinanceDashboardSummary {
+  cards: FinanceDashboardCards;
+  revenueExpenseTrend: Array<{ date: string; revenue: number; expense: number; netCashFlow: number }>;
+  categoryWiseExpenses: FinanceDashboardBreakdownItem[];
+  incomeSources: FinanceDashboardBreakdownItem[];
+  topExpenseCategories: FinanceDashboardBreakdownItem[];
+}

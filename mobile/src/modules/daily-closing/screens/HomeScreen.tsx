@@ -11,7 +11,9 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TabParamList, RootStackParamList } from '@/navigation/AppNavigator';
 import { ConnectivityBanner } from '@/core/ui/components/ConnectivityBanner';
 import { DajajLogo } from '@/core/ui/components/DajajLogo';
+import { MiniDashboard } from '@/modules/daily-closing/components/MiniDashboard';
 import { useTodaysClosing } from '@/modules/daily-closing/hooks/useDailyClosing';
+import { useDashboard } from '@/modules/daily-closing/hooks/useDashboard';
 import { toDateKey, formatDateDisplay } from '@/modules/daily-closing/utils/dateUtils';
 import { formatCurrency } from '@/modules/daily-closing/utils/formatUtils';
 import { colors, radius, shadow } from '@/core/ui/theme/colors';
@@ -39,6 +41,7 @@ const STATUS_CONFIG: Record<ClosingStatus, { bg: string; fg: string; border: str
 export function HomeScreen({ navigation }: Props) {
   const today = toDateKey();
   const { data: closing, isLoading, refetch, isRefetching } = useTodaysClosing();
+  const { data: dashboard, isLoading: dashboardLoading, refetch: refetchDashboard } = useDashboard();
   const status = deriveStatus(closing);
   const cfg = STATUS_CONFIG[status];
 
@@ -49,11 +52,15 @@ export function HomeScreen({ navigation }: Props) {
     });
   }
 
+  async function handleRefresh() {
+    await Promise.all([refetch(), refetchDashboard()]);
+  }
+
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={colors.orange600} />}
+      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void handleRefresh()} tintColor={colors.orange600} />}
     >
       <StatusBar barStyle="dark-content" backgroundColor={colors.pageBg} />
 
@@ -88,6 +95,9 @@ export function HomeScreen({ navigation }: Props) {
           </View>
         )}
       </View>
+
+      {/* Today + Month numbers (same blended data as web dashboard) */}
+      <MiniDashboard summary={dashboard} isLoading={dashboardLoading} />
 
       {/* CTA */}
       <TouchableOpacity
