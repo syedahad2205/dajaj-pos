@@ -13,10 +13,9 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TabParamList, RootStackParamList } from '@/navigation/AppNavigator';
-import { useDailyClosingHistory } from '@/modules/daily-closing/hooks/useDailyClosingHistory';
+import { useDailyClosingHistory, type FinanceHistoryDay } from '@/modules/daily-closing/hooks/useDailyClosingHistory';
 import { toDateKey, formatDateDisplay, formatClosingTime } from '@/modules/daily-closing/utils/dateUtils';
 import { formatCurrency } from '@/modules/daily-closing/utils/formatUtils';
-import type { FinanceDailyClosing } from '@/modules/daily-closing/types';
 import { colors, radius, shadow } from '@/core/ui/theme/colors';
 
 type Props = CompositeScreenProps<
@@ -58,11 +57,12 @@ export function HistoryScreen({ navigation }: Props) {
       closedDays: closed.length,
       totalDays: closings.length,
       totalRevenue: closed.reduce((sum, c) => sum + (c.totalRevenue ?? 0), 0),
-      totalExpenses: closed.reduce((sum, c) => sum + (c.cashExpenseTotal ?? 0), 0),
+      // Blended: daily-closing cash expenses + ledger (bank) transactions — matches web dashboard
+      totalExpenses: closed.reduce((sum, c) => sum + (c.totalExpense ?? c.cashExpenseTotal ?? 0), 0),
     };
   }, [closings]);
 
-  function openClosing(item: FinanceDailyClosing) {
+  function openClosing(item: FinanceHistoryDay) {
     navigation.navigate('DailyClosing', {
       date: item.date,
       // Locked days are read-only; anything else can still be edited

@@ -188,3 +188,46 @@ export async function getFinanceDashboardSummary(
     topExpenseCategories: categoryWiseExpenses.slice(0, 5),
   };
 }
+
+// ─── History range (mobile) ──────────────────────────────────────────────────
+
+export interface FinanceHistoryDay extends FinanceDailyClosing {
+  /** Ledger expense transactions for this day (bank payments etc.) — excludes cash-drawer-tagged entries and Daily Closing auto-posts, matching the dashboard's blending rules. */
+  bankExpense: number;
+  /** cashExpenseTotal + bankExpense — same expense semantics as the web dashboard. */
+  totalExpense: number;
+}
+
+/**
+ * Per-day closings over a range, each augmented with blended expense figures
+ * so the mobile History tab can show Revenue vs Expense exactly like the web
+ * dashboard: Daily Closing owns cash; non-cash ledger transactions add on top.
+ */
+export async function getFinanceHistoryRange(
+  dateFrom: string,
+  dateTo: string,
+  db: Firestore = defaultFirestore,
+  branchId: string = DEFAULT_BRANCH_ID,
+): Promise<FinanceHistoryDay[]> {
+  const [closings, accounts, transactions] = await Promise.all([
+    getDailyClosingsForRange(dateFrom, dateTo, db, branchId),
+    getFinanceAccounts({ branchId }, db),
+    getPostedTransactionsForRange(dateFrom, dateTo, db, branchId),
+  ]);
+
+  const accountTypeById = new Map(accounts.map((a) => [a.id, a.type]));
+  const isCashAccount = (accountId: string | null) => (accountId ? accountTypeById.get(accountId) === "cash" : false);
+
+  const bankExpenseByDate = new Map<string, number>();
+  for (const t of transactions) {
+    if (t.autoPostedSource === "daily_closing") continue; // Daily Closing generated it itself
+    if (t.type !== "expense") continue;
+    if (isCashAccount(t.fromAccountId)) continue; // Cash Drawer money belongs to Daily Closing
+    bankExpenseByDate.set(t.date, roundCurrency((bankExpenseByDate.get(t.date) ?? 0) + t.amount));
+  }
+
+  return closings.map((c) => {
+    const bankExpense = bankExpenseByDate.get(c.date) ?? 0;
+    return { ...c, bankExpense, totalExpense: roundCurrency(c.cashExpenseTotal + bankExpense) };
+  });
+}
