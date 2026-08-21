@@ -1,6 +1,7 @@
 /**
  * DailyClosingScreen — styled to match DAJAJ web app.
  * Sections: Opening Cash → Cash Expenses → Cash Deposits → Today's Sales → Daily Summary.
+ * Header includes day navigation (‹ prev · date picker · next ›) capped at today.
  */
 import React from 'react';
 import { ScrollView, View, Text, StyleSheet, ActivityIndicator, RefreshControl, StatusBar } from 'react-native';
@@ -8,6 +9,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 import { ConnectivityBanner } from '@/core/ui/components/ConnectivityBanner';
 import { useDailyClosing } from '@/modules/daily-closing/hooks/useDailyClosing';
+import { DateNav } from '@/modules/daily-closing/components/DateNav';
 import { OpeningCashCard } from '@/modules/daily-closing/components/OpeningCashCard';
 import { CashExpensesSection } from '@/modules/daily-closing/components/CashExpensesSection';
 import { CashDepositsSection } from '@/modules/daily-closing/components/CashDepositsSection';
@@ -18,10 +20,20 @@ import { formatDateDisplay } from '@/modules/daily-closing/utils/dateUtils';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DailyClosing'>;
 
-export function DailyClosingScreen({ route }: Props) {
-  const { date, mode } = route.params;
-  const readonly = mode === 'readonly';
+export function DailyClosingScreen({ route, navigation }: Props) {
+  const { date: initialDate, mode } = route.params;
+  const [date, setDate] = React.useState(initialDate);
   const { data: closing, isLoading, isError, refetch, isRefetching } = useDailyClosing(date);
+
+  // Read-only is driven by the day's actual lock state once loaded — so
+  // navigating to any unlocked past day makes it editable (matches web),
+  // while locked days stay read-only regardless of how the screen was opened.
+  const readonly = closing ? closing.locked : mode === 'readonly';
+
+  // Keep the stack screen title in sync when the picked date changes
+  React.useLayoutEffect(() => {
+    navigation.setOptions({ title: `Closing · ${formatDateDisplay(date)}` });
+  }, [navigation, date]);
 
   if (isLoading) {
     return (
@@ -58,7 +70,7 @@ export function DailyClosingScreen({ route }: Props) {
       <View style={[styles.card, styles.headerCard]}>
         <Text style={styles.financeLabel}>Finance</Text>
         <Text style={styles.pageTitle}>Daily Closing</Text>
-        <Text style={styles.dateSubtitle}>{formatDateDisplay(date)}</Text>
+        <DateNav date={date} onChange={setDate} />
         {readonly && (
           <View style={styles.readonlyBadge}>
             <Text style={styles.readonlyText}>Read-only view</Text>
@@ -103,7 +115,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', color: colors.orange600, marginBottom: 4,
   },
   pageTitle: { fontSize: 28, fontWeight: '900', color: colors.slate900, marginBottom: 4 },
-  dateSubtitle: { fontSize: 13, color: colors.slate600 },
   readonlyBadge: {
     backgroundColor: colors.slate100,
     borderRadius: radius.sm,

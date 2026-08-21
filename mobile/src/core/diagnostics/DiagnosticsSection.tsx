@@ -34,7 +34,7 @@ export function DiagnosticsSection() {
   const failed = queue.filter(m => m.status === 'failed');
 
   const rows: Array<{ label: string; value: string; testID?: string }> = [
-    { label: 'Current User', value: user?.username ?? '—' },
+    { label: 'Current User', value: user?.email ?? user?.fullName ?? '—' },
     { label: 'App Version', value: APP_VERSION },
     { label: 'Build Number', value: BUILD_NUMBER },
     { label: 'Environment', value: ENVIRONMENT },

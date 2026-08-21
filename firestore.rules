@@ -388,7 +388,9 @@ service cloud.firestore {
     // mutation routes to record replay results for a given idempotency key.
     // Finance Users only — admins do not use this collection.
     match /fin_mobile_idempotency/{docId} {
-      allow read, write: if isFinanceUser();
+      // Finance Users (legacy) plus admins/finance managers — the mobile app
+      // now signs in with Firebase Auth accounts matching the web gate.
+      allow read, write: if isFinanceUser() || isAdminOrFinanceManager();
     }
 
     // Append-only audit trail. Admin may read/create; Finance Manager may

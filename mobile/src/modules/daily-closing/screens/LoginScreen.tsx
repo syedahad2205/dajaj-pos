@@ -1,6 +1,8 @@
 /**
- * LoginScreen — styled to match the DAJAJ web app aesthetic.
- * Warm cream background, orange accents, rounded-[28px] cards, slate buttons.
+ * LoginScreen — Firebase Auth email/password sign-in, matching the web app.
+ * Same accounts as the web admin/finance-manager gate. After Firebase
+ * sign-in succeeds, the whoami route resolves the finance role; accounts
+ * without finance access are signed out with a clear message.
  */
 import React, { useState } from 'react';
 import {
@@ -8,10 +10,10 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StatusBar,
 } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
-import { signInWithCustomToken } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '@/navigation/AuthNavigator';
-import { login } from '@/core/auth/authApi';
+import { whoami } from '@/core/auth/authApi';
 import { getFirebaseAuth } from '@/core/firebase/firebaseClient';
 import { useAuthStore } from '@/core/auth/useAuthStore';
 import { logger } from '@/core/logging/logger';
@@ -19,7 +21,23 @@ import { DajajLogo } from '@/core/ui/components/DajajLogo';
 import { colors, radius, shadow } from '@/core/ui/theme/colors';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
-interface FormValues { username: string; password: string; }
+interface FormValues { email: string; password: string; }
+
+const FIREBASE_ERROR_MESSAGES: Record<string, string> = {
+  'auth/invalid-email': 'Enter a valid email address.',
+  'auth/user-disabled': 'This account has been disabled.',
+  'auth/user-not-found': 'No account found with this email.',
+  'auth/wrong-password': 'Incorrect password.',
+  'auth/invalid-credential': 'Incorrect email or password.',
+  'auth/too-many-requests': 'Too many attempts. Try again in a few minutes.',
+  'auth/network-request-failed': 'Network error. Check your connection.',
+};
+
+function firebaseErrorMessage(error: unknown): string {
+  const code = (error as { code?: string })?.code;
+  if (code && FIREBASE_ERROR_MESSAGES[code]) return FIREBASE_ERROR_MESSAGES[code];
+  return error instanceof Error ? error.message : 'Login failed. Please try again.';
+}
 
 export function LoginScreen({ route }: Props) {
   const sessionExpiredMessage = route.params?.sessionExpiredMessage;
@@ -27,73 +45,45 @@ export function LoginScreen({ route }: Props) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { control, handleSubmit, watch } = useForm<FormValues>({
-    defaultValues: { username: '', password: '' },
+    defaultValues: { email: '', password: '' },
   });
-  const username = watch('username');
+  const email = watch('email');
   const password = watch('password');
-  const canSubmit = username.trim().length > 0 && password.length > 0 && !isLoading;
+  const canSubmit = email.trim().length > 0 && password.length > 0 && !isLoading;
 
   async function onSubmit(values: FormValues) {
     setServerError(null);
     setIsLoading(true);
-    console.log('==========================================');
-    console.log('🔐 LOGIN STARTED');
-    console.log('Username:', values.username.trim());
-    console.log('==========================================');
-    
-    logger.info('auth', 'Login button pressed', { username: values.username.trim() });
+
+    logger.info('auth', 'Login button pressed');
     try {
-      console.log('[Login] Step 1: Calling login API...');
-      const { customToken, user } = await login(values.username.trim(), values.password);
-      console.log('[Login] Step 2: Custom token received, length:', customToken.length);
-      console.log('[Login] User data:', JSON.stringify(user));
-      
-      // authApi.ts logs: loginStart, request, response, customTokenReceived, loginFailure
       const auth = getFirebaseAuth();
       logger.auth.firebaseSignInStart();
-      console.log('[Login] Step 3: Signing in to Firebase...');
-      const userCredential = await signInWithCustomToken(auth, customToken);
-      console.log('[Login] Step 4: Firebase sign-in complete, UID:', userCredential.user.uid);
-      
-      // Wait for the auth state to fully propagate before navigating.
-      // On iOS, currentUser can lag behind signInWithCustomToken's resolution,
-      // causing downstream getIdToken() calls to fail immediately after navigation.
-      console.log('[Login] Step 5: Getting ID token to ensure auth state is ready...');
-      const token = await userCredential.user.getIdToken(true); // Force refresh immediately after sign-in
-      console.log('[Login] Step 6: ID token obtained, length:', token.length);
-      console.log('[Login] Token preview:', token.substring(0, 50) + '...');
-      
-      // Decode and log claims for debugging
+
+      // 1. Authenticate with Firebase directly — same accounts as the web app
+      const credential = await signInWithEmailAndPassword(
+        auth,
+        values.email.trim(),
+        values.password,
+      );
+
+      // 2. Resolve finance access — whoami decides if this account may use the app
+      const idToken = await credential.user.getIdToken(true);
+      let identity;
       try {
-        const tokenParts = token.split('.');
-        if (tokenParts.length === 3) {
-          const payload = JSON.parse(atob(tokenParts[1]));
-          console.log('[Login] Token claims after sign-in:', JSON.stringify({
-            financeUser: payload.financeUser,
-            active: payload.active,
-            exp: payload.exp,
-            iat: payload.iat,
-          }));
-        }
-      } catch (e) {
-        console.warn('[Login] Could not decode token:', e);
+        identity = await whoami(idToken);
+      } catch (whoamiError) {
+        // No finance access → don't leave the device signed in
+        await firebaseSignOut(auth).catch(() => {});
+        throw whoamiError;
       }
-      
-      logger.auth.firebaseSignInSuccess(userCredential.user.uid);
-      logger.auth.loginSuccess(user.username, userCredential.user.uid);
-      setUser(user);
+
+      logger.auth.firebaseSignInSuccess(credential.user.uid);
+      logger.auth.loginSuccess(identity.email ?? identity.uid, credential.user.uid);
+      setUser(identity);
       setStatus('authenticated');
-      console.log('[Login] Step 7: Login complete, navigation will happen automatically');
-      console.log('==========================================');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
-      console.error('==========================================');
-      console.error('❌ LOGIN FAILED');
-      console.error('Error:', message);
-      console.error('Stack:', err);
-      console.error('==========================================');
-      // loginFailure already logged by authApi if the error originated there;
-      // log here as a fallback for Firebase sign-in failures
+      const message = firebaseErrorMessage(err);
       logger.exception('LoginScreen', 'onSubmit', err);
       setServerError(message);
     } finally {
@@ -114,7 +104,7 @@ export function LoginScreen({ route }: Props) {
         <View style={styles.card}>
           <Text style={styles.financeLabel}>Finance</Text>
           <Text style={styles.pageTitle}>Sign In</Text>
-          <Text style={styles.pageDesc}>Enter your Finance User credentials to access Daily Closing.</Text>
+          <Text style={styles.pageDesc}>Use your DAJAJ admin or finance account.</Text>
 
           {sessionExpiredMessage && (
             <View style={styles.warningBanner}>
@@ -129,10 +119,10 @@ export function LoginScreen({ route }: Props) {
           )}
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Username</Text>
+            <Text style={styles.fieldLabel}>Email</Text>
             <Controller
               control={control}
-              name="username"
+              name="email"
               render={({ field: { onChange, value, onBlur } }) => (
                 <TextInput
                   style={styles.input}
@@ -141,10 +131,13 @@ export function LoginScreen({ route }: Props) {
                   onBlur={onBlur}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  placeholder="your.username"
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  autoComplete="email"
+                  placeholder="you@dajaj.in"
                   placeholderTextColor={colors.slate400}
                   editable={!isLoading}
-                  testID="username-input"
+                  testID="email-input"
                 />
               )}
             />
@@ -162,6 +155,8 @@ export function LoginScreen({ route }: Props) {
                   onChangeText={onChange}
                   onBlur={onBlur}
                   secureTextEntry
+                  textContentType="password"
+                  autoComplete="password"
                   placeholder="••••••••"
                   placeholderTextColor={colors.slate400}
                   editable={!isLoading}

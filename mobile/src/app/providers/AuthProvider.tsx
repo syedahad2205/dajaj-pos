@@ -14,6 +14,7 @@ import { signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
 import type { NavigationContainerRef } from '@react-navigation/native';
 import { getFirebaseAuth } from '@/core/firebase/firebaseClient';
 import { useAuthStore } from '@/core/auth/useAuthStore';
+import { whoami } from '@/core/auth/authApi';
 import { logger } from '@/core/logging/logger';
 
 // Navigation ref is set by RootNavigator and used here for programmatic navigation
@@ -59,7 +60,7 @@ async function handleSessionInvalidated(message?: string) {
 }
 
 export function AuthProvider({ children }: Props) {
-  const { setUser, setStatus, signOut } = useAuthStore();
+  const { setUser, setStatus } = useAuthStore();
 
   useEffect(() => {
     const auth = getFirebaseAuth();
@@ -71,9 +72,22 @@ export function AuthProvider({ children }: Props) {
         // On fresh login the store already has the user (set by LoginScreen).
         const alreadyHasUser = !!useAuthStore.getState().user;
         if (!alreadyHasUser) {
-          logger.auth.sessionRestored(firebaseUser.uid);
+          // Restored session — re-resolve finance identity. If the account
+          // lost access (removed as admin/manager), force sign-out.
+          try {
+            const idToken = await firebaseUser.getIdToken(true);
+            const identity = await whoami(idToken);
+            useAuthStore.getState().setUser(identity);
+            logger.auth.sessionRestored(firebaseUser.uid);
+            setStatus('authenticated');
+          } catch {
+            await handleSessionInvalidated(
+              'This account no longer has finance access. Please sign in again.',
+            );
+          }
+        } else {
+          setStatus('authenticated');
         }
-        setStatus('authenticated');
       } else {
         logger.firebase.authStateChanged('signed-out');
         setUser(null);
@@ -94,6 +108,6 @@ export function AuthProvider({ children }: Props) {
 
 // Type augmentation for the global helper
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __handleSessionInvalidated: ((message?: string) => Promise<void>) | undefined;
 }

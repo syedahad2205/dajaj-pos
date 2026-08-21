@@ -8,7 +8,7 @@
  * All initialization and auth state events are logged via the centralized logger.
  */
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const { initializeAuth, getReactNativePersistence } = require('@firebase/auth/dist/rn/index.js') as {
   initializeAuth: typeof import('firebase/auth').initializeAuth;
   getReactNativePersistence: (storage: unknown) => import('firebase/auth').Persistence;

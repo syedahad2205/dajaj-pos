@@ -39,8 +39,6 @@ export const useConnectivityStore = create<ConnectivityState>()((set, get) => ({
       set({ syncStatus: 'offline' });
       return;
     }
-    // Re-derive from current queue state
-    const current = get();
     // If we just came online, leave recompute to QueueProcessor result
     set(state => ({
       syncStatus: state.syncStatus === 'offline'

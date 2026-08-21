@@ -1,21 +1,22 @@
 /**
  * Zustand auth session store (Requirement 1.6, 1.10, design §5).
  *
- * Holds the current FinanceUserPublic and session status.
+ * Holds the current MobileIdentity (Firebase Auth account with finance
+ * access) and session status.
  * AuthProvider writes to this store via setUser/setStatus.
  * Screens read from it via useAuthStore().
  */
 import { create } from 'zustand';
-import type { FinanceUserPublic } from '@/modules/daily-closing/types';
+import type { MobileIdentity } from '@/modules/daily-closing/types';
 import { clearQueue } from '@/core/offline/mutationQueue';
 
 export type SessionStatus = 'pending' | 'authenticated' | 'unauthenticated';
 
 interface AuthState {
-  user: FinanceUserPublic | null;
+  user: MobileIdentity | null;
   status: SessionStatus;
 
-  setUser: (user: FinanceUserPublic | null) => void;
+  setUser: (user: MobileIdentity | null) => void;
   setStatus: (status: SessionStatus) => void;
   /**
    * Full sign-out: clears user, status, and the offline mutation queue
@@ -44,7 +45,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
     // Log the sign-out — lazy import to avoid circular deps
     setImmediate(() => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+         
         const { logger } = require('@/core/logging/logger') as { logger: { auth: { signedOut: (reason?: string) => void } } };
         logger.auth.signedOut();
       } catch {

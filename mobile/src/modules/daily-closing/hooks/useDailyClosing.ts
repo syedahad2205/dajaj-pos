@@ -16,87 +16,43 @@ const DEFAULT_STALE_TIME = 30_000;
 
 async function fetchDailyClosingFromAPI(date: string): Promise<FinanceDailyClosing | null> {
   const auth = getFirebaseAuth();
-  console.log('[fetchDailyClosing] Starting fetch for date:', date);
-  console.log('[fetchDailyClosing] Initial currentUser:', auth.currentUser?.uid || 'null');
-  
+
   // Use currentUser if available; if not, wait for auth state to resolve.
   // On iOS the currentUser may be null briefly after signInWithCustomToken
   // before onAuthStateChanged fires, so we wait up to 5 s for it.
   let currentUser = auth.currentUser;
   if (!currentUser) {
-    console.log('[fetchDailyClosing] Waiting for auth state...');
     currentUser = await new Promise((resolve) => {
       const unsub = auth.onAuthStateChanged((u) => {
         unsub();
-        console.log('[fetchDailyClosing] Auth state resolved:', u?.uid || 'null');
         resolve(u);
       });
     });
   }
-  
-  console.log('[fetchDailyClosing] Getting ID token for user:', currentUser?.uid);
-  
-  // FORCE token refresh to ensure custom claims are present
-  console.log('[fetchDailyClosing] Forcing token refresh to get latest claims...');
-  const idToken = await currentUser?.getIdToken(true); // true = force refresh
+
+  // Force refresh so the latest custom claims are always present
+  const idToken = await currentUser?.getIdToken(true);
   if (!idToken) {
-    console.error('[fetchDailyClosing] No ID token - user not authenticated');
     throw new Error('Not authenticated.');
   }
-  
-  console.log('[fetchDailyClosing] ID token obtained (after refresh), length:', idToken.length);
-  console.log('[fetchDailyClosing] Token preview:', idToken.substring(0, 50) + '...');
-  
-  // Decode the token payload to check claims (for debugging)
-  try {
-    const tokenParts = idToken.split('.');
-    if (tokenParts.length === 3) {
-      const payload = JSON.parse(atob(tokenParts[1]));
-      console.log('[fetchDailyClosing] Token claims:', JSON.stringify({
-        financeUser: payload.financeUser,
-        active: payload.active,
-        exp: payload.exp,
-        iat: payload.iat,
-        uid: payload.user_id || payload.sub,
-      }));
-    }
-  } catch (e) {
-    console.warn('[fetchDailyClosing] Could not decode token:', e);
-  }
-  
-  const url = `${API_BASE}/finance/closing/${date}`;
-  console.log('[fetchDailyClosing] Fetching:', url);
-  console.log('[fetchDailyClosing] Full Authorization header:', `Bearer ${idToken.substring(0, 20)}...`);
-  
-  const headers = { 
-    'X-Auth-Token': `Bearer ${idToken}`,
-    'Authorization': `Bearer ${idToken}`,
-    'Content-Type': 'application/json',
-  };
-  console.log('[fetchDailyClosing] Request headers:', JSON.stringify(Object.keys(headers)));
-  console.log('[fetchDailyClosing] Authorization header key:', 'Authorization');
-  console.log('[fetchDailyClosing] Authorization header value length:', headers.Authorization.length);
 
-  const response = await fetch(url, {
+  const response = await fetch(`${API_BASE}/finance/closing/${date}`, {
     method: 'GET',
-    headers,
+    headers: {
+      'X-Auth-Token': `Bearer ${idToken}`,
+      'Authorization': `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+    },
   });
-
-  console.log('[fetchDailyClosing] Response status:', response.status);
-  console.log('[fetchDailyClosing] Response ok:', response.ok);
 
   const data = (await response.json()) as
     | { success: true; closing: FinanceDailyClosing; serverTime: string }
     | { success: false; message: string };
 
-  console.log('[fetchDailyClosing] Response data:', JSON.stringify(data).substring(0, 200));
-
   if (!data.success) {
-    console.error('[fetchDailyClosing] Request failed:', data.message);
     throw new Error(data.message);
   }
-  
-  console.log('[fetchDailyClosing] Success!');
+
   return data.closing;
 }
 

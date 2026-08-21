@@ -239,10 +239,10 @@ function toConsole(entry: LogEntry): void {
   const prefix = `${LEVEL_EMOJI[entry.level]} ${CATEGORY_EMOJI[entry.category]} [${entry.level}][${entry.category}] ${entry.timestamp.slice(11, 23)}`;
   const msg = `${prefix} ${entry.message}`;
   if (entry.data && Object.keys(entry.data).length > 0) {
-    // eslint-disable-next-line no-console
+     
     console.log(msg, entry.data);
   } else {
-    // eslint-disable-next-line no-console
+     
     console.log(msg);
   }
 }
@@ -297,7 +297,7 @@ export const logger = {
       url: string,
       headers: Record<string, string>,
       body: unknown,
-      context?: { username?: string; isOnline?: boolean },
+      context?: { user?: string; isOnline?: boolean },
     ): void {
       write('DEBUG', 'network', `➡️  REQUEST #${requestId}`, {
         requestId,
@@ -305,7 +305,7 @@ export const logger = {
         url,
         headers: sanitizeHeaders(headers),
         body: sanitize(body),
-        user: context?.username ?? '(unauthenticated)',
+        user: context?.user ?? '(unauthenticated)',
         network: context?.isOnline === false ? 'offline' : 'online',
       });
     },

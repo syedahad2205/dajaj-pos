@@ -5,11 +5,13 @@
  * Property 3: closingCash === null → cashRevenue/totalRevenue show "—", never "0".
  */
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
 import type { FinanceDailyClosing } from '@/modules/daily-closing/types';
 import { SummaryRow } from '@/core/ui/components/SummaryRow';
 import { Button } from '@/core/ui/components/Button';
+import { KeyboardDoneBar } from '@/core/ui/components/KeyboardDoneBar';
 import { useCloseDailyClosing } from '@/modules/daily-closing/hooks/useCloseDailyClosing';
+import { waitForSalesSave } from '@/modules/daily-closing/salesPendingSave';
 import { getQueueForDate } from '@/core/offline/mutationQueue';
 import { estimatePendingTotals, hasPendingChanges } from '@/modules/daily-closing/preview/estimatePendingTotals';
 import { formatCurrency } from '@/modules/daily-closing/utils/formatUtils';
@@ -40,7 +42,14 @@ export function DailySummarySection({ date, closing, readonly }: Props) {
       `Close the day with Closing Cash ${formatCurrency(parsedClosingCash)}?\n\nThis will lock the day and post transactions.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Save & Close', style: 'default', onPress: () => closeDailyClosing.mutate(parsedClosingCash) },
+        {
+          text: 'Save & Close', style: 'default',
+          // Wait for any in-flight sales save first (mirrors web behavior) so
+          // the close can't race ahead of the last sales PATCH.
+          onPress: () => {
+            void waitForSalesSave().then(() => closeDailyClosing.mutate(parsedClosingCash));
+          },
+        },
       ],
     );
   }
@@ -77,6 +86,7 @@ export function DailySummarySection({ date, closing, readonly }: Props) {
       {/* Closing cash input — only when not locked and not readonly */}
       {!readonly && !isLocked && (
         <View style={styles.closingCashRow}>
+          <KeyboardDoneBar nativeID="closing-cash-kb" />
           <Text style={styles.inputLabel}>Count the Drawer — Closing Cash</Text>
           <TextInput
             style={styles.closingInput}
@@ -86,6 +96,7 @@ export function DailySummarySection({ date, closing, readonly }: Props) {
             placeholder="0.00"
             placeholderTextColor={colors.slate400}
             testID="closing-cash-input"
+            inputAccessoryViewID="closing-cash-kb"
           />
         </View>
       )}

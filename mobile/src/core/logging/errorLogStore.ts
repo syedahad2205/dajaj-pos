@@ -45,7 +45,7 @@ export function logError(entry: Omit<LocalErrorLogEntry, 'timestamp'>): void {
   // Forward to the centralized logger — lazy import to avoid circular deps at module load
   setImmediate(() => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+       
       const { logger } = require('@/core/logging/logger') as { logger: { exception: (screen: string, op: string | null, err: unknown, ctx?: Record<string, unknown>) => void } };
       logger.exception(entry.screen, entry.operation, { message: entry.message, stack: entry.stack });
     } catch {

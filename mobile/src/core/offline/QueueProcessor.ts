@@ -20,7 +20,6 @@ import {
   dequeue,
   updateMutation,
   buildMutationPath,
-  type QueuedMutation,
 } from '@/core/offline/mutationQueue';
 import { useConnectivityStore } from '@/core/connectivity/useConnectivityStore';
 import { logger } from '@/core/logging/logger';

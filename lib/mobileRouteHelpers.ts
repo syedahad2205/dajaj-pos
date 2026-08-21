@@ -1,15 +1,15 @@
 import { serverTimestamp } from "firebase/firestore";
 import { NextResponse } from "next/server";
 import { financeErrorResponse } from "@/lib/financeApiError";
-import { getFinanceUserFirestoreClient, verifyFinanceUserRequest } from "@/lib/mobileFinanceAuth";
+import { getFinanceUserFirestoreClient, verifyFinanceAccessRequest } from "@/lib/mobileFinanceAuth";
 import { getIdempotencyRecord, writeIdempotencyRecord, type IdempotencyRecord } from "@/lib/mobileIdempotency";
 import type { FinanceDailyClosing } from "@/lib/finance";
 
-export { verifyFinanceUserRequest, getFinanceUserFirestoreClient };
+export { verifyFinanceAccessRequest, getFinanceUserFirestoreClient };
 
 /**
  * Reads the Authorization: Bearer <idToken> header without verifying it,
- * for passing to getFinanceUserFirestoreClient() after verifyFinanceUserRequest().
+ * for passing to getFinanceUserFirestoreClient() after verifyFinanceAccessRequest().
  */
 export function extractBearerToken(request: Request): string | null {
   const authorization = request.headers.get("authorization") ?? request.headers.get("Authorization");
@@ -40,7 +40,7 @@ export async function withMobileAuth<B>(
 ): Promise<NextResponse> {
   try {
     // 1. Verify identity
-    const verified = await verifyFinanceUserRequest(request);
+    const verified = await verifyFinanceAccessRequest(request);
     if (!verified.ok) return verified.response;
     const { uid, fullName } = verified;
 

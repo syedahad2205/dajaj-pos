@@ -37,6 +37,7 @@ export function CashDepositsSection({ date, closing, readonly }: Props) {
   return (
     <View style={styles.card}>
       <Text style={styles.sectionLabel}>Cash Deposits</Text>
+      <Text style={styles.caption}>Cash moving out of the drawer — not a business expense.</Text>
       {deposits.length === 0 && <Text style={styles.empty}>No deposits recorded</Text>}
       {deposits.map(entry => (
         <View key={entry.id} style={styles.row}>
@@ -68,7 +69,8 @@ export function CashDepositsSection({ date, closing, readonly }: Props) {
 
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.white, borderRadius: radius.card, borderWidth: 1, borderColor: colors.cardBorder, padding: 20, ...shadow.card },
-  sectionLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', color: colors.slate400, marginBottom: 12 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', color: colors.slate400, marginBottom: 4 },
+  caption: { fontSize: 12, color: colors.slate400, marginBottom: 12 },
   empty: { color: colors.slate400, fontSize: 13, marginBottom: 8, fontStyle: 'italic' },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.slate50 },
   rowInfo: { flex: 1 },

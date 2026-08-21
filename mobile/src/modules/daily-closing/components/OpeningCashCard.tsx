@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import type { FinanceDailyClosing } from '@/modules/daily-closing/types';
 import { useSetOpeningCash } from '@/modules/daily-closing/hooks/useSetOpeningCash';
+import { KeyboardDoneBar } from '@/core/ui/components/KeyboardDoneBar';
 import { formatCurrency } from '@/modules/daily-closing/utils/formatUtils';
 import { colors, radius, shadow } from '@/core/ui/theme/colors';
 
@@ -16,7 +17,12 @@ export function OpeningCashCard({ date, closing, readonly }: Props) {
 
   function handleBlur() {
     const parsed = parseFloat(localValue);
-    if (Number.isFinite(parsed)) setOpeningCash.mutate(parsed);
+    // Skip no-op saves (unchanged or cleared value)
+    if (!Number.isFinite(parsed) || parsed === closing?.openingCash) {
+      setLocalValue(String(closing?.openingCash ?? '0'));
+      return;
+    }
+    setOpeningCash.mutate(parsed);
   }
 
   return (
@@ -35,16 +41,20 @@ export function OpeningCashCard({ date, closing, readonly }: Props) {
           )}
         </View>
       ) : (
-        <TextInput
-          style={styles.input}
-          value={localValue}
-          onChangeText={setLocalValue}
-          onBlur={handleBlur}
-          keyboardType="decimal-pad"
-          editable={!setOpeningCash.isPending}
-          placeholder="0.00"
-          placeholderTextColor={colors.slate400}
-        />
+        <View>
+          <KeyboardDoneBar nativeID="opening-cash-kb" />
+          <TextInput
+            style={styles.input}
+            value={localValue}
+            onChangeText={setLocalValue}
+            onBlur={handleBlur}
+            keyboardType="decimal-pad"
+            editable={!setOpeningCash.isPending}
+            placeholder="0.00"
+            placeholderTextColor={colors.slate400}
+            inputAccessoryViewID="opening-cash-kb"
+          />
+        </View>
       )}
       {setOpeningCash.isError && (
         <Text style={styles.errorText}>{setOpeningCash.error instanceof Error ? setOpeningCash.error.message : 'Failed to save'}</Text>

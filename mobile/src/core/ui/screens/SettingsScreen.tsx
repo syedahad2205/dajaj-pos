@@ -8,7 +8,6 @@ import { signOut as firebaseSignOut } from 'firebase/auth';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuthStore } from '@/core/auth/useAuthStore';
 import { getFirebaseAuth } from '@/core/firebase/firebaseClient';
 import { useConnectivityStore } from '@/core/connectivity/useConnectivityStore';
@@ -104,7 +103,12 @@ export function SettingsScreen() {
       <Text style={styles.groupLabel}>Identity</Text>
       <View style={styles.card}>
         <Row label="Name" value={user?.fullName ?? '—'} />
-        <Row label="Username" value={user?.username ?? '—'} last />
+        <Row label="Email" value={user?.email ?? '—'} />
+        <Row
+          label="Role"
+          value={user?.role === 'admin' ? 'Administrator' : user?.role === 'financeManager' ? 'Finance Manager' : '—'}
+          last
+        />
       </View>
 
       {/* Sync */}

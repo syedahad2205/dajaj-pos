@@ -15,7 +15,7 @@
 
 // Using `any` for Firestore Timestamp fields — these arrive from the server as
 // serialized values and are only used for display, never for business logic.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type FirestoreTimestamp = any;
 
 // ─── Re-exported from constants/finance.ts (single source within mobile) ────
@@ -132,7 +132,8 @@ export interface FinanceDefault {
 }
 
 // ─── FinanceUserPublic ────────────────────────────────────────────────────────
-// FinanceUser without the passwordHash — the shape returned by the login route.
+// Legacy finance_auth user shape (username/password login — no longer used by
+// the app's login flow, kept for reference).
 export interface FinanceUserPublic {
   id: string;
   fullName: string;
@@ -145,4 +146,14 @@ export interface FinanceUserPublic {
   branchId: string;
   createdAt?: FirestoreTimestamp;
   updatedAt?: FirestoreTimestamp;
+}
+
+// ─── MobileIdentity ───────────────────────────────────────────────────────────
+// The signed-in identity for the app — a Firebase Auth account with finance
+// access, resolved via GET /api/mobile/v1/finance/auth/whoami.
+export interface MobileIdentity {
+  uid: string;
+  role: 'admin' | 'financeManager';
+  fullName: string;
+  email: string | null;
 }

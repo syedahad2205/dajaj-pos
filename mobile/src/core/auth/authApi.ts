@@ -1,69 +1,80 @@
 /**
- * Auth API wrapper — POST /api/mobile/v1/finance/auth/login
- * (Requirement 1.1, design §5.1)
+ * Auth API wrapper — GET /api/mobile/v1/finance/auth/whoami
  *
- * No Authorization header — caller has no identity yet, only credentials.
- * Includes deviceTime per Requirement 10.4.
+ * Firebase Authentication handles sign-in directly on the device
+ * (signInWithEmailAndPassword). This call answers authorization:
+ * which finance role the signed-in account holds (admin | financeManager)
+ * and what display name to show. Called right after sign-in and on session
+ * restore.
  *
- * All auth flow steps are logged through the centralized logger.
- * Passwords are never logged.
+ * No special headers beyond the caller's fresh ID token.
+ * All flow steps are logged through the centralized logger.
  */
-import type { FinanceUserPublic } from '@/modules/daily-closing/types';
-import { BACKEND_URL } from '@/config';
-import { logger, nextRequestId, sanitizeHeaders } from '@/core/logging/logger';
+import type { MobileIdentity } from '@/modules/daily-closing/types';
+import { API_BASE } from '@/config';
+import { logger, nextRequestId } from '@/core/logging/logger';
 
-const LOGIN_URL = `${BACKEND_URL}/api/mobile/v1/finance/auth/login`;
-
-export interface LoginResult {
-  customToken: string;
-  user: FinanceUserPublic;
-}
+export type WhoamiResult = MobileIdentity;
 
 /**
- * Calls the login API route.
- * Throws with the server's exact error message on failure (Requirement 1.3).
+ * Resolves the signed-in user's finance identity.
+ * Throws with the server's message when the account has no finance access.
  */
-export async function login(username: string, password: string): Promise<LoginResult> {
+export async function whoami(idToken: string): Promise<WhoamiResult> {
   const requestId = nextRequestId();
-  const headers = { 'Content-Type': 'application/json' };
+  const url = `${API_BASE}/finance/auth/whoami`;
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${idToken}`,
+  };
 
-  // Log request — password is intentionally omitted from the log body
-  logger.network.request(requestId, 'POST', LOGIN_URL, headers, { username, password: '[REDACTED]', deviceTime: '(set at send)' });
-  logger.auth.loginStart(username);
+  logger.network.request(requestId, 'GET', url, headers, undefined);
 
   const startMs = Date.now();
 
   let response: Response;
   try {
-    response = await fetch(LOGIN_URL, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        username,
-        password,
-        deviceTime: new Date().toISOString(),
-      }),
-    });
+    response = await fetch(url, { method: 'GET', headers });
   } catch (error) {
     logger.network.failure(requestId, error);
-    logger.auth.loginFailure(username, error instanceof Error ? error.message : String(error));
     throw error;
   }
 
   const durationMs = Date.now() - startMs;
 
-  const data = (await response.json()) as
-    | { success: true; customToken: string; user: FinanceUserPublic }
+  // Guard against non-JSON responses (e.g. HTML 404 pages when the deployed
+  // backend predates this route) — surface an actionable message instead of
+  // a cryptic "Unexpected character" parse error.
+  const rawBody = await response.text();
+  let data:
+    | { success: true; uid: string; role: 'admin' | 'financeManager'; fullName: string; email: string | null }
     | { success: false; message: string };
+  try {
+    data = JSON.parse(rawBody);
+  } catch {
+    logger.network.response(requestId, response.status, response.statusText, durationMs, {
+      success: false,
+      nonJsonBody: rawBody.slice(0, 200),
+    });
+    throw new Error(
+      response.status === 404
+        ? 'Server update required — the backend does not have this endpoint yet.'
+        : `Server error (${response.status}). Please try again later.`,
+    );
+  }
 
-  // Log response — customToken value is masked automatically by sanitize()
-  logger.network.response(requestId, response.status, response.statusText, durationMs, data);
+  logger.network.response(requestId, response.status, response.statusText, durationMs, {
+    success: data.success,
+  });
 
   if (!data.success) {
-    logger.auth.loginFailure(username, data.message);
     throw new Error(data.message);
   }
 
-  logger.auth.customTokenReceived();
-  return { customToken: data.customToken, user: data.user };
+  return {
+    uid: data.uid,
+    role: data.role,
+    fullName: data.fullName,
+    email: data.email,
+  };
 }

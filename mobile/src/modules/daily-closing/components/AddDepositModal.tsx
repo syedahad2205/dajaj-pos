@@ -7,7 +7,9 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-nativ
 import { useForm, Controller } from 'react-hook-form';
 import { Modal } from '@/core/ui/components/Modal';
 import { Button } from '@/core/ui/components/Button';
+import { KeyboardDoneBar } from '@/core/ui/components/KeyboardDoneBar';
 import { SUPPORTED_CASH_DEPOSIT_TYPES, CASH_DEPOSIT_TYPE_LABELS, type CashDepositType } from '@/constants/finance';
+import { colors, radius } from '@/core/ui/theme/colors';
 
 interface FormValues { type: CashDepositType | ''; amount: string; remarks: string; }
 
@@ -33,6 +35,7 @@ export function AddDepositModal({ visible, onClose, onSave, isSaving, saveError 
 
   return (
     <Modal visible={visible} title="Add Deposit" onClose={handleClose}>
+      <KeyboardDoneBar nativeID="add-deposit-modal-kb" />
       <View style={styles.form}>
         <Text style={styles.label}>Deposit Type *</Text>
         <Controller control={control} name="type" render={({ field: { onChange, value } }) => (
@@ -47,12 +50,12 @@ export function AddDepositModal({ visible, onClose, onSave, isSaving, saveError 
 
         <Text style={styles.label}>Amount *</Text>
         <Controller control={control} name="amount" render={({ field: { onChange, value, onBlur } }) => (
-          <TextInput style={styles.input} value={value} onChangeText={onChange} onBlur={onBlur} keyboardType="decimal-pad" placeholder="0.00" testID="deposit-amount-input" />
+          <TextInput style={styles.input} value={value} onChangeText={onChange} onBlur={onBlur} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.slate400} testID="deposit-amount-input" inputAccessoryViewID="add-deposit-modal-kb" />
         )} />
 
         <Text style={styles.label}>Remarks (optional)</Text>
         <Controller control={control} name="remarks" render={({ field: { onChange, value, onBlur } }) => (
-          <TextInput style={styles.input} value={value} onChangeText={onChange} onBlur={onBlur} placeholder="e.g. Daily Pigmi" />
+          <TextInput style={styles.input} value={value} onChangeText={onChange} onBlur={onBlur} placeholder="e.g. Daily Pigmi" placeholderTextColor={colors.slate400} />
         )} />
 
         {saveError && <Text style={styles.error}>{saveError}</Text>}
@@ -64,13 +67,17 @@ export function AddDepositModal({ visible, onClose, onSave, isSaving, saveError 
 
 const styles = StyleSheet.create({
   form: { paddingBottom: 20 },
-  label: { fontSize: 13, fontWeight: '600', color: '#444', marginBottom: 6 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 16, marginBottom: 16 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f1f3f4', marginRight: 8, marginBottom: 8 },
-  chipSelected: { backgroundColor: '#1a73e8' },
-  chipText: { color: '#333', fontSize: 13 },
-  chipTextSelected: { color: '#fff', fontWeight: '600' },
-  error: { color: '#c62828', marginBottom: 12, fontSize: 13 },
+  label: { fontSize: 11, fontWeight: '600', color: colors.slate500, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  input: {
+    backgroundColor: colors.slate50, borderWidth: 1, borderColor: colors.slate200, borderRadius: radius.sm,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: colors.slate900, marginBottom: 16,
+    fontVariant: ['tabular-nums'],
+  },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.slate200 },
+  chipSelected: { backgroundColor: colors.slateBtnBg, borderColor: colors.slateBtnBg },
+  chipText: { color: colors.slate700, fontSize: 13, fontWeight: '600' },
+  chipTextSelected: { color: '#fff' },
+  error: { color: colors.rose600, marginBottom: 12, fontSize: 13 },
   saveBtn: { marginTop: 4 },
 });

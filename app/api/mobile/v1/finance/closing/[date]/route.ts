@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDailyClosingView, closeDailyClosing } from "@/services/financeClosingService";
 import { withMobileAuth } from "@/lib/mobileRouteHelpers";
 import { financeErrorResponse } from "@/lib/financeApiError";
-import { verifyFinanceUserRequest, getFinanceUserFirestoreClient, extractBearerToken } from "@/lib/mobileFinanceAuth";
+import { verifyFinanceAccessRequest, getFinanceUserFirestoreClient, extractBearerToken } from "@/lib/mobileFinanceAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +31,7 @@ export async function OPTIONS() {
  */
 export async function GET(request: Request, { params }: { params: { date: string } }) {
   try {
-    const verified = await verifyFinanceUserRequest(request);
+    const verified = await verifyFinanceAccessRequest(request);
     if (!verified.ok) {
       // Add CORS headers to error response
       const errorResponse = verified.response;

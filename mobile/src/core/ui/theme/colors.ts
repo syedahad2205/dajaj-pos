@@ -22,6 +22,7 @@ export const colors = {
   // Text hierarchy
   slate900: '#0f172a',        // body text, headings
   slate800: '#1e293b',        // bold values
+  slate700: '#334155',        // secondary buttons / icons
   slate600: '#475569',        // descriptions
   slate500: '#64748b',        // labels
   slate400: '#94a3b8',        // muted / section headers

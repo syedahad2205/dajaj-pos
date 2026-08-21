@@ -11,7 +11,6 @@
  */
 import { MMKV } from 'react-native-mmkv';
 import { generateIdempotencyKey } from '@/core/offline/idempotency';
-import { API_VERSION } from '@/core/api/apiClient';
 import { logger } from '@/core/logging/logger';
 
 export const storage = new MMKV({ id: 'dajaj-finance-offline-queue' });

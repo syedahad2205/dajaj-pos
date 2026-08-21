@@ -55,7 +55,7 @@ export async function apiCall(options: ApiCallOptions): Promise<MutationResponse
 
   // Log outgoing request — sensitive headers are auto-masked by logger
   logger.network.request(requestId, method, url, headers, payload, {
-    username: useAuthStore.getState().user?.username,
+    user: useAuthStore.getState().user?.email ?? undefined,
     isOnline: useConnectivityStore.getState().isOnline,
   });
 
@@ -69,7 +69,19 @@ export async function apiCall(options: ApiCallOptions): Promise<MutationResponse
     });
 
     const durationMs = Date.now() - startMs;
-    const data = (await response.json()) as MutationResponse;
+    const rawBody = await response.text();
+
+    // Guard against non-JSON responses (e.g. HTML error pages from a proxy)
+    let data: MutationResponse;
+    try {
+      data = JSON.parse(rawBody) as MutationResponse;
+    } catch {
+      logger.network.response(requestId, response.status, response.statusText, durationMs, {
+        success: false,
+        nonJsonBody: rawBody.slice(0, 200),
+      });
+      throw new Error(`Server error (${response.status}). Please try again later.`);
+    }
 
     // Log response — body is sanitized by logger
     logger.network.response(requestId, response.status, response.statusText, durationMs, data);
