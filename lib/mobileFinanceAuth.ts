@@ -167,41 +167,16 @@ export async function getFinanceUserFirestoreClient(idToken: string): Promise<{
   firestore: Firestore;
   cleanup: () => Promise<void>;
 }> {
+  // initializeServerApp with authIdToken creates a client-SDK app whose
+  // Firestore requests carry the user's identity — Firestore security rules
+  // see request.auth populated with the user's uid.
+  //
+  // We do NOT wait for auth.currentUser to hydrate: the token has already
+  // been verified by verifyFinanceAccessRequest() via the Admin SDK, so we
+  // know it is valid. Waiting for currentUser introduces a fragile async
+  // step that can fail in serverless environments without changing what
+  // Firestore actually receives (the token is baked into the serverApp).
   const serverApp = initializeServerApp(firebaseConfig, { authIdToken: idToken });
-  const auth = getAuth(serverApp);
-
-  // Token-based server apps often hydrate the user synchronously; avoid
-  // waiting on a listener in that case.
-  await Promise.resolve();
-  if (!auth.currentUser) {
-    const ready = (auth as { authStateReady?: () => Promise<void> }).authStateReady;
-    if (typeof ready === "function") {
-      // Resolves once the initial auth state (from the injected ID token)
-      // is fully loaded — proceeding earlier risks running unauthenticated.
-      await ready.call(auth);
-    } else {
-      await new Promise<void>((resolve) => {
-        const unsubscribe = getAuth(serverApp).onAuthStateChanged((user) => {
-          if (!user) return; // keep waiting until the token hydrates
-          unsubscribe();
-          resolve();
-        });
-      });
-    }
-  }
-
-  if (!auth.currentUser) {
-    // Identity forwarding failed — auth state didn't hydrate from the token.
-    // This is safe to fall back to the Admin SDK Firestore because
-    // verifyFinanceAccessRequest() has already confirmed the caller is a
-    // valid admin or active financeManager. Clean up the unusable serverApp.
-    await cleanupApp(serverApp);
-    const adminFirestore = getAdminFirestore() as unknown as Firestore;
-    return {
-      firestore: adminFirestore,
-      cleanup: async () => {},
-    };
-  }
 
   return {
     firestore: getFirestore(serverApp),
