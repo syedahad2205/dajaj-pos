@@ -8,6 +8,7 @@
  * AppNavigator iterates REGISTERED_MODULES for tabs, not hard-coded screens (Task 30.2).
  */
 import React from 'react';
+import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/core/logging/ErrorBoundary';
 import { installGlobalErrorHandlers } from '@/core/logging/errorLogStore';
@@ -16,6 +17,7 @@ import { QueryProvider } from '@/app/providers/QueryProvider';
 import { AuthProvider } from '@/app/providers/AuthProvider';
 import { ConnectivityProvider } from '@/app/providers/ConnectivityProvider';
 import { RootNavigator } from '@/navigation/RootNavigator';
+import { GlobalLoadingOverlay } from '@/core/ui/components/GlobalLoadingOverlay';
 
 // Install once before rendering (Requirement 17.1 — global unhandled rejection capture)
 installGlobalErrorHandlers();
@@ -27,11 +29,15 @@ export default function App() {
     <ErrorBoundary>
       <SafeAreaProvider>
         <QueryProvider>
-          <AuthProvider>
-            <ConnectivityProvider>
-              <RootNavigator />
-            </ConnectivityProvider>
-          </AuthProvider>
+          {/* GlobalLoadingOverlay must be inside QueryProvider to access query/mutation state */}
+          <View style={{ flex: 1 }}>
+            <AuthProvider>
+              <ConnectivityProvider>
+                <RootNavigator />
+              </ConnectivityProvider>
+            </AuthProvider>
+            <GlobalLoadingOverlay />
+          </View>
         </QueryProvider>
       </SafeAreaProvider>
     </ErrorBoundary>

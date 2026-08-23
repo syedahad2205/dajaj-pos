@@ -1,11 +1,12 @@
 /**
  * AddExpenseModal — row-based form, web-parity UX.
  *
- * Tapping Category/Subcategory opens a small floating dropdown anchored
- * right below the button (measureInWindow → absolute position inside the
- * Modal overlay). Dialog never expands, never shifts.
+ * Perf notes:
+ * - LineCard is a React.memo component — only re-renders when its own line changes.
+ * - All handlers passed to LineCard are useCallback so refs stay stable between renders.
+ * - ScrollView ref + scrollToEnd keeps newly-added lines visible without any layout freeze.
  */
-import React, { useRef, useMemo, useState } from 'react';
+import React, { useRef, useMemo, useState, useCallback } from 'react';
 import {
   Keyboard,
   Modal as RNModal,
@@ -72,7 +73,7 @@ interface DropdownBtnProps {
   onOpen: (top: number, left: number, width: number) => void;
 }
 
-function DropdownBtn({ label, placeholder, onOpen }: DropdownBtnProps) {
+const DropdownBtn = React.memo(function DropdownBtn({ label, placeholder, onOpen }: DropdownBtnProps) {
   const ref = useRef<View>(null);
   return (
     <TouchableOpacity
@@ -93,7 +94,90 @@ function DropdownBtn({ label, placeholder, onOpen }: DropdownBtnProps) {
       </Text>
     </TouchableOpacity>
   );
+});
+
+// ─── Line card (memoized — only re-renders when its own line changes) ──────────
+
+interface LineCardProps {
+  line: DraftLine;
+  idx: number;
+  cat: FinanceExpenseCategory | undefined;
+  lineSubs: FinanceExpenseSubcategory[];
+  sub: FinanceExpenseSubcategory | null | undefined;
+  showRemove: boolean;
+  onUpdate: (key: string, patch: Partial<DraftLine>) => void;
+  onRemove: (key: string) => void;
+  onOpenDropdown: (lineKey: string, field: 'category' | 'subcategory', top: number, left: number, width: number) => void;
+  onFocusInput: () => void;
 }
+
+const LineCard = React.memo(function LineCard({
+  line, idx, cat, lineSubs, sub, showRemove,
+  onUpdate, onRemove, onOpenDropdown, onFocusInput,
+}: LineCardProps) {
+  const openCategory = useCallback(
+    (top: number, left: number, width: number) => onOpenDropdown(line.key, 'category', top, left, width),
+    [line.key, onOpenDropdown],
+  );
+  const openSubcategory = useCallback(
+    (top: number, left: number, width: number) => onOpenDropdown(line.key, 'subcategory', top, left, width),
+    [line.key, onOpenDropdown],
+  );
+
+  return (
+    <View style={styles.lineCard}>
+      <View style={styles.lineHeader}>
+        <Text style={styles.lineNum}>{idx === 0 ? 'Expense' : `Line ${idx + 1}`}</Text>
+        {showRemove && (
+          <TouchableOpacity onPress={() => onRemove(line.key)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.lineDelete}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <View style={styles.pickerRow}>
+        <DropdownBtn
+          label={cat ? cat.name : 'Category'}
+          placeholder={!cat}
+          onOpen={openCategory}
+        />
+        {lineSubs.length > 0 && (
+          <DropdownBtn
+            label={sub ? sub.name : 'Subcategory'}
+            placeholder={!sub}
+            onOpen={openSubcategory}
+          />
+        )}
+      </View>
+
+      <View style={styles.inputRow}>
+        <View style={styles.amountBox}>
+          <Text style={styles.rupee}>₹</Text>
+          <TextInput
+            style={styles.amountInput}
+            value={line.amount}
+            onChangeText={v => onUpdate(line.key, { amount: v })}
+            keyboardType="decimal-pad"
+            placeholder="0"
+            placeholderTextColor={colors.slate400}
+            selectTextOnFocus
+            returnKeyType="done"
+            onFocus={onFocusInput}
+          />
+        </View>
+        <TextInput
+          style={styles.remarksInput}
+          value={line.remarks}
+          onChangeText={v => onUpdate(line.key, { remarks: v })}
+          placeholder="Remarks (optional)"
+          placeholderTextColor={colors.slate400}
+          returnKeyType="done"
+          onFocus={onFocusInput}
+        />
+      </View>
+    </View>
+  );
+});
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -104,6 +188,7 @@ export function AddExpenseModal({ visible, onClose, onSave, isSaving, saveError 
 
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
   const [dropdown, setDropdown] = useState<DropdownState | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
 
@@ -117,42 +202,51 @@ export function AddExpenseModal({ visible, onClose, onSave, isSaving, saveError 
     return map;
   }, [subcategories]);
 
-  const validLines = lines.filter(l => {
+  const validLines = useMemo(() => lines.filter(l => {
     const n = parseFloat(l.amount);
     return l.categoryId && Number.isFinite(n) && n > 0;
-  });
+  }), [lines]);
+
   const canSave = validLines.length > 0 && !isSaving;
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // ── Stable callbacks (useCallback → LineCard doesn't re-render on siblings' state changes) ──
+
+  const updateLine = useCallback((key: string, patch: Partial<DraftLine>) => {
+    setLines(prev => prev.map(l => l.key === key ? { ...l, ...patch } : l));
+  }, []);
+
+  const removeLine = useCallback((key: string) => {
+    setLines(prev => { const n = prev.filter(l => l.key !== key); return n.length ? n : [blankLine()]; });
+    setDropdown(prev => prev?.lineKey === key ? null : prev);
+  }, []);
+
+  const openDropdown = useCallback((lineKey: string, field: 'category' | 'subcategory', top: number, left: number, width: number) => {
+    Keyboard.dismiss();
+    setDropdown({ lineKey, field, top, left, width });
+  }, []);
+
+  const closeDropdown = useCallback(() => setDropdown(null), []);
+
+  function addLine() {
+    setLines(prev => [...prev, blankLine()]);
+    // Give React one frame to mount the new card, then scroll to reveal it
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  }
 
   function reset() { setLines([blankLine()]); setDropdown(null); }
   function close() { Keyboard.dismiss(); reset(); onClose(); }
-
-  function updateLine(key: string, patch: Partial<DraftLine>) {
-    setLines(prev => prev.map(l => l.key === key ? { ...l, ...patch } : l));
-  }
-
-  function removeLine(key: string) {
-    setLines(prev => { const n = prev.filter(l => l.key !== key); return n.length ? n : [blankLine()]; });
-    if (dropdown?.lineKey === key) setDropdown(null);
-  }
-
-  function openDropdown(lineKey: string, field: 'category' | 'subcategory', top: number, left: number, width: number) {
-    Keyboard.dismiss();
-    setDropdown({ lineKey, field, top, left, width });
-  }
 
   function selectItem(id: string) {
     if (!dropdown) return;
     const { lineKey, field } = dropdown;
     if (field === 'category') {
       updateLine(lineKey, { categoryId: id, subcategoryId: '' });
-      const subs = subcategoriesByCategory.get(id) ?? [];
       setDropdown(null);
-      // If category has subs, let user tap Subcategory ▾ themselves — no auto-advance
     } else {
-      const line = lines.find(l => l.key === lineKey);
-      updateLine(lineKey, { subcategoryId: line?.subcategoryId === id ? '' : id });
+      setLines(prev => prev.map(l => l.key === lineKey
+        ? { ...l, subcategoryId: l.subcategoryId === id ? '' : id }
+        : l,
+      ));
       setDropdown(null);
     }
   }
@@ -192,13 +286,11 @@ export function AddExpenseModal({ visible, onClose, onSave, isSaving, saveError 
       onRequestClose={close}
       onShow={() => Keyboard.dismiss()}
     >
-      {/* Tap outside dropdown to close it */}
       <TouchableOpacity
         style={styles.overlay}
         activeOpacity={1}
         onPress={() => dropdown ? setDropdown(null) : close()}
       >
-        {/* Dialog — stop propagation so taps inside don't close */}
         <View style={styles.dialog} onStartShouldSetResponder={() => true}>
 
           {/* Header */}
@@ -214,6 +306,7 @@ export function AddExpenseModal({ visible, onClose, onSave, isSaving, saveError 
 
           {/* Expense lines */}
           <ScrollView
+            ref={scrollRef}
             style={styles.linesScroll}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -224,63 +317,25 @@ export function AddExpenseModal({ visible, onClose, onSave, isSaving, saveError 
               const sub = line.subcategoryId ? lineSubs.find(s => s.id === line.subcategoryId) : null;
 
               return (
-                <View key={line.key} style={styles.lineCard}>
-                  <View style={styles.lineHeader}>
-                    <Text style={styles.lineNum}>Line {idx + 1}</Text>
-                    {lines.length > 1 && (
-                      <TouchableOpacity onPress={() => removeLine(line.key)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={styles.lineDelete}>✕</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  <View style={styles.pickerRow}>
-                    <DropdownBtn
-                      label={cat ? cat.name : 'Category'}
-                      placeholder={!cat}
-                      onOpen={(top, left, width) => openDropdown(line.key, 'category', top, left, width)}
-                    />
-                    {lineSubs.length > 0 && (
-                      <DropdownBtn
-                        label={sub ? sub.name : 'Subcategory'}
-                        placeholder={!sub}
-                        onOpen={(top, left, width) => openDropdown(line.key, 'subcategory', top, left, width)}
-                      />
-                    )}
-                  </View>
-
-                  <View style={styles.inputRow}>
-                    <View style={styles.amountBox}>
-                      <Text style={styles.rupee}>₹</Text>
-                      <TextInput
-                        style={styles.amountInput}
-                        value={line.amount}
-                        onChangeText={v => updateLine(line.key, { amount: v })}
-                        keyboardType="decimal-pad"
-                        placeholder="0"
-                        placeholderTextColor={colors.slate400}
-                        selectTextOnFocus
-                        returnKeyType="done"
-                        onFocus={() => setDropdown(null)}
-                      />
-                    </View>
-                    <TextInput
-                      style={styles.remarksInput}
-                      value={line.remarks}
-                      onChangeText={v => updateLine(line.key, { remarks: v })}
-                      placeholder="Remarks (optional)"
-                      placeholderTextColor={colors.slate400}
-                      returnKeyType="done"
-                      onFocus={() => setDropdown(null)}
-                    />
-                  </View>
-                </View>
+                <LineCard
+                  key={line.key}
+                  line={line}
+                  idx={idx}
+                  cat={cat}
+                  lineSubs={lineSubs}
+                  sub={sub}
+                  showRemove={lines.length > 1}
+                  onUpdate={updateLine}
+                  onRemove={removeLine}
+                  onOpenDropdown={openDropdown}
+                  onFocusInput={closeDropdown}
+                />
               );
             })}
 
             <TouchableOpacity
               style={styles.addLineBtn}
-              onPress={() => setLines(prev => [...prev, blankLine()])}
+              onPress={addLine}
               activeOpacity={0.7}
             >
               <Text style={styles.addLineBtnText}>+ Add another line</Text>
@@ -295,7 +350,9 @@ export function AddExpenseModal({ visible, onClose, onSave, isSaving, saveError 
             </TouchableOpacity>
             <View style={styles.saveBtnWrap}>
               <Button
-                title={validLines.length > 0 ? `Save Expense${validLines.length !== 1 ? 's' : ''} (${validLines.length})` : 'Save Expense(s)'}
+                title={validLines.length > 0
+                  ? `Save Expense${validLines.length !== 1 ? 's' : ''} (${validLines.length})`
+                  : 'Save Expense(s)'}
                 onPress={handleSave}
                 disabled={!canSave}
                 loading={isSaving}
@@ -355,6 +412,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 16,
+    maxHeight: '85%',
   },
 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
@@ -362,7 +420,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, color: colors.slate500 },
   closeIcon: { fontSize: 18, color: colors.slate400, marginTop: 2 },
 
-  linesScroll: { maxHeight: 400 },
+  linesScroll: { flexGrow: 0, flexShrink: 1 },
 
   lineCard: {
     borderWidth: 1, borderColor: colors.slate200,
