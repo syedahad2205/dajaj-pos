@@ -1,21 +1,11 @@
 import { serverTimestamp } from "firebase/firestore";
 import { NextResponse } from "next/server";
 import { financeErrorResponse } from "@/lib/financeApiError";
-import { getFinanceUserFirestoreClient, verifyFinanceAccessRequest } from "@/lib/mobileFinanceAuth";
+import { extractBearerToken, getFinanceUserFirestoreClient, verifyFinanceAccessRequest } from "@/lib/mobileFinanceAuth";
 import { getIdempotencyRecord, writeIdempotencyRecord, type IdempotencyRecord } from "@/lib/mobileIdempotency";
 import type { FinanceDailyClosing } from "@/lib/finance";
 
-export { verifyFinanceAccessRequest, getFinanceUserFirestoreClient };
-
-/**
- * Reads the Authorization: Bearer <idToken> header without verifying it,
- * for passing to getFinanceUserFirestoreClient() after verifyFinanceAccessRequest().
- */
-export function extractBearerToken(request: Request): string | null {
-  const authorization = request.headers.get("authorization") ?? request.headers.get("Authorization");
-  if (!authorization?.startsWith("Bearer ")) return null;
-  return authorization.slice("Bearer ".length).trim() || null;
-}
+export { verifyFinanceAccessRequest, getFinanceUserFirestoreClient, extractBearerToken };
 
 /**
  * Wraps a mobile mutation route handler with the standard:
