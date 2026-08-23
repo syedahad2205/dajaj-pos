@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import type { FinanceDailyClosing, DailyClosingExpenseEntry } from '@/modules/daily-closing/types';
 import { useAddExpenses } from '@/modules/daily-closing/hooks/useAddExpenses';
 import { useRemoveExpense } from '@/modules/daily-closing/hooks/useRemoveExpense';
-import { useExpenseSubcategories } from '@/modules/daily-closing/hooks/useExpenseSubcategories';
 import { AddExpenseModal, type AddExpenseRow } from './AddExpenseModal';
 import { SummaryRow } from '@/core/ui/components/SummaryRow';
 import { formatCurrency } from '@/modules/daily-closing/utils/formatUtils';
@@ -16,7 +15,6 @@ export function CashExpensesSection({ date, closing, readonly }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const addExpenses = useAddExpenses(date);
   const removeExpense = useRemoveExpense(date);
-  const { data: subcategories = [] } = useExpenseSubcategories();
 
   function handleSave(rows: AddExpenseRow[]) {
     setSaveError(null);
@@ -75,7 +73,6 @@ export function CashExpensesSection({ date, closing, readonly }: Props) {
         onSave={handleSave}
         isSaving={addExpenses.isPending}
         saveError={saveError}
-        subcategories={subcategories}
       />
     </View>
   );

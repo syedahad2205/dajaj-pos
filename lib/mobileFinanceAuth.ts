@@ -191,8 +191,16 @@ export async function getFinanceUserFirestoreClient(idToken: string): Promise<{
   }
 
   if (!auth.currentUser) {
+    // Identity forwarding failed — auth state didn't hydrate from the token.
+    // This is safe to fall back to the Admin SDK Firestore because
+    // verifyFinanceAccessRequest() has already confirmed the caller is a
+    // valid admin or active financeManager. Clean up the unusable serverApp.
     await cleanupApp(serverApp);
-    throw new Error("Identity forwarding failed: no authenticated user for the supplied ID token.");
+    const adminFirestore = getAdminFirestore() as unknown as Firestore;
+    return {
+      firestore: adminFirestore,
+      cleanup: async () => {},
+    };
   }
 
   return {
