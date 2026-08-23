@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { deleteApp, initializeServerApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
 
@@ -163,25 +163,76 @@ export function extractBearerToken(request: Request): string | null {
  *
  * Always call cleanup() in a finally block to avoid leaking serverApp instances.
  */
+/**
+ * Waits for the serverApp's auth state to hydrate from the injected ID token.
+ * Mirrors firebaseServerApp.ts waitForServerAuth — same logic, same 12s timeout.
+ */
+async function waitForServerAuth(auth: ReturnType<typeof getAuth>): Promise<void> {
+  await Promise.resolve();
+  if (auth.currentUser) return;
+
+  const ready = (auth as { authStateReady?: () => Promise<void> }).authStateReady;
+  if (typeof ready === "function") {
+    await ready.call(auth);
+    if (auth.currentUser) return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      unsubscribe();
+      reject(new Error("Mobile auth: ID token did not hydrate within 12 s."));
+    }, 12_000);
+
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (user) => {
+        if (!user || done) return;
+        done = true;
+        clearTimeout(timer);
+        unsubscribe();
+        resolve();
+      },
+      (error) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        unsubscribe();
+        reject(error);
+      },
+    );
+  });
+}
+
 export async function getFinanceUserFirestoreClient(idToken: string): Promise<{
   firestore: Firestore;
   cleanup: () => Promise<void>;
 }> {
-  // initializeServerApp with authIdToken creates a client-SDK app whose
-  // Firestore requests carry the user's identity — Firestore security rules
-  // see request.auth populated with the user's uid.
-  //
-  // We do NOT wait for auth.currentUser to hydrate: the token has already
-  // been verified by verifyFinanceAccessRequest() via the Admin SDK, so we
-  // know it is valid. Waiting for currentUser introduces a fragile async
-  // step that can fail in serverless environments without changing what
-  // Firestore actually receives (the token is baked into the serverApp).
+  // Same pattern as lib/firebaseServerApp.ts getAuthenticatedFirestoreForRequest.
+  // initializeServerApp with authIdToken creates a client-SDK Firebase app
+  // whose Firestore requests carry the user's identity so security rules see
+  // request.auth populated. We must wait for auth state to hydrate before
+  // making Firestore calls — without this the requests arrive unauthenticated.
   const serverApp = initializeServerApp(firebaseConfig, { authIdToken: idToken });
 
-  return {
-    firestore: getFirestore(serverApp),
-    cleanup: () => cleanupApp(serverApp),
-  };
+  try {
+    const auth = getAuth(serverApp);
+    await waitForServerAuth(auth);
+
+    if (!auth.currentUser) {
+      throw new Error("Identity forwarding failed: no authenticated user for the supplied ID token.");
+    }
+
+    return {
+      firestore: getFirestore(serverApp),
+      cleanup: () => cleanupApp(serverApp),
+    };
+  } catch (error) {
+    await cleanupApp(serverApp);
+    throw error;
+  }
 }
 
 async function cleanupApp(serverApp: ReturnType<typeof initializeServerApp>): Promise<void> {
