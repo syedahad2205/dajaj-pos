@@ -407,6 +407,45 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ── Quick Entry ────────────────────────────────────────────────────────────
+    // New, independent collections for the Quick Entry workflow (upload a
+    // payment screenshot → AI reads it → Finance Manager reviews → saved via
+    // the EXISTING createFinanceTransaction() path, which is what actually
+    // writes fin_transactions/fin_accounts above — nothing here duplicates
+    // those). None of the fin_* rules above were touched to add this.
+    //
+    // quick_entry_payee_rules — payee text → expense category mapping
+    // (spec §8/§25). Read needed by both roles (Quick Entry itself reads
+    // active rules while analysing a screenshot); managing the rules is
+    // Admin-only, same as Finance Defaults.
+    match /quick_entry_payee_rules/{ruleId} {
+      allow read: if isAdminOrFinanceManager();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // quick_entry_records — links the raw AI extraction to the real
+    // transaction id Quick Entry created (spec §12). No screenshot is
+    // stored (by explicit request, spec §15's retention step was skipped
+    // for this build). Immutable once created, like the audit trail.
+    match /quick_entry_records/{transactionId} {
+      allow read, create: if isAdminOrFinanceManager();
+      allow update, delete: if false;
+    }
+
+    // quick_entry_activity_logs — Quick-Entry-specific action log (spec
+    // §20): screenshot uploaded/analysed, duplicate warning shown,
+    // category/account changed, etc. The transaction creation itself is
+    // already covered by fin_audit_logs above (createFinanceTransaction
+    // writes that automatically) — this collection only covers the extra
+    // Quick Entry UX events that trail has no vocabulary for. Deliberately
+    // NOT the same collection/rule as fin_audit_logs, so this addition
+    // never has to touch that trail's existing Admin-only read rule.
+    match /quick_entry_activity_logs/{logId} {
+      allow read, create: if isAdminOrFinanceManager();
+      allow update, delete: if false;
+    }
+
     // ── Finance Users (finance_auth) ──────────────────────────────────────────
     // Auth infrastructure for the future React Native Daily Closing app.
     // Completely separate from /admins — Finance Users have no Firebase Auth

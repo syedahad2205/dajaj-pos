@@ -7,11 +7,15 @@ import type { UserRole } from "@/lib/firebase";
 const tabs = [
   { href: "/admin/finance", label: "Dashboard" },
   { href: "/admin/finance/closing", label: "⭐ Daily Closing" },
+  { href: "/admin/finance/quick-entry", label: "Quick Entry" },
   { href: "/admin/finance/transactions", label: "Transactions" },
+  { href: "/admin/finance/quick-entry/passbook", label: "Passbook" },
   { href: "/admin/finance/reports", label: "Reports" },
+  { href: "/admin/finance/quick-entry/activity", label: "Activity Log" },
   // Accounts, Vendors, Categories, Finance Users, and Lock Settings all live
   // under this tab — Finance Manager never sees it (see role filter below),
-  // since that role is scoped to Dashboard/Daily Closing/Transactions/Reports only.
+  // since that role is scoped to Dashboard/Daily Closing/Transactions/Reports
+  // plus the Quick Entry/Passbook/Activity Log tabs added above.
   { href: "/admin/finance/settings", label: "Settings" },
 ];
 

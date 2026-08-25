@@ -13,6 +13,7 @@ const links = [
   { href: "/admin/finance/settings/users", title: "Finance Users", description: "Create logins for the Daily Closing mobile app — cashiers and managers, separate from DAJAJ Admin accounts." },
   { href: "/admin/finance/vendors", title: "Vendors", description: "Supplier records and purchase history — vendor tagging on Transactions is planned for a later phase." },
   { href: "/admin/finance/settings/audit-log", title: "Audit Log", description: "Every finance change, from every account — Admin and Finance Manager. Who did what, when, and the before/after values." },
+  { href: "/admin/finance/settings/quick-entry-rules", title: "Quick Entry Rules", description: "Payee → expense category mappings used by Quick Entry (e.g. Fayeeq MH → Chicken Expense). Add more as new regular payees come up." },
 ];
 
 export default function FinanceSettingsPage() {

@@ -98,3 +98,11 @@ export function getAdminFirestore(): Firestore {
   }
   return adminFirestore;
 }
+
+// Note: an earlier pass of this file added a Quick Entry screenshot-upload
+// helper here (Admin SDK → Firebase Storage). Removed by explicit request —
+// Quick Entry no longer persists the payment screenshot anywhere; it's sent
+// to the AI for extraction and then discarded. If screenshot retention is
+// wanted again later, re-add a getAdminStorage()/upload helper here (and
+// note Firebase Storage isn't provisioned for this project yet — the
+// default bucket doesn't exist, so that would need setting up first).
