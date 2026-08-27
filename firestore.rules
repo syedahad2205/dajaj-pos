@@ -464,6 +464,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // finance_ai_chat_settings — one doc per branch, holding the "clear
+    // chat" cursor (clearedBefore). Non-destructive: clearing never deletes
+    // finance_ai_chat_messages docs, it just moves this cursor forward so
+    // getFinanceAiChatHistory stops returning anything older than it.
+    match /finance_ai_chat_settings/{branchId} {
+      allow read, write: if isAdmin();
+    }
+
     // ── Finance Users (finance_auth) ──────────────────────────────────────────
     // Auth infrastructure for the future React Native Daily Closing app.
     // Completely separate from /admins — Finance Users have no Firebase Auth

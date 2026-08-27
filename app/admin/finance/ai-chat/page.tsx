@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, formatDateDisplay, todayDateKey } from "@/lib/financeFormat";
@@ -488,6 +488,7 @@ export default function FinanceAiChatPage() {
   const [images, setImages] = useState<PendingImage[]>([]);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
+  const [clearing, setClearing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -576,6 +577,20 @@ export default function FinanceAiChatPage() {
     }
   };
 
+  const handleClearChat = async () => {
+    if (clearing) return;
+    if (!window.confirm("Clear this conversation? Nothing you've already approved is affected — this only clears what's shown here.")) return;
+    setClearing(true);
+    try {
+      await firebaseAuthedFetch("/api/finance/ai-chat/clear", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }).then(readJson);
+      setMessages([]);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Couldn't clear the chat — please try again.");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const updateAction = (messageId: string, updated: ProposedAction) => {
     setMessages((prev) =>
       prev.map((m) => (m.id === messageId ? { ...m, proposedActions: m.proposedActions.map((a) => (a.id === updated.id ? updated : a)) } : m)),
@@ -592,7 +607,19 @@ export default function FinanceAiChatPage() {
         >
           <ArrowLeft size={20} strokeWidth={2.5} />
         </Link>
-        <p className="truncate text-sm font-bold text-slate-900">🤖 AI Assistant</p>
+        <p className="flex-1 truncate text-sm font-bold text-slate-900">🤖 AI Assistant</p>
+        {messages.length > 0 ? (
+          <button
+            type="button"
+            onClick={handleClearChat}
+            disabled={clearing}
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 disabled:opacity-40"
+            aria-label="Clear chat"
+            title="Clear chat"
+          >
+            <Trash2 size={18} />
+          </button>
+        ) : null}
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">

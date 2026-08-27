@@ -23,6 +23,22 @@ import type { CashDepositType, FinanceTransactionType } from "@/lib/finance";
 
 export const FINANCE_AI_CHAT_COLLECTION = "finance_ai_chat_messages";
 
+// "Clear chat" is non-destructive by design — same "archive, don't delete"
+// principle as the rest of this Finance module (categories/accounts are
+// archived, never deleted, once they have history against them). Clearing
+// just moves a per-branch cursor forward; getFinanceAiChatHistory hides any
+// message at or before it, but every message doc (and the real, audited
+// Daily Closing/transaction writes any approved action produced) stays in
+// Firestore forever. One doc per branchId, keyed by branchId itself.
+export const FINANCE_AI_CHAT_SETTINGS_COLLECTION = "finance_ai_chat_settings";
+
+export interface FinanceAiChatSettings {
+  branchId: string;
+  clearedBefore?: Timestamp;
+  clearedBy?: string;
+  clearedByName?: string;
+}
+
 export type FinanceAiChatRole = "user" | "assistant";
 
 /** What kind of write an approved action performs. */

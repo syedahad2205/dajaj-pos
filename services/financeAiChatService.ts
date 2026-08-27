@@ -28,8 +28,10 @@ import {
 } from "@/lib/finance";
 import {
   FINANCE_AI_CHAT_COLLECTION,
+  FINANCE_AI_CHAT_SETTINGS_COLLECTION,
   type FinanceAiChatImageInput,
   type FinanceAiChatMessage,
+  type FinanceAiChatSettings,
   type FinanceAiMatchSource,
   type FinanceAiProposedAction,
 } from "@/lib/financeAiChat";
@@ -76,6 +78,14 @@ const MAX_IMAGES_PER_TURN = 6;
 
 function chatMessagesCollection(db: Firestore) {
   return collection(db, FINANCE_AI_CHAT_COLLECTION);
+}
+
+function chatSettingsCollection(db: Firestore) {
+  return collection(db, FINANCE_AI_CHAT_SETTINGS_COLLECTION);
+}
+
+function toMillis(value: unknown): number {
+  return value && typeof value === "object" && "seconds" in value ? (value as { seconds: number }).seconds * 1000 : 0;
 }
 
 function base64ByteLength(base64: string): number {
@@ -653,18 +663,38 @@ export async function resolveFinanceAiAction(
   }
 }
 
-/** Chat history, oldest first, for the shared admin thread (branch-scoped, not per-admin — this is a single-restaurant tool, same "everyone sees everything" convention as Quick Entry's own Admin activity view). Sorted in memory to avoid needing a new composite index, same trade-off as getQuickEntryActivity. */
+/** Chat history, oldest first, for the shared admin thread (branch-scoped, not per-admin — this is a single-restaurant tool, same "everyone sees everything" convention as Quick Entry's own Admin activity view). Sorted in memory to avoid needing a new composite index, same trade-off as getQuickEntryActivity. Hides anything at or before the branch's clearFinanceAiChatHistory cursor, if one has ever been set. */
 export async function getFinanceAiChatHistory(
   db: Firestore = defaultFirestore,
   branchId: string = DEFAULT_BRANCH_ID,
   limitCount = 100,
 ): Promise<FinanceAiChatMessage[]> {
-  const snapshot = await getDocs(query(chatMessagesCollection(db), where("branchId", "==", branchId)));
-  const rows = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FinanceAiChatMessage, "id">) }));
-  rows.sort((a, b) => {
-    const aMs = a.createdAt && typeof a.createdAt === "object" && "seconds" in a.createdAt ? (a.createdAt as unknown as { seconds: number }).seconds : 0;
-    const bMs = b.createdAt && typeof b.createdAt === "object" && "seconds" in b.createdAt ? (b.createdAt as unknown as { seconds: number }).seconds : 0;
-    return aMs - bMs;
-  });
+  const [snapshot, settingsSnap] = await Promise.all([
+    getDocs(query(chatMessagesCollection(db), where("branchId", "==", branchId))),
+    getDoc(doc(chatSettingsCollection(db), branchId)),
+  ]);
+  const clearedBeforeMs = settingsSnap.exists() ? toMillis((settingsSnap.data() as FinanceAiChatSettings).clearedBefore) : 0;
+
+  const rows = snapshot.docs
+    .map((d) => ({ id: d.id, ...(d.data() as Omit<FinanceAiChatMessage, "id">) }))
+    .filter((m) => toMillis(m.createdAt) > clearedBeforeMs);
+  rows.sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt));
   return rows.slice(-limitCount);
+}
+
+/**
+ * Non-destructive "clear chat": moves the branch's cursor forward to now, so
+ * getFinanceAiChatHistory stops returning anything older than this moment.
+ * Every message doc — and every real Daily Closing/transaction write any
+ * already-approved action produced — is untouched and stays in Firestore,
+ * same "archive, don't delete" principle as the rest of this module.
+ */
+export async function clearFinanceAiChatHistory(
+  userId: string,
+  userName: string,
+  db: Firestore = defaultFirestore,
+  branchId: string = DEFAULT_BRANCH_ID,
+): Promise<void> {
+  const settings: FinanceAiChatSettings = { branchId, clearedBy: userId, clearedByName: userName };
+  await setDoc(doc(chatSettingsCollection(db), branchId), { ...settings, clearedBefore: serverTimestamp() }, { merge: true });
 }
