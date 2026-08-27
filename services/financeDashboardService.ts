@@ -1,8 +1,9 @@
 import type { Firestore } from "firebase/firestore";
 import { firestore as defaultFirestore } from "@/lib/firebase";
-import { DEFAULT_BRANCH_ID, roundCurrency, toDateKey, type FinanceDailyClosing } from "@/lib/finance";
+import { DEFAULT_BRANCH_ID, depositEventKey, roundCurrency, toDateKey, type FinanceDailyClosing } from "@/lib/finance";
 import { getDailyClosingsForRange } from "@/services/financeClosingService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
+import { getFinanceDefaultsMap } from "@/services/financeDefaultsService";
 import { getPostedTransactionsForRange } from "@/services/financeTransactionsService";
 
 /** Sum of one deposit type (e.g. Pigmi) across a set of Daily Closing days. Extending to other deposit types later just means calling this with a different type. */
@@ -90,11 +91,12 @@ export async function getFinanceDashboardSummary(
   const trendStartKey = toDateKey(trendStart);
   const rangeStartKey = trendStartKey < monthStartKey ? trendStartKey : monthStartKey;
 
-  const [rangeClosings, allTimeClosings, accounts, rangeTransactions] = await Promise.all([
+  const [rangeClosings, allTimeClosings, accounts, rangeTransactions, defaultsMap] = await Promise.all([
     getDailyClosingsForRange(rangeStartKey, todayKey, db, branchId),
     getDailyClosingsForRange("2000-01-01", todayKey, db, branchId),
     getFinanceAccounts({ branchId }, db),
     getPostedTransactionsForRange(rangeStartKey, todayKey, db, branchId),
+    getFinanceDefaultsMap(db, branchId),
   ]);
 
   const accountTypeById = new Map(accounts.map((a) => [a.id, a.type]));
@@ -122,8 +124,14 @@ export async function getFinanceDashboardSummary(
   // That raw sum ignores anything that happened to the money afterwards (a withdrawal from the
   // Pigmi account, its opening balance, a voided/edited posting), so it can drift from the real
   // balance shown on the Accounts page. currentBalance is the single source of truth, same as
-  // bankBalance/pendingSettlements below.
-  const pigmiBalance = roundCurrency(accounts.filter((a) => a.status === "active" && a.type === "pigmi").reduce((sum, a) => sum + a.currentBalance, 0));
+  // bankBalance/pendingSettlements below. NOTE: which account this money actually lives in is
+  // decided by Finance Defaults' "pigmi_deposit" mapping (e.g. an account named "Unity"), NOT by
+  // that account's own `type` field — accounts can be typed "cash"/"bank"/etc. regardless of what
+  // they're actually used for, so this must look up the mapped destination account by id, not
+  // filter accounts by `type === "pigmi"`.
+  const pigmiAccountId = defaultsMap.get(depositEventKey("pigmi"))?.destinationAccountId ?? null;
+  const pigmiAccount = pigmiAccountId ? accounts.find((a) => a.id === pigmiAccountId && a.status === "active") : undefined;
+  const pigmiBalance = roundCurrency(pigmiAccount?.currentBalance ?? 0);
   const bankBalance = roundCurrency(accounts.filter((a) => a.status === "active" && a.type === "bank").reduce((sum, a) => sum + a.currentBalance, 0));
   const pendingSettlements = roundCurrency(accounts.filter((a) => a.status === "active" && a.type === "escrow").reduce((sum, a) => sum + a.currentBalance, 0));
 
