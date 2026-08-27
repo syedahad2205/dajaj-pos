@@ -197,6 +197,21 @@ export interface FinanceDailyClosing {
 
   openingCash: number;
   openingCashSource: "chained" | "manual";
+  // Net effect, on the cash drawer account, of transactions dated on THIS
+  // day that Daily Closing doesn't already know about — a manual Transfer
+  // in/out of the drawer via the Transactions tab (e.g. "Transfer from
+  // ICICI"), as opposed to cash_sales/cash_expenses/*_deposit/
+  // cash_recount_adjustment, which are already reflected in closingCash.
+  // This is the ONE explicit exception to "Opening Cash is always the
+  // previous day's Closing Cash": THIS day's own Opening Cash is bumped
+  // by this amount (see applySameDayExternalAdjustment), so a
+  // known/recorded transfer is correctly absorbed into the same day's
+  // Cash Revenue instead of quietly becoming "extra revenue" or getting
+  // canceled out by that day's own Cash Recount Adjustment. Closing Cash
+  // is never touched by this — it always stays the physical count.
+  // Computed once when this day closes (or during a history resync); 0
+  // for any day it hasn't been computed for yet.
+  externalCashAdjustment: number;
 
   expenses: DailyClosingExpenseEntry[];
   cashExpenseTotal: number; // sum of expenses[].amount — the real business expense

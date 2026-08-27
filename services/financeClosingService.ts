@@ -24,17 +24,20 @@ import {
   nextDateKey,
   previousDateKey,
   roundCurrency,
+  toDateKey,
   toTimeKey,
   type CashDepositType,
   type DailyClosingDepositEntry,
   type DailyClosingExpenseEntry,
   type FinanceDailyClosing,
   type FinanceDefault,
+  type FinanceTransaction,
 } from "@/lib/finance";
 import { logFinanceAudit, writeFinanceAuditLog } from "@/services/financeAuditService";
 import { getFinanceDefaultsMap } from "@/services/financeDefaultsService";
 import { getOrCreateExpenseCategoryIdByName, getOrCreateIncomeCategoryIdByName } from "@/services/financeCategoriesService";
-import { createFinanceTransaction, voidFinanceTransaction } from "@/services/financeTransactionsService";
+import { createFinanceTransaction, getPostedTransactionsForRange, voidFinanceTransaction } from "@/services/financeTransactionsService";
+import { getFinanceAccount } from "@/services/financeAccountsService";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Daily Closing register — the restaurant's actual nightly workflow.
@@ -84,6 +87,7 @@ function emptyClosing(date: string, branchId: string, openingCash: number, openi
     reopenedBy: null,
     reopenedByName: null,
     reopenReason: null,
+    externalCashAdjustment: 0,
     autoPostedTransactionsByEvent: {},
     postingWarnings: [],
   };
@@ -151,6 +155,11 @@ function normalizeClosing(raw: DocumentData): FinanceDailyClosing {
   const swiggySales = typeof raw.swiggySales === "number" ? raw.swiggySales : 0;
   const otherIncome = typeof raw.otherIncome === "number" ? raw.otherIncome : 0;
   const closingCash = typeof raw.closingCash === "number" ? raw.closingCash : null;
+  // 0 for any day this hasn't been computed for yet (legacy docs, or a day
+  // that hasn't been through closeDailyClosing/the history resync since
+  // this field was introduced) — resolveOpeningCash treats that as "no
+  // external transfers known for that day", same as before this existed.
+  const externalCashAdjustment = typeof raw.externalCashAdjustment === "number" ? raw.externalCashAdjustment : 0;
 
   const totals = computeDerivedTotals({ openingCash, expenses, deposits, upiSales, zomatoSales, swiggySales, otherIncome, closingCash });
 
@@ -160,6 +169,7 @@ function normalizeClosing(raw: DocumentData): FinanceDailyClosing {
     branchId: raw.branchId ?? DEFAULT_BRANCH_ID,
     openingCash,
     openingCashSource,
+    externalCashAdjustment,
     expenses,
     deposits,
     upiSales,
@@ -198,6 +208,10 @@ function normalizeClosing(raw: DocumentData): FinanceDailyClosing {
  * (whatever an admin already typed in for a day with no previous locked day
  * to chain from — e.g. the very first day ever) rather than resetting it to
  * 0 on every touch.
+ *
+ * This is the RULE, with exactly one explicit exception layered on top by
+ * the caller afterward (see applySameDayExternalAdjustment below) — this
+ * function itself never deviates from "previous day's Closing Cash".
  */
 function resolveOpeningCash(
   prevData: DocumentData | undefined,
@@ -210,6 +224,22 @@ function resolveOpeningCash(
     }
   }
   return { openingCash: existingManualOpeningCash, openingCashSource: "manual" };
+}
+
+/**
+ * The one explicit EXCEPTION to "Opening Cash is always the previous
+ * day's Closing Cash": if money was manually moved into/out of the
+ * drawer on THIS SAME day via a Transfer on the Transactions tab (e.g.
+ * "Transfer from ICICI") — a real, recorded change to the drawer that
+ * Daily Closing's own expense/deposit tracking never sees — that amount
+ * is folded into THIS day's own Opening Cash before Cash Revenue is
+ * computed, so it's correctly absorbed there instead of showing up as a
+ * Cash Recount Adjustment that would otherwise (wrongly) cancel it back
+ * out at the end of the same day. A day with no such transfer passes
+ * through unchanged — the rule (previous day's Closing Cash) holds exactly.
+ */
+function applySameDayExternalAdjustment(chainedOpeningCash: number, externalCashAdjustment: number): number {
+  return roundCurrency(chainedOpeningCash + externalCashAdjustment);
 }
 
 /**
@@ -958,6 +988,217 @@ async function postDailyClosingToLedger(
 }
 
 /**
+ * Net effect, on the cash drawer account, of one date's worth of posted
+ * transactions Daily Closing's own math doesn't already account for — a
+ * manual Transfer/Income/Expense hitting the drawer via the Transactions
+ * tab (autoPostedSource !== "daily_closing"). Excludes cash_sales,
+ * cash_expenses, every *_deposit event, AND cash_recount_adjustment
+ * itself — all of those are already reflected in that day's own
+ * closingCash, so including them here would double-count. Pure grouping
+ * function, no I/O, so both the single-date and full-history callers can
+ * share it.
+ */
+function sumExternalCashDrawerEffectsByDate(transactions: FinanceTransaction[], cashDrawerAccountId: string): Map<string, number> {
+  const byDate = new Map<string, number>();
+  for (const t of transactions) {
+    if (t.autoPostedSource === "daily_closing") continue;
+    let delta = 0;
+    if (t.toAccountId === cashDrawerAccountId) delta += t.amount;
+    if (t.fromAccountId === cashDrawerAccountId) delta -= t.amount;
+    if (delta === 0) continue;
+    byDate.set(t.date, roundCurrency((byDate.get(t.date) ?? 0) + delta));
+  }
+  return byDate;
+}
+
+/** Single-date convenience wrapper around sumExternalCashDrawerEffectsByDate, for closeDailyClosing/cascadeOpeningCashForward where only one day's value is needed. */
+async function computeExternalCashDrawerAdjustment(
+  cashDrawerAccountId: string,
+  date: string,
+  db: Firestore,
+  branchId: string,
+): Promise<number> {
+  const transactions = await getPostedTransactionsForRange(date, date, db, branchId);
+  return sumExternalCashDrawerEffectsByDate(transactions, cashDrawerAccountId).get(date) ?? 0;
+}
+
+/**
+ * The cash drawer account's balance AS OF a specific historical date — NOT
+ * the same thing as its `currentBalance` field, which is always "as of
+ * right now" and therefore includes every later day's postings too. Using
+ * `currentBalance` to reconcile a historical day (from
+ * cascadeOpeningCashForward or the one-time backfill, where later locked
+ * days almost always already exist) would compare that day's Closing Cash
+ * against a balance that already includes weeks of activity that hadn't
+ * happened yet — producing exactly the wildly-wrong "target doesn't match
+ * the displayed balance" symptom this replaced. Computed the same way
+ * getAccountStatement/reconcileAccountBalance do: opening balance + every
+ * still-posted (non-voided) transaction's effect on this account, but
+ * bounded to `date` instead of "today".
+ */
+async function computeCashDrawerBalanceAsOfDate(
+  accountId: string,
+  date: string,
+  db: Firestore,
+  branchId: string,
+): Promise<number | null> {
+  const account = await getFinanceAccount(accountId, db);
+  if (!account) return null;
+  const transactions = await getPostedTransactionsForRange("2000-01-01", date, db, branchId);
+  const effect = transactions.reduce((sum, t) => {
+    if (t.toAccountId === accountId) return sum + t.amount;
+    if (t.fromAccountId === accountId) return sum - t.amount;
+    return sum;
+  }, 0);
+  return roundCurrency(account.openingBalance + effect);
+}
+
+/**
+ * Business rule (explicit request): the cash drawer's ledger balance must
+ * always end up EQUAL to what the Finance Manager actually counted that
+ * day (Closing Cash) — the physical count is the real cash balance, not
+ * whatever the ledger's own running sum happens to add up to. Independent
+ * drift (a missing/unlocked day breaking the Opening Cash chain, cash that
+ * left the drawer without an Expense/Deposit line, etc.) is real-world
+ * reality this function reconciles away, rather than something the ledger
+ * should keep carrying forward silently.
+ *
+ * Compares the cash drawer's TRUE balance as of this day (see
+ * computeCashDrawerBalanceAsOfDate — i.e. AFTER this day's normal Cash
+ * Sales/Cash Expenses/Deposit postings already happened) against
+ * `closing.closingCash`, and posts one more income or expense transaction
+ * for whatever gap remains. This is always a real, visible ledger entry
+ * (category "Cash Recount Adjustment") — never a silent balance edit — so
+ * it shows up in Transactions/Passbook and explains itself.
+ *
+ * Callers are responsible for voiding any PREVIOUS recount-adjustment
+ * transaction for this same day first (mirroring how cash_sales is
+ * handled at each call site) — this function only ever computes fresh
+ * against whatever the ledger's true balance already is right now.
+ */
+// Guards against a concurrent writer (another close, another Sync run, a
+// double-click) changing the cash drawer's balance-as-of-this-date between
+// our read and our post — see the retry loop in
+// reconcileCashDrawerToClosingCash below.
+const MAX_RECONCILE_ATTEMPTS = 4;
+
+async function reconcileCashDrawerToClosingCash(
+  closing: FinanceDailyClosing,
+  userId: string,
+  userName: string,
+  db: Firestore,
+  branchId: string,
+): Promise<{ txId: string | null; drift: number; warning: string | null }> {
+  if (closing.closingCash === null) return { txId: null, drift: 0, warning: null };
+
+  const defaultsMap = await getFinanceDefaultsMap(db, branchId);
+  const cashDrawerAccountId = defaultsMap.get("cash_sales")?.destinationAccountId ?? null;
+  if (!cashDrawerAccountId) {
+    return {
+      txId: null,
+      drift: 0,
+      warning:
+        "Cash Recount Adjustment: no active Finance Defaults mapping configured for Cash Sales — could not sync the ledger to Closing Cash.",
+    };
+  }
+
+  for (let attempt = 0; attempt < MAX_RECONCILE_ATTEMPTS; attempt++) {
+    const balanceAsOfDate = await computeCashDrawerBalanceAsOfDate(cashDrawerAccountId, closing.date, db, branchId);
+    if (balanceAsOfDate === null) {
+      return { txId: null, drift: 0, warning: "Cash Recount Adjustment: the mapped cash drawer account no longer exists." };
+    }
+
+    const drift = roundCurrency(closing.closingCash - balanceAsOfDate);
+    if (drift === 0) return { txId: null, drift: 0, warning: null };
+
+    const remarksVerb = drift > 0 ? "up" : "down";
+    const remarks = `Auto-posted from Daily Closing — synced the cash drawer ledger balance ${remarksVerb} to the physically counted Closing Cash (₹${closing.closingCash}) for ${closing.date}.`;
+
+    let txId: string;
+    try {
+      if (drift > 0) {
+        const categoryId = await getOrCreateIncomeCategoryIdByName("Cash Recount Adjustment", userId, userName, db, branchId);
+        const tx = await createFinanceTransaction(
+          {
+            type: "income",
+            date: closing.date,
+            categoryId,
+            amount: drift,
+            toAccountId: cashDrawerAccountId,
+            remarks,
+            branchId,
+            autoPosted: true,
+            autoPostedSource: "daily_closing",
+          },
+          userId,
+          userName,
+          db,
+        );
+        txId = tx.id;
+      } else {
+        const categoryId = await getOrCreateExpenseCategoryIdByName("Cash Recount Adjustment", userId, userName, db, branchId);
+        const tx = await createFinanceTransaction(
+          {
+            type: "expense",
+            date: closing.date,
+            categoryId,
+            amount: Math.abs(drift),
+            fromAccountId: cashDrawerAccountId,
+            remarks,
+            branchId,
+            autoPosted: true,
+            autoPostedSource: "daily_closing",
+          },
+          userId,
+          userName,
+          db,
+        );
+        txId = tx.id;
+      }
+    } catch (err) {
+      return {
+        txId: null,
+        drift: 0,
+        warning: `Cash Recount Adjustment: failed to sync the ledger to Closing Cash — ${err instanceof Error ? err.message : "unknown error"}.`,
+      };
+    }
+
+    // Our read of the balance-as-of-this-date (above) and our post of the
+    // adjustment are two separate steps — if something else touched this
+    // same account's balance for this same date in between (another close,
+    // another Sync run overlapping this one), the amount we just posted
+    // was computed from a now-stale number and won't actually land on
+    // closing.closingCash. Verify, and if it didn't converge, undo this
+    // attempt and recompute fresh rather than leaving a wrong amount posted.
+    const verifyBalance = await computeCashDrawerBalanceAsOfDate(cashDrawerAccountId, closing.date, db, branchId);
+    const stillOff = verifyBalance === null || roundCurrency(verifyBalance - closing.closingCash) !== 0;
+    if (!stillOff) return { txId, drift, warning: null };
+
+    try {
+      await voidFinanceTransaction(
+        txId,
+        userId,
+        userName,
+        `Recomputing — the cash drawer balance changed while this Cash Recount Adjustment was being posted (attempt ${attempt + 1})`,
+        db,
+      );
+    } catch (err) {
+      return {
+        txId,
+        drift,
+        warning: `Cash Recount Adjustment: posted ₹${Math.abs(drift)} but the drawer balance changed concurrently and the correction couldn't be re-verified — please re-run the sync (${err instanceof Error ? err.message : "unknown error"}).`,
+      };
+    }
+  }
+
+  return {
+    txId: null,
+    drift: 0,
+    warning: `Cash Recount Adjustment: the drawer balance kept changing while trying to sync it — please re-run the sync once nothing else is closing a day at the same time.`,
+  };
+}
+
+/**
  * Locks the day. This is the single "Save Daily Closing" action: enter the
  * physically-counted Closing Cash and everything else (Cash Revenue, Total
  * Revenue) is derived — there's no separate "expected vs actual"
@@ -978,6 +1219,108 @@ async function postDailyClosingToLedger(
 // Real chains stop as soon as they resync (see below) — this is just a
 // sane upper bound so a data anomaly can never turn into an unbounded loop.
 const MAX_CASCADE_DAYS = 3650;
+
+/**
+ * Shared by cascadeOpeningCashForward and the historical backfill: voids
+ * whatever "Cash Sales" transaction was previously posted for this day (if
+ * any) and re-posts it fresh against `draft.cashRevenue` — used whenever
+ * Opening Cash for an already-locked day changes (a Closing Cash
+ * correction upstream, or a newly-discovered external-transfer
+ * adjustment) and the day's own Cash Sales posting needs to catch up.
+ * Mutates `autoPosted`/`warnings` in place so callers can fold the result
+ * straight into whatever they're about to persist.
+ */
+async function revoidAndRepostCashSales(
+  draft: FinanceDailyClosing,
+  autoPosted: Record<string, string>,
+  warnings: string[],
+  contextNote: string,
+  userId: string,
+  userName: string,
+  db: Firestore,
+  branchId: string,
+): Promise<void> {
+  const oldCashSalesTxId = autoPosted.cash_sales;
+  if (oldCashSalesTxId) {
+    try {
+      await voidFinanceTransaction(oldCashSalesTxId, userId, userName, `Daily Closing for ${draft.date} ${contextNote}`, db);
+      delete autoPosted.cash_sales;
+    } catch (err) {
+      warnings.push(`Cash Sales: could not void the previous posting ${contextNote} — left as-is (${err instanceof Error ? err.message : "unknown error"}).`);
+      return; // old posting still live — don't also post a fresh one on top of it
+    }
+  }
+
+  if (!("cash_sales" in autoPosted) && draft.cashRevenue > 0) {
+    try {
+      const defaultsMap = await getFinanceDefaultsMap(db, branchId);
+      const mapping = defaultsMap.get("cash_sales");
+      if (mapping?.isActive && mapping.destinationAccountId) {
+        const categoryId = await getOrCreateIncomeCategoryIdByName("Cash Sales", userId, userName, db, branchId);
+        const tx = await createFinanceTransaction(
+          {
+            type: "income",
+            date: draft.date,
+            categoryId,
+            amount: draft.cashRevenue,
+            toAccountId: mapping.destinationAccountId,
+            remarks: "Auto-posted from Daily Closing",
+            branchId,
+            autoPosted: true,
+            autoPostedSource: "daily_closing",
+          },
+          userId,
+          userName,
+          db,
+        );
+        autoPosted.cash_sales = tx.id;
+      } else {
+        warnings.push(`Cash Sales: no active Finance Defaults mapping configured — ₹${draft.cashRevenue} was not re-posted ${contextNote}.`);
+      }
+    } catch (err) {
+      warnings.push(`Cash Sales: failed to re-post ${contextNote} — ${err instanceof Error ? err.message : "unknown error"}.`);
+    }
+  }
+}
+
+/**
+ * Shared by cascadeOpeningCashForward and the historical backfill: voids
+ * whatever "Cash Recount Adjustment" was previously posted for this day
+ * (if any) and computes+posts a fresh one via reconcileCashDrawerToClosingCash.
+ * Mutates `autoPosted`/`warnings` in place, same convention as
+ * revoidAndRepostCashSales above.
+ */
+async function revoidAndRepostRecountAdjustment(
+  draft: FinanceDailyClosing,
+  autoPosted: Record<string, string>,
+  warnings: string[],
+  contextNote: string,
+  userId: string,
+  userName: string,
+  db: Firestore,
+  branchId: string,
+): Promise<{ drift: number }> {
+  const oldRecountTxId = autoPosted.cash_recount_adjustment;
+  if (oldRecountTxId) {
+    try {
+      await voidFinanceTransaction(oldRecountTxId, userId, userName, `Daily Closing for ${draft.date} ${contextNote}`, db);
+      delete autoPosted.cash_recount_adjustment;
+    } catch (err) {
+      warnings.push(
+        `Cash Recount Adjustment: could not void the previous posting ${contextNote} — left as-is (${err instanceof Error ? err.message : "unknown error"}).`,
+      );
+      return { drift: 0 };
+    }
+  }
+
+  if (!("cash_recount_adjustment" in autoPosted)) {
+    const { txId: recountTxId, drift, warning: recountWarning } = await reconcileCashDrawerToClosingCash(draft, userId, userName, db, branchId);
+    if (recountTxId) autoPosted.cash_recount_adjustment = recountTxId;
+    if (recountWarning) warnings.push(recountWarning);
+    return { drift };
+  }
+  return { drift: 0 };
+}
 
 /**
  * After a day's Closing Cash is set or corrected (see closeDailyClosing),
@@ -1025,70 +1368,51 @@ async function cascadeOpeningCashForward(
     const prevSnap = await getDoc(doc(dailyClosingCollection(db), previousDateKey(currentDate)));
     const resolved = resolveOpeningCash(prevSnap.exists() ? prevSnap.data() : undefined, 0);
 
-    if (resolved.openingCash === current.openingCash && resolved.openingCashSource === current.openingCashSource) {
+    // The one exception to the rule (see applySameDayExternalAdjustment):
+    // fold THIS day's own external transfers into its Opening Cash too,
+    // recomputed fresh since a Reopen/re-close upstream could have shifted
+    // what's actually posted for this exact date.
+    const cascadeWarnings: string[] = [];
+    let externalCashAdjustment = current.externalCashAdjustment;
+    const cashDrawerAccountIdForExternal = (await getFinanceDefaultsMap(db, branchId)).get("cash_sales")?.destinationAccountId ?? null;
+    if (cashDrawerAccountIdForExternal) {
+      try {
+        externalCashAdjustment = await computeExternalCashDrawerAdjustment(cashDrawerAccountIdForExternal, currentDate, db, branchId);
+      } catch (err) {
+        cascadeWarnings.push(
+          `Could not recompute ${currentDate}'s external cash-drawer transfers while re-chaining from ${fromDate} — ${err instanceof Error ? err.message : "unknown error"}.`,
+        );
+      }
+    }
+    const effectiveOpeningCash = applySameDayExternalAdjustment(resolved.openingCash, externalCashAdjustment);
+
+    if (
+      effectiveOpeningCash === current.openingCash &&
+      resolved.openingCashSource === current.openingCashSource &&
+      externalCashAdjustment === current.externalCashAdjustment
+    ) {
       break;
     }
 
-    const merged = { ...current, openingCash: resolved.openingCash, openingCashSource: resolved.openingCashSource };
+    const merged = { ...current, openingCash: effectiveOpeningCash, openingCashSource: resolved.openingCashSource, externalCashAdjustment };
     const totals = computeDerivedTotals(merged);
     const draft: FinanceDailyClosing = { ...merged, ...totals };
 
-    // Drop any previous "Cash Sales" warning before deciding fresh below —
-    // otherwise a stale complaint (e.g. from before Finance Defaults was
-    // configured) would keep piling up forever across repeated corrections.
-    const warnings = draft.postingWarnings.filter((w) => !w.startsWith("Cash Sales:"));
+    // Drop any previous "Cash Sales"/"Cash Recount Adjustment" warning
+    // before deciding fresh below — otherwise a stale complaint (e.g. from
+    // before Finance Defaults was configured) would keep piling up forever
+    // across repeated corrections.
+    const warnings = [...cascadeWarnings, ...draft.postingWarnings.filter((w) => !w.startsWith("Cash Sales:") && !w.startsWith("Cash Recount Adjustment:"))];
     const autoPosted = { ...draft.autoPostedTransactionsByEvent };
-    const oldCashSalesTxId = autoPosted.cash_sales;
+    const contextNote = `was automatically re-chained after a Closing Cash correction on ${fromDate}`;
 
-    if (oldCashSalesTxId) {
-      try {
-        await voidFinanceTransaction(
-          oldCashSalesTxId,
-          userId,
-          userName,
-          `Daily Closing for ${currentDate} was automatically re-chained after a Closing Cash correction on ${fromDate}`,
-          db,
-        );
-        delete autoPosted.cash_sales;
-      } catch (err) {
-        warnings.push(
-          `Cash Sales: could not void the previous posting while re-chaining from ${fromDate} — left as-is (${err instanceof Error ? err.message : "unknown error"}).`,
-        );
-      }
-    }
+    await revoidAndRepostCashSales(draft, autoPosted, warnings, contextNote, userId, userName, db, branchId);
 
-    if (!("cash_sales" in autoPosted) && draft.cashRevenue > 0) {
-      try {
-        const defaultsMap = await getFinanceDefaultsMap(db, branchId);
-        const mapping = defaultsMap.get("cash_sales");
-        if (mapping?.isActive && mapping.destinationAccountId) {
-          const categoryId = await getOrCreateIncomeCategoryIdByName("Cash Sales", userId, userName, db, branchId);
-          const tx = await createFinanceTransaction(
-            {
-              type: "income",
-              date: currentDate,
-              categoryId,
-              amount: draft.cashRevenue,
-              toAccountId: mapping.destinationAccountId,
-              remarks: "Auto-posted from Daily Closing",
-              branchId,
-              autoPosted: true,
-              autoPostedSource: "daily_closing",
-            },
-            userId,
-            userName,
-            db,
-          );
-          autoPosted.cash_sales = tx.id;
-        } else {
-          warnings.push(
-            `Cash Sales: no active Finance Defaults mapping configured — ₹${draft.cashRevenue} was not re-posted while re-chaining from ${fromDate}.`,
-          );
-        }
-      } catch (err) {
-        warnings.push(`Cash Sales: failed to re-post while re-chaining from ${fromDate} — ${err instanceof Error ? err.message : "unknown error"}.`);
-      }
-    }
+    // Same rule as closeDailyClosing: the cash drawer's balance must always
+    // end up equal to this day's own Closing Cash. Opening Cash (and so
+    // Cash Sales) may have just shifted above, so re-void and re-post the
+    // adjustment fresh against wherever the drawer balance actually landed.
+    await revoidAndRepostRecountAdjustment(draft, autoPosted, warnings, contextNote, userId, userName, db, branchId);
 
     const final: FinanceDailyClosing = { ...draft, autoPostedTransactionsByEvent: autoPosted, postingWarnings: warnings };
     await setDoc(ref, { ...final, updatedAt: serverTimestamp() }, { merge: true });
@@ -1129,11 +1453,28 @@ export async function closeDailyClosing(
   const base = await loadOrBootstrapClosing(date, db, branchId);
   if (base.locked) throw new Error(`${date} is already closed. Ask an admin to reopen it first.`);
 
-  const merged = { ...base, closingCash: roundCurrency(closingCash) };
+  // The one exception to "Opening Cash is always the previous day's
+  // Closing Cash" (see applySameDayExternalAdjustment): fold today's own
+  // external transfers into Opening Cash BEFORE Cash Revenue is computed,
+  // so they're correctly absorbed here rather than showing up later as a
+  // Cash Recount Adjustment that would otherwise cancel them back out.
+  const warnings: string[] = [];
+  let externalCashAdjustment = 0;
+  const cashDrawerAccountIdForExternal = (await getFinanceDefaultsMap(db, branchId)).get("cash_sales")?.destinationAccountId ?? null;
+  if (cashDrawerAccountIdForExternal) {
+    try {
+      externalCashAdjustment = await computeExternalCashDrawerAdjustment(cashDrawerAccountIdForExternal, date, db, branchId);
+    } catch (err) {
+      warnings.push(
+        `Could not compute today's external cash-drawer transfers (Opening Cash may not include them) — ${err instanceof Error ? err.message : "unknown error"}.`,
+      );
+    }
+  }
+  const effectiveOpeningCash = applySameDayExternalAdjustment(base.openingCash, externalCashAdjustment);
+
+  const merged = { ...base, openingCash: effectiveOpeningCash, closingCash: roundCurrency(closingCash) };
   const totals = computeDerivedTotals(merged);
   const draft: FinanceDailyClosing = { ...merged, ...totals };
-
-  const warnings: string[] = [];
 
   // Re-close after a reopen: void whatever was posted last time before posting fresh numbers.
   // If a void fails, the old transaction is still live and still affecting the
@@ -1150,7 +1491,7 @@ export async function closeDailyClosing(
   // Swiggy/Other Income) still run concurrently — and the two groups run
   // at the same time as each other.
   const isCashDrawerEventKey = (eventKey: string) =>
-    eventKey === "cash_sales" || eventKey === "cash_expenses" || eventKey.endsWith("_deposit");
+    eventKey === "cash_sales" || eventKey === "cash_expenses" || eventKey === "cash_recount_adjustment" || eventKey.endsWith("_deposit");
 
   const voidEvent = async (eventKey: string, txId: string) => {
     try {
@@ -1198,9 +1539,23 @@ export async function closeDailyClosing(
     mergedAutoPosted[eventKey] = draft.autoPostedTransactionsByEvent[eventKey];
   }
 
+  // Cash drawer balance must always end up equal to the physically counted
+  // Closing Cash — see reconcileCashDrawerToClosingCash. Runs last, after
+  // this day's normal Cash Sales/Cash Expenses/Deposits are posted above,
+  // so it sees (and closes) whatever gap remains. Skipped only if voiding
+  // the previous adjustment above failed (unvoidableEventKeys) — in that
+  // case the old adjustment is still live and re-posting now would double
+  // count, exactly like every other cash-drawer event above.
+  if (!unvoidableEventKeys.has("cash_recount_adjustment")) {
+    const { txId: recountTxId, warning: recountWarning } = await reconcileCashDrawerToClosingCash(draft, userId, userName, db, branchId);
+    if (recountTxId) mergedAutoPosted.cash_recount_adjustment = recountTxId;
+    if (recountWarning) warnings.push(recountWarning);
+  }
+
   const closingRef = doc(dailyClosingCollection(db), date);
   let final: FinanceDailyClosing = {
     ...draft,
+    externalCashAdjustment,
     locked: true,
     closingTime: toTimeKey(),
     closedBy: userId,
@@ -1375,4 +1730,168 @@ export async function getDailyClosingsForRange(
     ),
   );
   return snapshot.docs.map((d) => normalizeClosing(d.data()));
+}
+
+export interface CashDrawerRecountBackfillResult {
+  daysChecked: number;
+  /** Days whose Opening Cash changed because of that same day's own external-transfer adjustment (see applySameDayExternalAdjustment). */
+  openingCashDaysAdjusted: string[];
+  daysAdjusted: string[];
+  /** Sum of the absolute drift corrected across every adjusted day — not a running/net total, since a later day's adjustment can partially offset an earlier one. */
+  totalAdjustment: number;
+  warnings: string[];
+}
+
+/**
+ * One-time historical fix, applied across the WHOLE locked history in one
+ * oldest-to-newest pass, for two rules together:
+ *
+ * 1. The rule is "Opening Cash is always the previous day's Closing
+ *    Cash" — with exactly one exception (applySameDayExternalAdjustment):
+ *    a manual Transfer/Income/Expense that hit the cash drawer account on
+ *    day D itself (e.g. "Transfer from ICICI") is folded into day D's own
+ *    Opening Cash before Cash Revenue is computed, so it's correctly
+ *    absorbed there instead of showing up as a Cash Recount Adjustment
+ *    that would otherwise (wrongly) cancel it back out at the end of the
+ *    same day. A day with no such transfer is untouched by this rule.
+ * 2. The cash drawer's ledger balance must always equal that day's own
+ *    physically-counted Closing Cash (see reconcileCashDrawerToClosingCash)
+ *    — checked AFTER rule 1 above, so by the time this runs, any
+ *    known/recorded transfer is already accounted for and only genuinely
+ *    unexplained drift remains to be swept up.
+ *
+ * Must run oldest-to-newest and strictly sequentially (never in
+ * parallel): each day's corrections change the numbers the next day's
+ * math depends on. Every change is either a real, visible ledger entry
+ * ("Cash Sales" re-posted at its corrected amount, "Cash Recount
+ * Adjustment" for whatever gap remains) or a plain field correction
+ * (Opening Cash, externalCashAdjustment) — never a silent balance edit.
+ * Any previous Cash Sales/Recount Adjustment posting for a day is voided
+ * before re-posting, so re-running this is safe and idempotent.
+ * Admin-only — see app/api/finance/closing/backfill-cash-recount/route.ts.
+ */
+export async function backfillCashDrawerRecounts(
+  userId: string,
+  userName: string,
+  db: Firestore = defaultFirestore,
+  branchId: string = DEFAULT_BRANCH_ID,
+): Promise<CashDrawerRecountBackfillResult> {
+  const today = toDateKey();
+  const allClosings = await getDailyClosingsForRange("2000-01-01", today, db, branchId);
+  const lockedClosings = allClosings.filter((c) => c.locked && c.closingCash !== null).sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  const defaultsMap = await getFinanceDefaultsMap(db, branchId);
+  const cashDrawerAccountId = defaultsMap.get("cash_sales")?.destinationAccountId ?? null;
+
+  let externalAdjustmentsByDate = new Map<string, number>();
+  if (cashDrawerAccountId) {
+    const allTransactions = await getPostedTransactionsForRange("2000-01-01", today, db, branchId);
+    externalAdjustmentsByDate = sumExternalCashDrawerEffectsByDate(allTransactions, cashDrawerAccountId);
+  }
+
+  const openingCashDaysAdjusted: string[] = [];
+  const daysAdjusted: string[] = [];
+  const warnings: string[] = [];
+  let totalAdjustment = 0;
+
+  // Tracks each day's (possibly just-corrected) Closing Cash as we go, so
+  // the NEXT iteration's "previous day's Closing Cash" is up to date — a
+  // fresh Firestore read would only see last run's numbers.
+  const chainedClosingCash = new Map<string, number>();
+
+  for (const closing of lockedClosings) {
+    const ref = doc(dailyClosingCollection(db), closing.date);
+    const contextNote = "was resynced during a cash-drawer history sync";
+
+    if (!cashDrawerAccountId) {
+      warnings.push(`${closing.date}: no active Finance Defaults mapping configured for Cash Sales — skipped.`);
+      continue;
+    }
+
+    // ── The rule: Opening Cash = previous day's Closing Cash ──
+    const prevClosingCash = chainedClosingCash.get(previousDateKey(closing.date));
+    const chainedOpeningCash = prevClosingCash !== undefined ? prevClosingCash : closing.openingCash;
+    const chainedOpeningCashSource: "chained" | "manual" = prevClosingCash !== undefined ? "chained" : closing.openingCashSource;
+
+    // ── The one exception: fold THIS day's own external transfers in ──
+    const thisExternal = externalAdjustmentsByDate.get(closing.date) ?? 0;
+    const openingCash = applySameDayExternalAdjustment(chainedOpeningCash, thisExternal);
+    const openingCashSource = chainedOpeningCashSource;
+    const openingCashChanged = openingCash !== closing.openingCash || openingCashSource !== closing.openingCashSource;
+    if (openingCashChanged) openingCashDaysAdjusted.push(closing.date);
+
+    const totals = computeDerivedTotals({
+      openingCash,
+      expenses: closing.expenses,
+      deposits: closing.deposits,
+      upiSales: closing.upiSales,
+      zomatoSales: closing.zomatoSales,
+      swiggySales: closing.swiggySales,
+      otherIncome: closing.otherIncome,
+      closingCash: closing.closingCash,
+    });
+    const draft: FinanceDailyClosing = { ...closing, openingCash, openingCashSource, externalCashAdjustment: thisExternal, ...totals };
+
+    const autoPosted = { ...closing.autoPostedTransactionsByEvent };
+    const warningsForDay = closing.postingWarnings.filter((w) => !w.startsWith("Cash Sales:") && !w.startsWith("Cash Recount Adjustment:"));
+
+    if (openingCashChanged) {
+      await revoidAndRepostCashSales(draft, autoPosted, warningsForDay, contextNote, userId, userName, db, branchId);
+    }
+
+    // ── Rule 2: drawer balance must equal this day's own Closing Cash ──
+    const { drift: recountDrift } = await revoidAndRepostRecountAdjustment(
+      draft,
+      autoPosted,
+      warningsForDay,
+      contextNote,
+      userId,
+      userName,
+      db,
+      branchId,
+    );
+    if (autoPosted.cash_recount_adjustment && recountDrift !== 0) {
+      daysAdjusted.push(closing.date);
+      totalAdjustment = roundCurrency(totalAdjustment + Math.abs(recountDrift));
+    }
+
+    warnings.push(...warningsForDay.filter((w) => !closing.postingWarnings.includes(w)).map((w) => `${closing.date}: ${w}`));
+
+    chainedClosingCash.set(closing.date, closing.closingCash as number);
+
+    await setDoc(
+      ref,
+      {
+        openingCash: draft.openingCash,
+        openingCashSource: draft.openingCashSource,
+        cashExpenseTotal: draft.cashExpenseTotal,
+        depositTotal: draft.depositTotal,
+        totalCashOut: draft.totalCashOut,
+        cashRevenue: draft.cashRevenue,
+        totalRevenue: draft.totalRevenue,
+        externalCashAdjustment: thisExternal,
+        autoPostedTransactionsByEvent: autoPosted,
+        postingWarnings: warningsForDay,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  }
+
+  if (daysAdjusted.length > 0 || openingCashDaysAdjusted.length > 0 || warnings.length > 0) {
+    await logFinanceAudit(
+      {
+        module: "closing",
+        entityId: "cash_drawer_recount_backfill",
+        entityLabel: "Cash Drawer Recount Backfill",
+        action: "backfill",
+        userId,
+        userName,
+        newValue: { openingCashDaysAdjusted, daysAdjusted, warnings },
+      },
+      db,
+    );
+  }
+
+  return { daysChecked: lockedClosings.length, openingCashDaysAdjusted, daysAdjusted, totalAdjustment, warnings };
 }

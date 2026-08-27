@@ -29,6 +29,14 @@ interface ReconciliationResult {
   corrected: boolean;
 }
 
+interface CashDrawerRecountBackfillResult {
+  daysChecked: number;
+  openingCashDaysAdjusted: string[];
+  daysAdjusted: string[];
+  totalAdjustment: number;
+  warnings: string[];
+}
+
 const TYPE_LABEL: Record<AccountType, string> = {
   cash: "Cash",
   bank: "Bank",
@@ -66,6 +74,9 @@ export default function FinanceAccountsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reconcileById, setReconcileById] = useState<Record<string, ReconciliationResult>>({});
   const [reconcileBusyId, setReconcileBusyId] = useState<string | null>(null);
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<CashDrawerRecountBackfillResult | null>(null);
+  const [backfillError, setBackfillError] = useState("");
 
   const [form, setForm] = useState({ name: "", type: "cash" as AccountType, openingBalance: "0", description: "" });
 
@@ -223,6 +234,28 @@ export default function FinanceAccountsPage() {
     }
   };
 
+  const handleBackfillCashRecount = async () => {
+    if (
+      !window.confirm(
+        "Walk through every closed day and post a Cash Recount Adjustment wherever the cash drawer's ledger balance doesn't match that day's Closing Cash? This posts real, visible transactions and is recorded in the audit trail.",
+      )
+    ) {
+      return;
+    }
+    setBackfillBusy(true);
+    setBackfillError("");
+    try {
+      const response = await firebaseAuthedFetch("/api/finance/closing/backfill-cash-recount", { method: "POST" });
+      const payload = await readJson(response);
+      setBackfillResult(payload.result);
+      await load();
+    } catch (err) {
+      setBackfillError(err instanceof Error ? err.message : "Failed to sync the cash drawer to Daily Closing history.");
+    } finally {
+      setBackfillBusy(false);
+    }
+  };
+
   const totalBalance = accounts.filter((a) => a.status === "active").reduce((sum, a) => sum + a.currentBalance, 0);
 
   return (
@@ -265,6 +298,14 @@ export default function FinanceAccountsPage() {
             ) : null}
             <button
               type="button"
+              onClick={handleBackfillCashRecount}
+              disabled={backfillBusy}
+              className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              {backfillBusy ? "Syncing…" : "Sync Cash Drawer to Daily Closing"}
+            </button>
+            <button
+              type="button"
               onClick={openCreateModal}
               className="flex items-center gap-1.5 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
             >
@@ -275,6 +316,27 @@ export default function FinanceAccountsPage() {
 
         {error ? (
           <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p>
+        ) : null}
+
+        {backfillError ? (
+          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{backfillError}</p>
+        ) : null}
+
+        {backfillResult ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <p className="font-semibold">
+              Checked {backfillResult.daysChecked} closed day(s) — {backfillResult.openingCashDaysAdjusted.length} day(s) had Opening Cash
+              corrected for external transfers, {backfillResult.daysAdjusted.length} Recount Adjustment(s) posted, total drift corrected{" "}
+              {formatCurrency(backfillResult.totalAdjustment)}.
+            </p>
+            {backfillResult.warnings.length > 0 ? (
+              <ul className="mt-1 list-inside list-disc text-xs text-emerald-700">
+                {backfillResult.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         ) : null}
 
         {fetching ? (

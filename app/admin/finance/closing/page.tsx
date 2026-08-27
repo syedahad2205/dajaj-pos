@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Calendar, History, Plus, Trash2 } from "lucide-react";
@@ -11,6 +11,7 @@ import { roundCurrency, SUPPORTED_CASH_DEPOSIT_TYPES, CASH_DEPOSIT_TYPE_LABELS, 
 import FinanceNav from "@/components/finance/FinanceNav";
 import Modal from "@/components/finance/Modal";
 import NativeSelectField from "@/components/ui/NativeSelectField";
+import ReadClosingFromImageModal from "@/components/finance/ReadClosingFromImageModal";
 
 interface ExpenseEntry {
   id: string;
@@ -116,6 +117,15 @@ function FinanceClosingContent() {
   });
   const [depositSaving, setDepositSaving] = useState(false);
   const [depositError, setDepositError] = useState("");
+
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  // The "Read from Image" modal's Closing/Outstanding guess is a pure client
+  // draft (never persisted). Applying its expenses/deposits calls load() to
+  // refresh from Firestore, which re-hydrates closingCashDraft from the
+  // server's *unrelated, unchanged* saved closingCash — wiping the guess
+  // out from under the user right as the modal closes. This ref survives
+  // that refresh so the guess can be reapplied afterward.
+  const pendingClosingCashRef = useRef<string | null>(null);
 
   const load = async () => {
     setFetching(true);
@@ -500,16 +510,25 @@ function FinanceClosingContent() {
 
               {/* Cash Expenses */}
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">2. Cash Expenses</p>
                   {!locked ? (
-                    <button
-                      type="button"
-                      onClick={openExpenseModal}
-                      className="flex flex-shrink-0 items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2.5 text-xs font-semibold text-white transition active:scale-[0.97] hover:bg-slate-800"
-                    >
-                      <Plus className="h-3.5 w-3.5" /> Add Expenses
-                    </button>
+                    <div className="flex flex-shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setImageModalOpen(true)}
+                        className="flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-orange-300 bg-orange-50 px-3.5 py-2.5 text-xs font-semibold text-orange-700 transition active:scale-[0.97] hover:bg-orange-100"
+                      >
+                        📷 Read from Image
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openExpenseModal}
+                        className="flex flex-shrink-0 items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2.5 text-xs font-semibold text-white transition active:scale-[0.97] hover:bg-slate-800"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add Expenses
+                      </button>
+                    </div>
                   ) : null}
                 </div>
 
@@ -903,6 +922,30 @@ function FinanceClosingContent() {
             </div>
           </div>
         </Modal>
+      ) : null}
+
+      {imageModalOpen ? (
+        <ReadClosingFromImageModal
+          date={date}
+          categories={activeCategories}
+          onClose={() => setImageModalOpen(false)}
+          onApplied={() => {
+            void (async () => {
+              await load();
+              // Reapply the AI's Closing/Outstanding guess after the
+              // refresh clobbers it — see pendingClosingCashRef above.
+              if (pendingClosingCashRef.current !== null) {
+                setClosingCashDraft(pendingClosingCashRef.current);
+                pendingClosingCashRef.current = null;
+              }
+            })();
+          }}
+          onDateDetected={(detectedDate) => setDate(detectedDate)}
+          onClosingCashSuggested={(value) => {
+            pendingClosingCashRef.current = value;
+            setClosingCashDraft(value);
+          }}
+        />
       ) : null}
     </main>
   );
