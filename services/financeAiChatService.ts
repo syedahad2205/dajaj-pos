@@ -35,8 +35,10 @@ import {
 } from "@/lib/financeAiChat";
 import { analyzeFinanceAiChatTurn, isGeminiUnavailableError, type FinanceAiChatAnalysis, type FinanceAiRawAction } from "@/lib/geminiFinanceAssistant";
 import { payeeTextsLooselyMatch } from "@/lib/quickEntry";
+import { formatCurrency } from "@/lib/financeFormat";
 import { getExpenseCategories, getIncomeCategories } from "@/services/financeCategoriesService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
+import { getFinanceDashboardSummary, type FinanceDashboardSummary } from "@/services/financeDashboardService";
 import {
   addDailyClosingDeposit,
   addDailyClosingExpense,
@@ -124,6 +126,57 @@ function resolveDepositType(aiType: string | null): CashDepositType | null {
     if (match) return match;
   }
   return SUPPORTED_CASH_DEPOSIT_TYPES.length === 1 ? SUPPORTED_CASH_DEPOSIT_TYPES[0] : null;
+}
+
+/**
+ * Turns the Dashboard's own summary (services/financeDashboardService.ts —
+ * the exact same numbers shown on the Finance Dashboard page, nothing
+ * recomputed differently here) plus the raw account list into a compact,
+ * human-readable block for the AI prompt. This is the ONLY data source the
+ * assistant is allowed to answer informational questions from — see
+ * buildPrompt in lib/geminiFinanceAssistant.ts. Every figure here is real
+ * and fetched fresh for this exact chat turn, never cached across turns.
+ */
+function buildFinanceSnapshotText(summary: FinanceDashboardSummary, accounts: FinanceAccount[]): string {
+  const c = summary.cards;
+  const lines: string[] = [];
+
+  lines.push(
+    `Today: Cash Revenue ${formatCurrency(c.todayCashRevenue)}, Cash Expense ${formatCurrency(c.todayCashExpense)}, Pigmi Deposit ${formatCurrency(
+      c.todayPigmiDeposit,
+    )}, Total Revenue ${formatCurrency(c.todayTotalRevenue)}, Profit ${formatCurrency(c.todayProfit)}. (These read ₹0 until today's Daily Closing is saved.)`,
+  );
+  lines.push(
+    `Balances right now: Cash on Hand ${formatCurrency(c.cashOnHand)} (the latest Daily Closing's Closing Cash — the real physical cash count), Bank Balance ${formatCurrency(
+      c.bankBalance,
+    )}, Pigmi Balance ${formatCurrency(c.pigmiBalance)}, Pending Settlements ${formatCurrency(
+      c.pendingSettlements,
+    )} (Zomato/Swiggy revenue already recognized but not yet settled into a bank account).`,
+  );
+  lines.push(`This calendar month so far: Revenue ${formatCurrency(c.monthlyRevenue)}, Expense ${formatCurrency(c.monthlyExpense)}, Profit ${formatCurrency(c.monthlyProfit)}.`);
+
+  const activeAccounts = accounts.filter((a) => a.status === "active");
+  if (activeAccounts.length > 0) {
+    lines.push(`Individual account balances: ${activeAccounts.map((a) => `${a.name} (${a.type}) = ${formatCurrency(a.currentBalance)}`).join(", ")}.`);
+  }
+
+  if (summary.topExpenseCategories.length > 0) {
+    lines.push(`Top expense categories this month: ${summary.topExpenseCategories.map((x) => `${x.label} ${formatCurrency(x.amount)}`).join(", ")}.`);
+  }
+  if (summary.incomeSources.length > 0) {
+    lines.push(`Income sources this month: ${summary.incomeSources.map((x) => `${x.label} ${formatCurrency(x.amount)}`).join(", ")}.`);
+  }
+
+  const recentTrend = summary.revenueExpenseTrend.slice(-7);
+  if (recentTrend.length > 0) {
+    lines.push(
+      `Last ${recentTrend.length} days (date: revenue / expense / net cash flow): ${recentTrend
+        .map((d) => `${d.date}: ${formatCurrency(d.revenue)} / ${formatCurrency(d.expense)} / ${formatCurrency(d.netCashFlow)}`)
+        .join("; ")}.`,
+    );
+  }
+
+  return lines.join("\n");
 }
 
 interface ResolveContext {
@@ -333,10 +386,11 @@ export async function sendFinanceAiChatMessage(
   };
   await setDoc(userMessageRef, { ...userMessage, createdAt: serverTimestamp() });
 
-  const [expenseCategories, incomeCategories, accounts] = await Promise.all([
+  const [expenseCategories, incomeCategories, accounts, dashboardSummary] = await Promise.all([
     getExpenseCategories({ branchId }, db),
     getIncomeCategories({ branchId }, db),
     getFinanceAccounts({ branchId }, db),
+    getFinanceDashboardSummary(db, branchId),
   ]);
 
   const todayKey = toDateKey();
@@ -348,6 +402,7 @@ export async function sendFinanceAiChatMessage(
       incomeCategoryNames: incomeCategories.map((c) => c.name),
       accountNames: accounts.filter((a) => a.status === "active").map((a) => a.name),
       depositTypeLabels: SUPPORTED_CASH_DEPOSIT_TYPES.map((t) => CASH_DEPOSIT_TYPE_LABELS[t]),
+      financeSnapshot: buildFinanceSnapshotText(dashboardSummary, accounts),
     });
   } catch (error) {
     analysis = {

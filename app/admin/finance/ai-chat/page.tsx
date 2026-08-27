@@ -574,8 +574,9 @@ export default function FinanceAiChatPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.28em] text-orange-600">Finance</p>
           <h1 className="mt-1 text-3xl font-black">🤖 AI Assistant</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Type what happened, or attach screenshots (UPI settlements, Zomato/Swiggy revenue, a Daily Closing sheet, a payment receipt) — I&apos;ll
-            propose Daily Closing updates or transactions for you to review and approve. Nothing is ever saved without your OK.
+            Ask me anything about the business — today&apos;s profit, this month&apos;s expenses, account balances, top categories — or type/attach
+            something to record (UPI settlements, Zomato/Swiggy revenue, a Daily Closing sheet, a payment receipt). Recording something always needs
+            your approval below; questions get answered right away.
           </p>
           <div className="mt-5">
             <FinanceNav role={role} />
@@ -589,7 +590,7 @@ export default function FinanceAiChatPage() {
             <p className="text-sm text-slate-500">Loading conversation…</p>
           ) : messages.length === 0 ? (
             <div className="rounded-[28px] border border-dashed border-orange-200 bg-white p-10 text-center text-sm text-slate-400">
-              Say hello — try &quot;₹500 cash expense for tea&quot;, or attach a UPI settlement screenshot.
+              Say hello — try &quot;what&apos;s my profit today?&quot;, &quot;₹500 cash expense for tea&quot;, or attach a UPI settlement screenshot.
             </div>
           ) : (
             messages.map((message) => (

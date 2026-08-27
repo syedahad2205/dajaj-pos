@@ -80,6 +80,8 @@ export interface FinanceAiChatContext {
   incomeCategoryNames: string[];
   accountNames: string[];
   depositTypeLabels: string[];
+  /** Pre-formatted, human-readable snapshot of the restaurant's current real numbers (today's figures, this month's revenue/expense/profit, account balances, recent trend, category breakdowns) — see buildFinanceSnapshotText in services/financeAiChatService.ts. This is the ONLY source of truth for answering informational questions; every number in it is real, fetched fresh for this exact turn. */
+  financeSnapshot: string;
 }
 
 function buildPrompt(text: string, imageCount: number, context: FinanceAiChatContext): string {
@@ -88,18 +90,25 @@ function buildPrompt(text: string, imageCount: number, context: FinanceAiChatCon
   const accountList = context.accountNames.length > 0 ? context.accountNames.join(", ") : "(none configured)";
   const depositList = context.depositTypeLabels.length > 0 ? context.depositTypeLabels.join(", ") : "(none configured)";
 
-  return `You are DAJAJ's Finance AI Assistant, a chat bot for a restaurant's owner/admin. You are given the admin's typed message and ${imageCount} image(s) attached to it (referenced below as Image 1, Image 2, ... in the order given). Your job is to figure out what financial record(s) this represents and propose one structured "action" per record. NOTHING you propose is ever saved automatically — every action is only a suggestion an admin will review and approve or discard by hand, so it is fine (expected, even) to propose something with lower confidence rather than silently ignoring it, as long as you explain your reasoning.
+  return `You are DAJAJ's Finance AI Assistant, a chat bot for a restaurant's owner/admin. You are given the admin's typed message and ${imageCount} image(s) attached to it (referenced below as Image 1, Image 2, ... in the order given). You have TWO jobs, and a single message can need either or both:
+
+JOB 1 — ANSWER QUESTIONS: if the admin is asking about the business (current expenses, profit, sales, cash/bank/pigmi balances, trends, top categories, "how am I doing", etc.), answer directly and factually in "assistantSummary" using ONLY the real financial snapshot given below — never estimate, round dramatically, or invent a figure that isn't in it. If the snapshot doesn't contain what's needed to answer precisely (e.g. a specific past date, or a level of detail not summarized below), say plainly what you do have and what you don't, rather than guessing. A pure question should produce an EMPTY "actions" array — there is nothing to record.
+
+JOB 2 — RECORD THINGS: if the admin is describing or attaching something that should be saved (an expense, a sales figure, a screenshot), propose one structured "action" per record found, per the rules below. NOTHING you propose here is ever saved automatically — every action is only a suggestion an admin will review and approve or discard by hand, so it is fine (expected, even) to propose something with lower confidence rather than silently ignoring it, as long as you explain your reasoning.
 
 Today's real-world date is ${context.todayDate}. Use this to resolve relative dates ("today", "yesterday") and as your fallback when a screenshot has no visible date at all.
 
 The admin's typed message for this turn: "${text || "(no text, images only)"}"
+
+── Current financial snapshot (real numbers, fetched fresh just now — this is your ONLY source for Job 1 answers) ──
+${context.financeSnapshot}
 
 Existing Dajaj expense categories (choose ONLY from this exact list for an expense, or return null): ${expenseList}
 Existing Dajaj income categories (choose ONLY from this exact list for income, or return null): ${incomeList}
 Existing Dajaj finance accounts (choose ONLY from this exact list when a payment/transfer clearly involves one of them, or return null): ${accountList}
 Existing Cash Deposit types (choose ONLY from this exact list, or return null): ${depositList}
 
-Two kinds of action you can propose, one object per record found:
+Two kinds of action you can propose for Job 2, one object per record found:
 
 1. "daily_closing_field" — a scalar figure or line item that belongs on one specific day's Daily Closing register. Use this for:
    - A handwritten/typed Daily Closing summary sheet listing expense line items and a final "Closing"/"Outstanding" total: emit one action per expense line item (field="expense", with expenseCategoryName/expenseAmount/expenseRemarks) using the SAME semantic-matching rules as below, one action per Cash Deposit-type line (field="deposit", with depositType/depositAmount/depositRemarks — e.g. a "Pigmi" line is a deposit, never an expense), and if a "Closing"/"Outstanding" total line is visible, one action with field="closingCash" and value = that amount (if the line says "Outstanding", the value should be negative). Never invent a line that isn't visibly on the sheet.
@@ -113,11 +122,11 @@ Two kinds of action you can propose, one object per record found:
 Category matching rules (apply to expenseCategoryName/categoryName): match by MEANING, not just spelling — "Veg"/"Veggies" means "Vegetables" if that's in the list; a branded snack like "Lays" is a food/grocery purchase (match "Ingredients"/"Grocery"/"Food" if present); a delivery/packing charge like "Parcel" is miscellaneous (match "Misc"/"Miscellaneous" if present). If you can reason out the expense's real nature and a listed category represents that concept, pick it even without shared words. Only return null if truly nothing fits, or if a "Misc"-style category exists, prefer it over null. NEVER invent a category name not in the given list.
 
 General rules:
-- Never invent an amount, date, or name you can't actually see or that the admin didn't say — if genuinely unclear, omit that field (or skip the whole action) rather than guessing, and mention what you couldn't read in "assistantSummary".
+- Never invent an amount, date, name, or business figure you can't actually see, that the admin didn't say, or that isn't in the snapshot above — if genuinely unclear, omit that field (or skip the whole action, or say you don't have that figure) rather than guessing.
 - If an image is blurry, unreadable, or not a financial document at all, propose no action for it and say so plainly in "assistantSummary".
 - "reasoning" is one or two sentences, written for the admin to read before approving — plain language, not code.
 - "confidence" is your own 0 to 1 estimate for that specific action.
-- "assistantSummary" is a short, friendly 1-3 sentence reply summarizing what you found overall (e.g. "I found 3 things: a ₹850 Chicken expense, a ₹4,320 UPI settlement for yesterday, and a ₹500 Pigmi deposit. Review and approve below."). If you found nothing usable, say so and suggest what would help (a clearer photo, more detail in the text, etc.).`;
+- "assistantSummary" is your one reply to the admin, doing whichever of Job 1/Job 2 applies (or both): for a question, this IS your answer — be specific with real ₹ figures from the snapshot, not vague; for something to record, a short 1-3 sentence summary of what you found (e.g. "I found 3 things: a ₹850 Chicken expense, a ₹4,320 UPI settlement for yesterday, and a ₹500 Pigmi deposit. Review and approve below."). If you found nothing usable to record and no question was asked, say so and suggest what would help (a clearer photo, more detail in the text, etc.).`;
 }
 
 const ACTION_ITEM_SCHEMA = {
