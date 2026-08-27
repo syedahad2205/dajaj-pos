@@ -110,7 +110,7 @@ export default function FinanceDashboardPage() {
                 <StatCard label="Cash on Hand" value={formatCurrency(summary.cards.cashOnHand)} tone={summary.cards.cashOnHand < 0 ? "negative" : "default"} />
                 <StatCard label="Bank Balance" value={formatCurrency(summary.cards.bankBalance)} />
                 <StatCard label="Pending Settlements" value={formatCurrency(summary.cards.pendingSettlements)} tone="muted" />
-                <StatCard label="Pigmi Balance (all-time deposits)" value={formatCurrency(summary.cards.pigmiBalance)} />
+                <StatCard label="Pigmi Balance" value={formatCurrency(summary.cards.pigmiBalance)} />
               </div>
               <p className="mt-1 text-xs text-slate-400">Pending Settlements = revenue recognized (e.g. Zomato/Swiggy Sales) but not yet settled into a bank account.</p>
             </div>

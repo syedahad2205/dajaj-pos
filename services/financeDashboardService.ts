@@ -118,7 +118,12 @@ export async function getFinanceDashboardSummary(
   const lastLocked = [...allTimeClosings].reverse().find((c) => c.locked && typeof c.closingCash === "number");
 
   const cashOnHand = lastLocked?.closingCash ?? 0;
-  const pigmiBalance = sumDepositsOfType(allTimeClosings, "pigmi");
+  // The Pigmi account's own ledger balance — NOT a re-sum of deposits from Daily Closing history.
+  // That raw sum ignores anything that happened to the money afterwards (a withdrawal from the
+  // Pigmi account, its opening balance, a voided/edited posting), so it can drift from the real
+  // balance shown on the Accounts page. currentBalance is the single source of truth, same as
+  // bankBalance/pendingSettlements below.
+  const pigmiBalance = roundCurrency(accounts.filter((a) => a.status === "active" && a.type === "pigmi").reduce((sum, a) => sum + a.currentBalance, 0));
   const bankBalance = roundCurrency(accounts.filter((a) => a.status === "active" && a.type === "bank").reduce((sum, a) => sum + a.currentBalance, 0));
   const pendingSettlements = roundCurrency(accounts.filter((a) => a.status === "active" && a.type === "escrow").reduce((sum, a) => sum + a.currentBalance, 0));
 
