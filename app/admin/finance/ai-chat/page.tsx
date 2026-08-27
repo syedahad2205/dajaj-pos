@@ -490,7 +490,18 @@ export default function FinanceAiChatPage() {
   const [sendError, setSendError] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Auto-grow the composer textarea to fit its content (up to a cap), instead
+  // of a fixed rows={1} height that clips or scroll-bars a wrapped
+  // placeholder/typed message.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [text]);
 
   useEffect(() => {
     if (!authenticated || role !== "admin") return;
@@ -516,7 +527,7 @@ export default function FinanceAiChatPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#fff8ed] text-sm text-slate-500">Checking your session…</div>
+      <div className="flex h-dvh items-center justify-center bg-[#fff8ed] text-sm text-slate-500">Checking your session…</div>
     );
   }
   if (!authenticated || role !== "admin") return null;
@@ -572,7 +583,7 @@ export default function FinanceAiChatPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#fff8ed] text-slate-900">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#fff8ed] text-slate-900">
       <div className="flex flex-shrink-0 items-center gap-3 border-b border-orange-200 bg-white px-3 py-2.5 shadow-sm">
         <Link
           href="/admin/finance"
@@ -688,6 +699,7 @@ export default function FinanceAiChatPage() {
               📎
             </button>
             <textarea
+              ref={textareaRef}
               rows={1}
               value={text}
               disabled={sending}
@@ -698,8 +710,8 @@ export default function FinanceAiChatPage() {
                   handleSend();
                 }
               }}
-              placeholder={sending ? "Waiting for a reply…" : "Type what happened, or attach a screenshot…"}
-              className="flex-1 resize-none rounded-xl border border-slate-300 px-3 py-3 text-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50 disabled:text-slate-400"
+              placeholder={sending ? "Waiting for a reply…" : "Message the assistant…"}
+              className="max-h-[120px] flex-1 resize-none overflow-y-auto rounded-xl border border-slate-300 px-3 py-2.5 text-sm leading-normal focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50 disabled:text-slate-400"
             />
             <button
               type="button"
