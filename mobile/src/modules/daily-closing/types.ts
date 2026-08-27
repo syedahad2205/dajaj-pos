@@ -66,6 +66,11 @@ export interface FinanceDailyClosing {
 
   openingCash: number;
   openingCashSource: 'chained' | 'manual';
+  // Net effect, on the cash drawer account, of a same-day external transfer (e.g.
+  // "Transfer from ICICI") that Daily Closing doesn't already know about — folded
+  // into THIS day's own Opening Cash as the one explicit exception to "Opening
+  // Cash is always the previous day's Closing Cash". 0 for any day without one.
+  externalCashAdjustment: number;
 
   expenses: DailyClosingExpenseEntry[];
   cashExpenseTotal: number;
