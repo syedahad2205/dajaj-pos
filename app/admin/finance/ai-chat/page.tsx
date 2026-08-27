@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { requireAdmin } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, formatDateDisplay, todayDateKey } from "@/lib/financeFormat";
-import FinanceNav from "@/components/finance/FinanceNav";
 import NativeSelectField from "@/components/ui/NativeSelectField";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -514,7 +515,9 @@ export default function FinanceAiChatPage() {
   }, [messages.length]);
 
   if (loading) {
-    return <main className="min-h-screen bg-[#fff8ed] px-4 py-10 text-slate-900">Checking your session…</main>;
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#fff8ed] text-sm text-slate-500">Checking your session…</div>
+    );
   }
   if (!authenticated || role !== "admin") return null;
 
@@ -541,6 +544,7 @@ export default function FinanceAiChatPage() {
   const removeImage = (index: number) => setImages((prev) => prev.filter((_, i) => i !== index));
 
   const handleSend = async () => {
+    if (sending) return;
     if (!text.trim() && images.length === 0) return;
     setSending(true);
     setSendError("");
@@ -568,26 +572,24 @@ export default function FinanceAiChatPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#fff8ed] px-4 py-8 text-slate-900">
-      <div className="mx-auto flex max-w-3xl flex-col gap-5">
-        <header className="rounded-[28px] border border-orange-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-orange-600">Finance</p>
-          <h1 className="mt-1 text-3xl font-black">🤖 AI Assistant</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Ask me anything about the business — today&apos;s profit, this month&apos;s expenses, account balances, top categories — or type/attach
-            something to record (UPI settlements, Zomato/Swiggy revenue, a Daily Closing sheet, a payment receipt). Recording something always needs
-            your approval below; questions get answered right away.
-          </p>
-          <div className="mt-5">
-            <FinanceNav role={role} />
-          </div>
-        </header>
+    <div className="flex h-screen flex-col overflow-hidden bg-[#fff8ed] text-slate-900">
+      <div className="flex flex-shrink-0 items-center gap-3 border-b border-orange-200 bg-white px-3 py-2.5 shadow-sm">
+        <Link
+          href="/admin/finance"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100"
+          aria-label="Back"
+        >
+          <ArrowLeft size={20} strokeWidth={2.5} />
+        </Link>
+        <p className="truncate text-sm font-bold text-slate-900">🤖 AI Assistant</p>
+      </div>
 
-        {historyError ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{historyError}</p> : null}
+      <div className="flex-1 overflow-y-auto px-3 py-4">
+        <div className="mx-auto max-w-2xl space-y-3">
+          {historyError ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{historyError}</p> : null}
 
-        <div className="flex-1 space-y-4 pb-40">
           {historyLoading ? (
-            <p className="text-sm text-slate-500">Loading conversation…</p>
+            <p className="pt-10 text-center text-sm text-slate-400">Loading conversation…</p>
           ) : messages.length === 0 ? (
             <div className="rounded-[28px] border border-dashed border-orange-200 bg-white p-10 text-center text-sm text-slate-400">
               Say hello — try &quot;what&apos;s my profit today?&quot;, &quot;₹500 cash expense for tea&quot;, or attach a UPI settlement screenshot.
@@ -627,10 +629,23 @@ export default function FinanceAiChatPage() {
               </div>
             ))
           )}
+
+          {sending ? (
+            <div className="flex justify-start">
+              <div className="flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:300ms]" />
+              </div>
+            </div>
+          ) : null}
+
           <div ref={bottomRef} />
         </div>
+      </div>
 
-        <div className="sticky bottom-4 rounded-[28px] border border-orange-200 bg-white p-4 shadow-lg">
+      <div className="flex-shrink-0 border-t border-orange-200 bg-white px-3 py-3">
+        <div className="mx-auto max-w-2xl">
           {images.length > 0 ? (
             <div className="mb-3 flex flex-wrap gap-2">
               {images.map((img, index) => (
@@ -639,8 +654,9 @@ export default function FinanceAiChatPage() {
                   <img src={img.previewUrl} alt="" className="h-16 w-16 rounded-xl border border-slate-200 object-cover" />
                   <button
                     type="button"
+                    disabled={sending}
                     onClick={() => removeImage(index)}
-                    className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 text-xs font-bold text-white"
+                    className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 text-xs font-bold text-white disabled:opacity-40"
                   >
                     ×
                   </button>
@@ -666,7 +682,7 @@ export default function FinanceAiChatPage() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={images.length >= MAX_IMAGES}
+              disabled={sending || images.length >= MAX_IMAGES}
               className="flex-shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
             >
               📎
@@ -674,6 +690,7 @@ export default function FinanceAiChatPage() {
             <textarea
               rows={1}
               value={text}
+              disabled={sending}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -681,8 +698,8 @@ export default function FinanceAiChatPage() {
                   handleSend();
                 }
               }}
-              placeholder="Type what happened, or attach a screenshot…"
-              className="flex-1 resize-none rounded-xl border border-slate-300 px-3 py-3 text-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100"
+              placeholder={sending ? "Waiting for a reply…" : "Type what happened, or attach a screenshot…"}
+              className="flex-1 resize-none rounded-xl border border-slate-300 px-3 py-3 text-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50 disabled:text-slate-400"
             />
             <button
               type="button"
@@ -690,11 +707,11 @@ export default function FinanceAiChatPage() {
               onClick={handleSend}
               className="flex-shrink-0 rounded-xl bg-orange-600 px-5 py-3 text-sm font-black text-white transition hover:bg-orange-700 disabled:opacity-40"
             >
-              {sending ? "…" : "Send"}
+              Send
             </button>
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
