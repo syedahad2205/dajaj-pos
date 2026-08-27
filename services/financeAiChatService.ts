@@ -23,8 +23,10 @@ import {
   toTimeKey,
   type CashDepositType,
   type FinanceAccount,
+  type FinanceDailyClosing,
   type FinanceExpenseCategory,
   type FinanceIncomeCategory,
+  type FinanceTransaction,
 } from "@/lib/finance";
 import {
   FINANCE_AI_CHAT_COLLECTION,
@@ -50,7 +52,7 @@ import {
   reopenDailyClosing,
   updateDailyClosingSales,
 } from "@/services/financeClosingService";
-import { createFinanceTransaction } from "@/services/financeTransactionsService";
+import { createFinanceTransaction, getPostedTransactionsForRange } from "@/services/financeTransactionsService";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Finance AI Assistant chat — orchestration.
@@ -141,9 +143,11 @@ function resolveDepositType(aiType: string | null): CashDepositType | null {
 /**
  * Turns the Dashboard's own summary (services/financeDashboardService.ts —
  * the exact same numbers shown on the Finance Dashboard page, nothing
- * recomputed differently here) plus the raw account list into a compact,
- * human-readable block for the AI prompt. This is the ONLY data source the
- * assistant is allowed to answer informational questions from — see
+ * recomputed differently here) plus the raw account list into a compact
+ * "right now" block for the AI prompt — today's figures and current
+ * balances only. The fuller month-by-month/daily/category history lives in
+ * buildFinanceHistorySnapshot below; together they're the ONLY data source
+ * the assistant is allowed to answer informational questions from — see
  * buildPrompt in lib/geminiFinanceAssistant.ts. Every figure here is real
  * and fetched fresh for this exact chat turn, never cached across turns.
  */
@@ -163,28 +167,111 @@ function buildFinanceSnapshotText(summary: FinanceDashboardSummary, accounts: Fi
       c.pendingSettlements,
     )} (Zomato/Swiggy revenue already recognized but not yet settled into a bank account).`,
   );
-  lines.push(`This calendar month so far: Revenue ${formatCurrency(c.monthlyRevenue)}, Expense ${formatCurrency(c.monthlyExpense)}, Profit ${formatCurrency(c.monthlyProfit)}.`);
 
   const activeAccounts = accounts.filter((a) => a.status === "active");
   if (activeAccounts.length > 0) {
     lines.push(`Individual account balances: ${activeAccounts.map((a) => `${a.name} (${a.type}) = ${formatCurrency(a.currentBalance)}`).join(", ")}.`);
   }
 
-  if (summary.topExpenseCategories.length > 0) {
-    lines.push(`Top expense categories this month: ${summary.topExpenseCategories.map((x) => `${x.label} ${formatCurrency(x.amount)}`).join(", ")}.`);
-  }
-  if (summary.incomeSources.length > 0) {
-    lines.push(`Income sources this month: ${summary.incomeSources.map((x) => `${x.label} ${formatCurrency(x.amount)}`).join(", ")}.`);
+  return lines.join("\n");
+}
+
+/**
+ * The FULL history, not just a recent window — every locked Daily Closing
+ * day plus every non-cash-drawer, non-auto-posted ledger transaction (same
+ * blending rule as the Dashboard/getFinanceHistoryRange: Daily Closing owns
+ * cash, bank-side transactions add on top, nothing double-counted), rolled
+ * up into month-by-month totals with each month's top expense categories
+ * (so the assistant can actually compare "this month vs last month" and
+ * spot where spending changed), plus day-by-day detail for the most recent
+ * stretch (so it can also answer specific-date questions like "what did I
+ * spend on the 16th"). Bounded to the last 60 days of DAILY detail only to
+ * keep the prompt a sane size as history grows over years — the monthly
+ * rollups above that window are unbounded and cover the entire history.
+ */
+function buildFinanceHistorySnapshot(closings: FinanceDailyClosing[], transactions: FinanceTransaction[], accounts: FinanceAccount[]): string {
+  const accountTypeById = new Map(accounts.map((a) => [a.id, a.type]));
+  const isCashAccount = (id: string | null) => (id ? accountTypeById.get(id) === "cash" : false);
+
+  // Same rule as financeDashboardService.ts: a transaction Daily Closing
+  // itself generated is already inside that day's totalRevenue/
+  // cashExpenseTotal below — counting it again here would double it.
+  const notDailyClosingGenerated = transactions.filter((t) => t.autoPostedSource !== "daily_closing");
+  const bankIncome = notDailyClosingGenerated.filter((t) => t.type === "income" && !isCashAccount(t.toAccountId));
+  const bankExpense = notDailyClosingGenerated.filter((t) => t.type === "expense" && !isCashAccount(t.fromAccountId));
+  const lockedClosings = closings.filter((c) => c.locked);
+
+  if (lockedClosings.length === 0 && bankIncome.length === 0 && bankExpense.length === 0) {
+    return "No closed Daily Closing days or bank transactions recorded yet — there's no history to analyze.";
   }
 
-  const recentTrend = summary.revenueExpenseTrend.slice(-7);
-  if (recentTrend.length > 0) {
-    lines.push(
-      `Last ${recentTrend.length} days (date: revenue / expense / net cash flow): ${recentTrend
-        .map((d) => `${d.date}: ${formatCurrency(d.revenue)} / ${formatCurrency(d.expense)} / ${formatCurrency(d.netCashFlow)}`)
-        .join("; ")}.`,
-    );
+  const dayTotals = new Map<string, { revenue: number; expense: number }>();
+  const monthTotals = new Map<string, { revenue: number; expense: number }>();
+  const monthCategories = new Map<string, Map<string, number>>();
+
+  const addDay = (date: string, revenue: number, expense: number) => {
+    const d = dayTotals.get(date) ?? { revenue: 0, expense: 0 };
+    d.revenue = roundCurrency(d.revenue + revenue);
+    d.expense = roundCurrency(d.expense + expense);
+    dayTotals.set(date, d);
+
+    const month = date.slice(0, 7);
+    const m = monthTotals.get(month) ?? { revenue: 0, expense: 0 };
+    m.revenue = roundCurrency(m.revenue + revenue);
+    m.expense = roundCurrency(m.expense + expense);
+    monthTotals.set(month, m);
+  };
+  const addCategory = (date: string, categoryName: string, amount: number) => {
+    const month = date.slice(0, 7);
+    const cats = monthCategories.get(month) ?? new Map<string, number>();
+    cats.set(categoryName, roundCurrency((cats.get(categoryName) ?? 0) + amount));
+    monthCategories.set(month, cats);
+  };
+
+  for (const c of lockedClosings) {
+    addDay(c.date, c.totalRevenue, c.cashExpenseTotal);
+    for (const e of c.expenses) addCategory(c.date, e.categoryName, e.amount);
   }
+  for (const t of bankIncome) addDay(t.date, t.amount, 0);
+  for (const t of bankExpense) {
+    addDay(t.date, 0, t.amount);
+    addCategory(t.date, t.categoryName ?? "Uncategorized", t.amount);
+  }
+
+  const sortedMonths = Array.from(monthTotals.keys()).sort();
+  const allTimeRevenue = roundCurrency(Array.from(monthTotals.values()).reduce((sum, m) => sum + m.revenue, 0));
+  const allTimeExpense = roundCurrency(Array.from(monthTotals.values()).reduce((sum, m) => sum + m.expense, 0));
+
+  const lines: string[] = [];
+  lines.push(
+    `Full recorded history: ${sortedMonths[0]} through ${sortedMonths[sortedMonths.length - 1]}. All-time totals: Revenue ${formatCurrency(
+      allTimeRevenue,
+    )}, Expense ${formatCurrency(allTimeExpense)}, Profit ${formatCurrency(roundCurrency(allTimeRevenue - allTimeExpense))}.`,
+  );
+
+  lines.push("Month-by-month, oldest to newest (revenue / expense / profit, then that month's top expense categories):");
+  for (const month of sortedMonths) {
+    const m = monthTotals.get(month)!;
+    const profit = roundCurrency(m.revenue - m.expense);
+    const topCats = Array.from((monthCategories.get(month) ?? new Map()).entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, amount]) => `${name} ${formatCurrency(amount)}`)
+      .join(", ");
+    lines.push(`${month}: ${formatCurrency(m.revenue)} / ${formatCurrency(m.expense)} / ${formatCurrency(profit)}.${topCats ? ` Top categories: ${topCats}.` : ""}`);
+  }
+
+  const sortedDays = Array.from(dayTotals.keys()).sort();
+  const recentDays = sortedDays.slice(-60);
+  lines.push(`Daily detail, most recent ${recentDays.length} day(s) with activity (date: revenue / expense / profit):`);
+  lines.push(
+    recentDays
+      .map((date) => {
+        const d = dayTotals.get(date)!;
+        return `${date}: ${formatCurrency(d.revenue)} / ${formatCurrency(d.expense)} / ${formatCurrency(roundCurrency(d.revenue - d.expense))}`;
+      })
+      .join("; "),
+  );
 
   return lines.join("\n");
 }
@@ -396,14 +483,16 @@ export async function sendFinanceAiChatMessage(
   };
   await setDoc(userMessageRef, { ...userMessage, createdAt: serverTimestamp() });
 
-  const [expenseCategories, incomeCategories, accounts, dashboardSummary] = await Promise.all([
+  const todayKey = toDateKey();
+  const [expenseCategories, incomeCategories, accounts, dashboardSummary, allClosings, allTransactions] = await Promise.all([
     getExpenseCategories({ branchId }, db),
     getIncomeCategories({ branchId }, db),
     getFinanceAccounts({ branchId }, db),
     getFinanceDashboardSummary(db, branchId),
+    getDailyClosingsForRange("2000-01-01", todayKey, db, branchId),
+    getPostedTransactionsForRange("2000-01-01", todayKey, db, branchId),
   ]);
 
-  const todayKey = toDateKey();
   let analysis: FinanceAiChatAnalysis;
   try {
     analysis = await analyzeFinanceAiChatTurn(text, images, {
@@ -412,7 +501,7 @@ export async function sendFinanceAiChatMessage(
       incomeCategoryNames: incomeCategories.map((c) => c.name),
       accountNames: accounts.filter((a) => a.status === "active").map((a) => a.name),
       depositTypeLabels: SUPPORTED_CASH_DEPOSIT_TYPES.map((t) => CASH_DEPOSIT_TYPE_LABELS[t]),
-      financeSnapshot: buildFinanceSnapshotText(dashboardSummary, accounts),
+      financeSnapshot: `${buildFinanceSnapshotText(dashboardSummary, accounts)}\n\n${buildFinanceHistorySnapshot(allClosings, allTransactions, accounts)}`,
     });
   } catch (error) {
     analysis = {
