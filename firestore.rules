@@ -446,6 +446,24 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // finance_ai_chat_messages — the Finance AI Assistant chat's message
+    // history. Admin-only end to end (unlike most fin_*/quick_entry_*
+    // collections above, this does NOT extend to Finance Manager yet — a
+    // deliberate, narrower scope for now). Each doc is either an admin's own
+    // turn (text + how many images were attached — the images themselves
+    // are never stored, only sent to Gemini and discarded, same policy as
+    // Quick Entry) or the assistant's reply (its text plus an array of
+    // proposed actions awaiting approval/discard). Approving an action never
+    // writes here directly — it calls the EXISTING fin_daily_closing/
+    // fin_transactions mutation functions, which have their own rules; this
+    // collection only tracks the conversation and each action's outcome.
+    // update is allowed (not just create) so an action's status can flip to
+    // approved/discarded/failed in place.
+    match /finance_ai_chat_messages/{messageId} {
+      allow read, create, update: if isAdmin();
+      allow delete: if false;
+    }
+
     // ── Finance Users (finance_auth) ──────────────────────────────────────────
     // Auth infrastructure for the future React Native Daily Closing app.
     // Completely separate from /admins — Finance Users have no Firebase Auth

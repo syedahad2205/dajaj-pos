@@ -17,11 +17,18 @@ const tabs = [
   // since that role is scoped to Dashboard/Daily Closing/Transactions/Reports
   // plus the Quick Entry/Passbook/Activity Log tabs added above.
   { href: "/admin/finance/settings", label: "Settings" },
+  // Admin-only for now (see role filter below AND firestore.rules'
+  // finance_ai_chat_messages, which is gated to isAdmin() alone) — unlike
+  // Settings, this isn't demoted-but-visible-elsewhere, it's simply not
+  // offered to a Finance Manager account at all yet.
+  { href: "/admin/finance/ai-chat", label: "🤖 AI Assistant" },
 ];
+
+const FINANCE_MANAGER_HIDDEN_TABS = new Set(["/admin/finance/settings", "/admin/finance/ai-chat"]);
 
 export default function FinanceNav({ role }: { role?: UserRole | null } = {}) {
   const pathname = usePathname();
-  const visibleTabs = role === "financeManager" ? tabs.filter((tab) => tab.href !== "/admin/finance/settings") : tabs;
+  const visibleTabs = role === "financeManager" ? tabs.filter((tab) => !FINANCE_MANAGER_HIDDEN_TABS.has(tab.href)) : tabs;
 
   return (
     <nav className="flex flex-wrap gap-1.5 sm:gap-2">
