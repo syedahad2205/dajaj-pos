@@ -35,6 +35,18 @@ function isTrackedApiRequest(url: string): boolean {
   }
 }
 
+// Opt-out for pages with their own inline loading UI (e.g. a chat window
+// that must stay scrollable/interactive while a message is in flight,
+// where a full-screen blocking overlay would defeat the point). Set this
+// header on the request — see app/admin/finance/ai-chat/page.tsx.
+const SKIP_HEADER = "x-skip-global-loader";
+
+function shouldSkipLoader(init: RequestInit | undefined): boolean {
+  if (!init?.headers) return false;
+  const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers as HeadersInit);
+  return headers.get(SKIP_HEADER) === "1";
+}
+
 export function installGlobalFetchLoader() {
   if (typeof window === "undefined") return;
   // Guard on `window` (not a module-level flag) so this survives Next.js
@@ -45,7 +57,7 @@ export function installGlobalFetchLoader() {
   const originalFetch = window.fetch.bind(window);
 
   window.fetch = (async (...args: Parameters<typeof fetch>) => {
-    const track = isTrackedApiRequest(resolveUrl(args[0]));
+    const track = isTrackedApiRequest(resolveUrl(args[0])) && !shouldSkipLoader(args[1]);
 
     if (track) {
       activeCount += 1;

@@ -19,6 +19,13 @@ import NativeSelectField from "@/components/ui/NativeSelectField";
 const ACCEPTED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 const MAX_IMAGES = 6;
 
+// Keeps this page off the app's global full-screen fetch loader (see
+// lib/globalApiLoader.ts) — a chat window needs its own inline
+// typing/busy indicators so the message list stays scrollable and older
+// action cards stay usable while a request is in flight, which a
+// blocking overlay would defeat entirely.
+const NO_GLOBAL_LOADER_HEADERS = { "X-Skip-Global-Loader": "1" };
+
 // Mirrors SUPPORTED_CASH_DEPOSIT_TYPES/CASH_DEPOSIT_TYPE_LABELS in lib/finance.ts —
 // extend both in tandem if a second deposit type is ever turned on.
 const DEPOSIT_TYPE_OPTIONS = [{ type: "pigmi", label: "Pigmi" }];
@@ -162,7 +169,7 @@ function ActionCard({
     try {
       const response = await firebaseAuthedFetch("/api/finance/ai-chat/actions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...NO_GLOBAL_LOADER_HEADERS },
         body: JSON.stringify({ messageId, actionId: action.id, decision, edits: decision === "approve" ? edits : undefined }),
       });
       const payload = await readJson(response);
@@ -507,10 +514,10 @@ export default function FinanceAiChatPage() {
   useEffect(() => {
     if (!authenticated || role !== "admin") return;
     Promise.all([
-      firebaseAuthedFetch("/api/finance/ai-chat/messages").then(readJson),
-      firebaseAuthedFetch("/api/finance/expense-categories").then(readJson),
-      firebaseAuthedFetch("/api/finance/income-categories").then(readJson),
-      firebaseAuthedFetch("/api/finance/accounts").then(readJson),
+      firebaseAuthedFetch("/api/finance/ai-chat/messages", { headers: NO_GLOBAL_LOADER_HEADERS }).then(readJson),
+      firebaseAuthedFetch("/api/finance/expense-categories", { headers: NO_GLOBAL_LOADER_HEADERS }).then(readJson),
+      firebaseAuthedFetch("/api/finance/income-categories", { headers: NO_GLOBAL_LOADER_HEADERS }).then(readJson),
+      firebaseAuthedFetch("/api/finance/accounts", { headers: NO_GLOBAL_LOADER_HEADERS }).then(readJson),
     ])
       .then(([chatPayload, expensePayload, incomePayload, accountsPayload]) => {
         setMessages(chatPayload.messages);
@@ -563,7 +570,7 @@ export default function FinanceAiChatPage() {
     try {
       const response = await firebaseAuthedFetch("/api/finance/ai-chat/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...NO_GLOBAL_LOADER_HEADERS },
         body: JSON.stringify({ text, images: images.map((img) => ({ data: img.base64, mimeType: img.mimeType })) }),
       });
       const payload = await readJson(response);
@@ -582,7 +589,11 @@ export default function FinanceAiChatPage() {
     if (!window.confirm("Clear this conversation? Nothing you've already approved is affected — this only clears what's shown here.")) return;
     setClearing(true);
     try {
-      await firebaseAuthedFetch("/api/finance/ai-chat/clear", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }).then(readJson);
+      await firebaseAuthedFetch("/api/finance/ai-chat/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...NO_GLOBAL_LOADER_HEADERS },
+        body: JSON.stringify({}),
+      }).then(readJson);
       setMessages([]);
     } catch (err) {
       setHistoryError(err instanceof Error ? err.message : "Couldn't clear the chat — please try again.");
