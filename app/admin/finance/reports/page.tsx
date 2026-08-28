@@ -18,7 +18,7 @@ interface DepositEntry {
   remarks: string;
 }
 
-type PlatformMode = "actual" | "pending";
+type PlatformMode = "actual" | "estimated" | "unavailable";
 
 interface DailyClosingRow {
   date: string;
@@ -32,18 +32,22 @@ interface DailyClosingRow {
   depositTotal: number;
   locked: boolean;
   deposits: DepositEntry[];
-  // Real, settled platform revenue, attached server-side (see
-  // app/api/finance/reports/pnl/route.ts) — "actual" once that week's
-  // Zomato/Swiggy payout has been settled (net of the real deduction %),
-  // "pending" (₹0, not yet counted in P&L) until then. The manually
-  // entered zomatoSales/swiggySales above no longer feeds into revenue at
-  // all — it's kept only for Escrow bookkeeping context.
+  // Two different platform-revenue figures, attached server-side (see
+  // app/api/finance/reports/pnl/route.ts):
+  //   - *ActualRevenue  — real settled revenue only (₹0 until that week's
+  //     payout is recorded). This is what Total Revenue/Net P&L/Gross
+  //     Margin above are built from — NOT shown in this table.
+  //   - *DisplayRevenue — what THIS table shows: actual once settled,
+  //     otherwise a best-effort estimate (see *Mode/*DeductionPct/
+  //     *SourceStart/*SourceEnd for the "how" behind that estimate).
   zomatoActualRevenue: number;
+  zomatoDisplayRevenue: number;
   zomatoDeductionPct: number;
   zomatoMode: PlatformMode;
   zomatoSourceStart: string | null;
   zomatoSourceEnd: string | null;
   swiggyActualRevenue: number;
+  swiggyDisplayRevenue: number;
   swiggyDeductionPct: number;
   swiggyMode: PlatformMode;
   swiggySourceStart: string | null;
@@ -129,12 +133,14 @@ function platformBreakdownText(
   sourceEnd: string | null,
 ): string {
   const period = sourceStart && sourceEnd ? `${formatDateDisplay(sourceStart)} – ${formatDateDisplay(sourceEnd)}` : null;
+  const pctLabel = `${(deductionPct * 100).toFixed(2)}%`;
   if (mode === "actual") {
-    const pctLabel = `${(deductionPct * 100).toFixed(2)}%`;
-    return `Settled for ${period}. Real ${platform} sales for this day, net of the actual ${pctLabel} deduction from that week's payout = ${formatCurrency(net)}. Counted in P&L.`;
+    return `Settled for ${period}. Real ${platform} sales for this day, net of the actual ${pctLabel} deduction from that week's payout = ${formatCurrency(net)}. This is the figure counted in Total Revenue/Net P&L above.`;
   }
-  const grossNote = gross > 0 ? `${formatCurrency(gross)} was manually entered in Daily Closing for reference only` : "no sales were entered for this day";
-  return `Not settled yet — this day's ${platform} sales aren't counted in P&L until that week's payout is recorded in the ${platform} Sales Tracker (${grossNote}, but no revenue is recognized from it until settled).`;
+  if (mode === "estimated") {
+    return `Not settled yet. Shown here as an estimate — this day's gross ${platform} sales (${formatCurrency(gross)}, from the imported report if available, otherwise the manually entered Daily Closing figure) × (1 − ${pctLabel}, the most recently settled deduction from ${period}) = ${formatCurrency(net)}. Total Revenue/Net P&L above still show ₹0 for this day until it's actually settled.`;
+  }
+  return `No ${platform} payout has ever been settled — showing the raw gross figure (${formatCurrency(gross)}) with no deduction applied, purely for reference. Total Revenue/Net P&L above show ₹0 for this day.`;
 }
 
 function PlatformCell({
@@ -156,12 +162,12 @@ function PlatformCell({
 }) {
   return (
     <div className="flex items-center justify-end gap-1">
-      <span className={mode === "pending" ? "text-slate-300" : undefined}>{formatCurrency(net)}</span>
+      <span>{formatCurrency(net)}</span>
       <details className="group relative inline-block text-left">
         <summary className="cursor-pointer list-none text-slate-300 hover:text-slate-500 [&::-webkit-details-marker]:hidden">
           <span
             className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px] font-bold leading-none ${
-              mode === "actual" ? "border-emerald-300 text-emerald-500" : "border-slate-300 text-slate-400"
+              mode === "actual" ? "border-emerald-300 text-emerald-500" : mode === "estimated" ? "border-amber-300 text-amber-500" : "border-slate-300 text-slate-400"
             }`}
           >
             i
@@ -169,7 +175,7 @@ function PlatformCell({
         </summary>
         <div className="absolute right-0 z-20 mt-1.5 w-64 rounded-lg border border-slate-200 bg-white p-3 text-left text-xs leading-relaxed text-slate-600 shadow-lg">
           <p className="mb-1 flex items-center gap-1.5 font-semibold text-slate-800">
-            {mode === "actual" ? "Settled" : "Pending settlement"}
+            {mode === "actual" ? "Settled" : mode === "estimated" ? "Estimated" : "No deduction data"}
           </p>
           <p>{platformBreakdownText(platform, gross, net, deductionPct, mode, sourceStart, sourceEnd)}</p>
         </div>
@@ -483,9 +489,10 @@ export default function FinanceReportsPage() {
                   <p className="text-xs text-slate-400">{rows.length} day{rows.length !== 1 ? "s" : ""} in range</p>
                 </div>
                 <p className="mt-1.5 text-xs text-slate-400">
-                  Zomato/Swiggy figures show real, <span className="font-semibold text-emerald-600">settled</span> revenue only — they read
-                  ₹0 (<span className="font-semibold text-slate-400">pending</span>) until that week&apos;s payout is recorded, then switch to
-                  the actual net-of-deduction amount. Click the ⓘ next to a figure for details.
+                  Zomato/Swiggy figures here are <span className="font-semibold text-emerald-600">actual</span> once that week&apos;s payout is
+                  settled, or a best-effort <span className="font-semibold text-amber-600">estimate</span> until then — this table is for a
+                  day-by-day feel, not the official number. The Total Revenue/Net P&amp;L/Gross Margin cards above only ever count real,
+                  settled revenue. Click the ⓘ next to a figure for the exact math.
                 </p>
               </div>
               {rows.length === 0 ? (
@@ -501,8 +508,8 @@ export default function FinanceReportsPage() {
                         <th className="px-4 py-3 text-right">Zomato</th>
                         <th className="px-4 py-3 text-right">Swiggy</th>
                         <th className="px-4 py-3 text-right">Other</th>
-                        <th className="px-4 py-3 text-right" title="Cash + UPI + Other + settled Zomato/Swiggy (₹0 until that week is settled)">
-                          Total Rev
+                        <th className="px-4 py-3 text-right" title="Cash + UPI + Other + Zomato/Swiggy (actual once settled, estimated until then)">
+                          Total Rev (est.)
                         </th>
                         <th className="px-4 py-3 text-right">Expenses</th>
                         <th className="px-4 py-3 text-right">Deposits</th>
@@ -511,7 +518,7 @@ export default function FinanceReportsPage() {
                     </thead>
                     <tbody>
                       {rows.map((r) => {
-                        const totalRev = roundCurrency(r.cashRevenue + r.upiSales + r.otherIncome + r.zomatoActualRevenue + r.swiggyActualRevenue);
+                        const totalRev = roundCurrency(r.cashRevenue + r.upiSales + r.otherIncome + r.zomatoDisplayRevenue + r.swiggyDisplayRevenue);
                         return (
                           <tr key={r.date} className="border-b border-slate-50 hover:bg-slate-50/50">
                             <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-700">{formatDateDisplay(r.date)}</td>
@@ -521,7 +528,7 @@ export default function FinanceReportsPage() {
                               <PlatformCell
                                 platform="Zomato"
                                 gross={r.zomatoSales}
-                                net={r.zomatoActualRevenue}
+                                net={r.zomatoDisplayRevenue}
                                 deductionPct={r.zomatoDeductionPct}
                                 mode={r.zomatoMode}
                                 sourceStart={r.zomatoSourceStart}
@@ -532,7 +539,7 @@ export default function FinanceReportsPage() {
                               <PlatformCell
                                 platform="Swiggy"
                                 gross={r.swiggySales}
-                                net={r.swiggyActualRevenue}
+                                net={r.swiggyDisplayRevenue}
                                 deductionPct={r.swiggyDeductionPct}
                                 mode={r.swiggyMode}
                                 sourceStart={r.swiggySourceStart}
@@ -554,26 +561,32 @@ export default function FinanceReportsPage() {
                         );
                       })}
                     </tbody>
-                    {s.closedDays > 0 && (
-                      <tfoot>
-                        <tr className="border-t border-slate-200 bg-slate-50 font-bold text-slate-900">
-                          <td className="px-4 py-3 text-xs font-semibold text-slate-500">
-                            Totals ({s.closedDays} closed)
-                          </td>
-                          <td className="px-4 py-3 text-right text-emerald-600">
-                            {formatCurrency(rb?.cashSales ?? 0)}
-                          </td>
-                          <td className="px-4 py-3 text-right">{formatCurrency(rb?.upi ?? 0)}</td>
-                          <td className="px-4 py-3 text-right">{formatCurrency(rb?.zomato ?? 0)}</td>
-                          <td className="px-4 py-3 text-right">{formatCurrency(rb?.swiggy ?? 0)}</td>
-                          <td className="px-4 py-3 text-right">{formatCurrency(rb?.otherIncome ?? 0)}</td>
-                          <td className="px-4 py-3 text-right text-slate-900">{formatCurrency(s.totalRevenue)}</td>
-                          <td className="px-4 py-3 text-right text-rose-600">{formatCurrency(s.totalExpense)}</td>
-                          <td className="px-4 py-3 text-right text-sky-600">{formatCurrency(s.closingDeposits)}</td>
-                          <td className="px-4 py-3" />
-                        </tr>
-                      </tfoot>
-                    )}
+                    {s.closedDays > 0 && (() => {
+                      const lockedRows = rows.filter((r) => r.locked);
+                      const zomatoDisplayTotal = roundCurrency(lockedRows.reduce((sum, r) => sum + r.zomatoDisplayRevenue, 0));
+                      const swiggyDisplayTotal = roundCurrency(lockedRows.reduce((sum, r) => sum + r.swiggyDisplayRevenue, 0));
+                      const totalRevSum = roundCurrency((rb?.cashSales ?? 0) + (rb?.upi ?? 0) + (rb?.otherIncome ?? 0) + zomatoDisplayTotal + swiggyDisplayTotal);
+                      return (
+                        <tfoot>
+                          <tr className="border-t border-slate-200 bg-slate-50 font-bold text-slate-900">
+                            <td className="px-4 py-3 text-xs font-semibold text-slate-500">
+                              Totals ({s.closedDays} closed)
+                            </td>
+                            <td className="px-4 py-3 text-right text-emerald-600">
+                              {formatCurrency(rb?.cashSales ?? 0)}
+                            </td>
+                            <td className="px-4 py-3 text-right">{formatCurrency(rb?.upi ?? 0)}</td>
+                            <td className="px-4 py-3 text-right">{formatCurrency(zomatoDisplayTotal)}</td>
+                            <td className="px-4 py-3 text-right">{formatCurrency(swiggyDisplayTotal)}</td>
+                            <td className="px-4 py-3 text-right">{formatCurrency(rb?.otherIncome ?? 0)}</td>
+                            <td className="px-4 py-3 text-right text-slate-900">{formatCurrency(totalRevSum)}</td>
+                            <td className="px-4 py-3 text-right text-rose-600">{formatCurrency(s.totalExpense)}</td>
+                            <td className="px-4 py-3 text-right text-sky-600">{formatCurrency(s.closingDeposits)}</td>
+                            <td className="px-4 py-3" />
+                          </tr>
+                        </tfoot>
+                      );
+                    })()}
                   </table>
                 </div>
               )}
