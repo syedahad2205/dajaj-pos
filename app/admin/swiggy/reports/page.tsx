@@ -11,6 +11,7 @@ import {
   type SwiggyImport,
   type SwiggySettlementReport,
 } from '@/services/swiggyService';
+import { postSwiggySettlementToFinance } from '@/services/swiggyFinanceService';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -223,6 +224,8 @@ export default function SwiggyReportsPage() {
   const [loading, setLoading]         = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError]             = useState<string | null>(null);
+  const [syncing, setSyncing]         = useState(false);
+  const [syncErr, setSyncErr]         = useState<string | null>(null);
 
   const [catSort,   setCatSort]   = useState<CatSortKey>('revenue');
   const [itemSort,  setItemSort]  = useState<ItemSortKey>('revenue');
@@ -265,6 +268,20 @@ export default function SwiggyReportsPage() {
       setReport(updatedReport);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to reload.');
+    }
+  };
+
+  const handleSyncToFinance = async () => {
+    if (!selectedId) return;
+    setSyncErr(null);
+    setSyncing(true);
+    try {
+      await postSwiggySettlementToFinance(selectedId);
+      await handleSaved();
+    } catch (e) {
+      setSyncErr(e instanceof Error ? e.message : 'Failed to sync to Finance.');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -432,6 +449,62 @@ export default function SwiggyReportsPage() {
                         : 'CSV higher than A — check dates line up'}
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* Finance sync */}
+            <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-sm text-neutral-900">Finance Sync</p>
+                  <p className="text-xs text-neutral-400 mt-0.5">Transfers the payout out of Swiggy Escrow into IDBI (or wherever Finance Defaults maps it) and records any deduction/adjustment</p>
+                </div>
+                {selectedImport && (selectedImport.financeTransferTransactionId || selectedImport.financeAdjustmentTransactionId) && (selectedImport.financePostingWarnings ?? []).length === 0 ? (
+                  <span className="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5 font-medium">synced</span>
+                ) : (selectedImport?.financePostingWarnings ?? []).length > 0 ? (
+                  <span className="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5 font-medium">needs attention</span>
+                ) : (
+                  <span className="text-xs bg-neutral-100 text-neutral-500 rounded-full px-2 py-0.5 font-medium">not synced</span>
+                )}
+              </div>
+              <div className="p-4 space-y-3">
+                {selectedImport && typeof selectedImport.financeEscrowTotal === 'number' && typeof selectedImport.financeDifference === 'number' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                    <div className="rounded-lg bg-neutral-50 px-3 py-3">
+                      <p className="text-xs text-neutral-500 mb-1">Escrow Recognized</p>
+                      <p className="text-base font-bold text-neutral-700">{fmtRupeeExact(selectedImport.financeEscrowTotal)}</p>
+                      <p className="text-xs text-neutral-400 mt-0.5">Swiggy Sales posted for this period</p>
+                    </div>
+                    <div className="rounded-lg bg-emerald-50 px-3 py-3">
+                      <p className="text-xs text-neutral-500 mb-1">Settlement (Net Payout)</p>
+                      <p className="text-base font-bold text-emerald-700">{fmtRupeeExact(report.netPayout)}</p>
+                      <p className="text-xs text-neutral-400 mt-0.5">transferred out of Escrow</p>
+                    </div>
+                    <div className={`rounded-lg px-3 py-3 ${selectedImport.financeDifference > 0 ? 'bg-red-50' : selectedImport.financeDifference < 0 ? 'bg-emerald-50' : 'bg-neutral-50'}`}>
+                      <p className="text-xs text-neutral-500 mb-1">Difference</p>
+                      <p className={`text-base font-bold tabular-nums ${selectedImport.financeDifference > 0 ? 'text-red-600' : selectedImport.financeDifference < 0 ? 'text-emerald-700' : 'text-neutral-700'}`}>
+                        {selectedImport.financeDifference > 0 ? '-' : selectedImport.financeDifference < 0 ? '+' : ''}
+                        {fmtRupeeExact(Math.abs(selectedImport.financeDifference))}
+                      </p>
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        {selectedImport.financeDifference > 0 ? 'posted as an Expense' : selectedImport.financeDifference < 0 ? 'posted as Income' : 'nothing to post'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {(selectedImport?.financePostingWarnings ?? []).length > 0 && (
+                  <ul className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 list-disc pl-5 space-y-0.5">
+                    {(selectedImport?.financePostingWarnings ?? []).map((w, i) => <li key={i}>{w}</li>)}
+                  </ul>
+                )}
+                {syncErr && <p className="text-xs text-red-600">{syncErr}</p>}
+                <button
+                  onClick={handleSyncToFinance}
+                  disabled={syncing}
+                  className="w-full py-2 rounded-lg border border-neutral-300 text-xs font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 transition-colors"
+                >
+                  {syncing ? 'Syncing…' : 'Sync to Finance'}
+                </button>
               </div>
             </div>
 

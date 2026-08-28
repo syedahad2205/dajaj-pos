@@ -56,6 +56,7 @@ import {
   resolveSwiggyItemCategory,
   type CategoryMatchSource,
 } from '@/services/swiggyCategoryMapService';
+import { postSwiggySettlementToFinance } from '@/services/swiggyFinanceService';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,16 @@ export interface SwiggyImport {
   totalTaxes?: number;
   adsSpend?: number;
   otherChargesRefunds?: number;
+  // ── Finance reconciliation fields (set by services/swiggyFinanceService.ts
+  // right after saveSwiggySettlement writes the fields above) ──
+  /** Sum of Swiggy Escrow Income postings for [reportStartDate, reportEndDate] at the time of settlement */
+  financeEscrowTotal?: number | null;
+  /** financeEscrowTotal − netPayout */
+  financeDifference?: number | null;
+  financeTransferTransactionId?: string | null;
+  financeAdjustmentTransactionId?: string | null;
+  /** Non-fatal issues from the Finance posting attempt (e.g. a missing Finance Defaults mapping) — empty when everything posted cleanly */
+  financePostingWarnings?: string[];
 }
 
 export interface SwiggyItemSale {
@@ -424,6 +435,16 @@ export interface SaveSwiggySettlementInput {
  * separately — Total Customer Paid vs Net Payout already captures every
  * deduction on the payout card, so the single ratio is both simpler and
  * more accurate than reconstructing each line item.
+ *
+ * Also posts the real cash movement to Finance (see
+ * services/swiggyFinanceService.ts): a Transfer out of Swiggy Escrow for
+ * `netPayout`, plus an Expense/Income for however much that differs from
+ * the Escrow revenue already recognized for this import's covered dates.
+ * That posting is best-effort — a missing Finance Defaults mapping (or any
+ * other Finance-side issue) never blocks this settlement from saving; it's
+ * just recorded as a warning on the import doc (`financePostingWarnings`)
+ * for the UI to surface, and can be retried via a manual "Sync to Finance"
+ * action once fixed.
  */
 export async function saveSwiggySettlement({
   importId,
@@ -487,6 +508,16 @@ export async function saveSwiggySettlement({
   }
 
   await commitInChunks(ops, db);
+
+  try {
+    await postSwiggySettlementToFinance(importId, db);
+  } catch (err) {
+    // Should be rare — postSwiggySettlementToFinance already swallows most
+    // failures into its own warnings field. If something still throws (e.g.
+    // the import doc vanished between the two calls), don't let it undo the
+    // settlement save above; just leave the finance* fields unset.
+    console.error('[swiggyService] Failed to post settlement to Finance:', err);
+  }
 }
 
 /** Load the full settlement report for a single import. Returns null if settlement not yet entered. */

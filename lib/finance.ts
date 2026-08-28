@@ -134,7 +134,9 @@ export interface FinanceTransaction {
   //                          between recognized revenue and what Zomato
   //                          actually paid), so it's NOT excluded from the
   //                          Dashboard merge — it should affect real profit.
-  autoPostedSource?: "daily_closing" | "zomato_settlement" | null;
+  //   "swiggy_settlement" — same idea, for the Swiggy settlement
+  //                         reconciliation (services/swiggyFinanceService.ts).
+  autoPostedSource?: "daily_closing" | "zomato_settlement" | "swiggy_settlement" | null;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   voidedBy?: string | null;

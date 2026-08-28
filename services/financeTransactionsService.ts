@@ -70,7 +70,7 @@ export interface CreateFinanceTransactionInput {
   referenceNumber?: string;
   branchId?: string;
   autoPosted?: boolean;
-  autoPostedSource?: "daily_closing" | "zomato_settlement";
+  autoPostedSource?: "daily_closing" | "zomato_settlement" | "swiggy_settlement";
 }
 
 function validateInput(input: CreateFinanceTransactionInput) {
