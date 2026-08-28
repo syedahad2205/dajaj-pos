@@ -10,26 +10,34 @@ import { getSwiggyImports, getSwiggyItemSalesForDateRange } from "@/services/swi
 
 // ─── Platform (Zomato/Swiggy) revenue: real for P&L, estimated for display ─────
 //
-// Daily Closing's zomatoSales/swiggySales is a manually entered GROSS guess
-// (revenue recognized that day, before the platform's commission/GST/ads cut
-// is even known). Two different numbers are computed per day, for two
-// different audiences:
+// IMPORTANT — why revenue here must be GROSS, not net of deduction:
+// Daily Closing's zomatoSales/swiggySales gets posted every day as Income
+// into a Zomato/Swiggy Escrow account (Finance Defaults' zomato_sales/
+// swiggy_sales events — see financeClosingService.ts). When a payout is
+// settled, services/zomatoFinanceService.ts / swiggyFinanceService.ts sums
+// that same Escrow income for the settlement's date range and posts the
+// shortfall as a real ledger Expense ("Zomato/Swiggy Settlement
+// Deduction") — which already flows into this report's "Expenses by
+// Category" (it's a normal, non-daily_closing ledger transaction). So the
+// commission is ALREADY subtracted once, as an expense. If revenue here
+// were ALSO net of that same deduction, the commission would be
+// subtracted twice and understate Net P&L. Two numbers are computed per
+// day instead, for two different audiences:
 //
 //   - actualNet  — feeds Total Revenue / Net P&L / Gross Margin / Revenue
 //                  Breakdown. ₹0 until that week's payout is actually
-//                  settled in the Zomato/Swiggy Sales Tracker, then the real
-//                  net-of-deduction figure computed from the imported Item
-//                  Sales / Past Orders report. Never a guess — these numbers
-//                  must be trustworthy.
-//   - displayNet — feeds the Daily Breakdown table only. Same as actualNet
-//                  once settled ("actual"). Until then, a best-effort
-//                  "estimated" figure — the day's real imported gross if a
-//                  report covers it, else the manually-entered Daily
-//                  Closing figure, × the most recently settled week's
-//                  deduction % — so the day-by-day table isn't full of
-//                  ₹0s while payouts are pending. Falls back to raw gross
-//                  with no deduction ("unavailable") if nothing has ever
-//                  been settled for that platform.
+//                  settled, then the GROSS daily figure (matching exactly
+//                  what was posted to Escrow that day) — never net. The
+//                  Settlement Deduction expense (elsewhere in this same
+//                  report) is what brings it down to the real payout:
+//                  Revenue (gross) − Deduction (expense) = actual cash
+//                  received, with no double-counting either way.
+//   - displayNet — feeds the Daily Breakdown table only, as a "day-by-day
+//                  feel" preview — always net of the deduction (real once
+//                  settled, a best-effort estimate off the most recently
+//                  settled week's deduction % until then), so it reads as
+//                  roughly "what this day is worth after commission."
+//                  Never used in any total.
 type PlatformMode = "actual" | "estimated" | "unavailable";
 
 interface PlatformImportLike {
@@ -55,35 +63,40 @@ interface PlatformDayInfo {
 }
 
 /**
- * Builds a date -> PlatformDayInfo map. `actualNet` only ever comes from
- * item-sales rows belonging to a SETTLED import (has a deductionPct) —
- * unsettled and soft-deleted imports never contribute to it. `displayNet`
- * additionally falls back to an estimate (real imported gross, or the
- * manually entered Daily Closing gross, × the most recently settled
- * deduction %) for days that aren't settled yet, purely for the Daily
- * Breakdown table.
+ * Builds a date -> PlatformDayInfo map.
+ *   - `actualNet` = the day's manually entered gross (closingGrossByDate)
+ *     if that date falls inside a SETTLED import's period, else 0.
+ *     Deliberately NOT net of deduction — see the comment above.
+ *   - `displayNet` = net of deduction always (real per-day CSV revenue ×
+ *     that settlement's real % once settled, else an estimate), purely
+ *     for the Daily Breakdown table.
  */
 function buildPlatformDayInfo(
   imports: PlatformImportLike[],
   itemSales: PlatformItemSaleLike[],
   closingGrossByDate: Map<string, number>,
 ): Map<string, PlatformDayInfo> {
-  const settledById = new Map(
-    imports.filter((i) => typeof i.deductionPct === "number").map((i) => [i.id, i]),
-  );
-  const mostRecentSettled = Array.from(settledById.values()).sort((a, b) =>
+  const settledImports = imports.filter((i) => typeof i.deductionPct === "number");
+  const settledById = new Map(settledImports.map((i) => [i.id, i]));
+  const mostRecentSettled = [...settledImports].sort((a, b) =>
     b.reportEndDate.localeCompare(a.reportEndDate),
   )[0] ?? null;
 
-  const settledNetByDate = new Map<string, { net: number; pct: number; start: string; end: string }>();
+  // Real per-day CSV gross (any import, settled or not) — used for the
+  // display estimate's gross figure when available, in place of the
+  // manually entered Daily Closing figure.
   const rawGrossByDate = new Map<string, number>();
+  // Real per-day net (settled imports only, from actual item-sales rows) —
+  // used for displayNet's "actual" case. Falls back to
+  // manualGross × deductionPct if a settled day has no item-sales rows.
+  const settledDisplayNetByDate = new Map<string, { net: number; pct: number; start: string; end: string }>();
   for (const row of itemSales) {
     rawGrossByDate.set(row.date, roundCurrency((rawGrossByDate.get(row.date) ?? 0) + row.revenue));
     const imp = settledById.get(row.importId);
     if (!imp) continue;
     const net = roundCurrency(row.revenue * (1 - imp.deductionPct!));
-    const existing = settledNetByDate.get(row.date);
-    settledNetByDate.set(row.date, {
+    const existing = settledDisplayNetByDate.get(row.date);
+    settledDisplayNetByDate.set(row.date, {
       net: roundCurrency((existing?.net ?? 0) + net),
       pct: imp.deductionPct!,
       start: imp.reportStartDate,
@@ -91,18 +104,23 @@ function buildPlatformDayInfo(
     });
   }
 
+  const findCoveringSettledImport = (date: string) =>
+    settledImports.find((i) => date >= i.reportStartDate && date <= i.reportEndDate);
+
   const allDates = new Set<string>([...rawGrossByDate.keys(), ...closingGrossByDate.keys()]);
   const result = new Map<string, PlatformDayInfo>();
   for (const date of allDates) {
-    const settled = settledNetByDate.get(date);
-    if (settled) {
+    const covering = findCoveringSettledImport(date);
+    if (covering) {
+      const manualGross = closingGrossByDate.get(date) ?? 0;
+      const displayInfo = settledDisplayNetByDate.get(date);
       result.set(date, {
-        actualNet: settled.net,
-        displayNet: settled.net,
+        actualNet: manualGross,
+        displayNet: displayInfo ? displayInfo.net : roundCurrency(manualGross * (1 - covering.deductionPct!)),
         mode: "actual",
-        deductionPct: settled.pct,
-        sourceStart: settled.start,
-        sourceEnd: settled.end,
+        deductionPct: covering.deductionPct!,
+        sourceStart: covering.reportStartDate,
+        sourceEnd: covering.reportEndDate,
       });
       continue;
     }
@@ -191,7 +209,9 @@ export async function GET(request: Request) {
         const swiggy = lookupPlatformDayInfo(swiggyByDate, c.date);
         return {
           ...c,
-          // actualNet feeds P&L/KPI totals below — real settled revenue only.
+          // actualNet feeds P&L/KPI totals below — GROSS, settled-only (see
+          // the big comment above buildPlatformDayInfo for why this must
+          // not be net of deduction).
           zomatoActualRevenue: zomato.actualNet,
           swiggyActualRevenue: swiggy.actualNet,
           // displayNet feeds the Daily Breakdown table only — actual once
@@ -235,8 +255,11 @@ export async function GET(request: Request) {
       const closingCashExpense = roundCurrency(lockedClosings.reduce((s, c) => s + c.cashExpenseTotal, 0));
       const closingDeposits = roundCurrency(lockedClosings.reduce((s, c) => s + c.depositTotal, 0));
 
-      // Real, settled Zomato/Swiggy revenue only (₹0 for any day whose
-      // platform payout hasn't been recorded yet) — see buildSettledRevenueByDate above.
+      // Gross Zomato/Swiggy revenue, counted only for days whose platform
+      // payout has actually been settled (₹0 otherwise) — see
+      // buildPlatformDayInfo above. Left as gross (not net of deduction) on
+      // purpose: the commission already lands as a separate "Settlement
+      // Deduction" expense below, via ledgerExpenseTx.
       const settledZomato = roundCurrency(lockedClosingsWithSettled.reduce((s, c) => s + c.zomatoActualRevenue, 0));
       const settledSwiggy = roundCurrency(lockedClosingsWithSettled.reduce((s, c) => s + c.swiggyActualRevenue, 0));
 

@@ -135,12 +135,12 @@ function platformBreakdownText(
   const period = sourceStart && sourceEnd ? `${formatDateDisplay(sourceStart)} – ${formatDateDisplay(sourceEnd)}` : null;
   const pctLabel = `${(deductionPct * 100).toFixed(2)}%`;
   if (mode === "actual") {
-    return `Settled for ${period}. Real ${platform} sales for this day, net of the actual ${pctLabel} deduction from that week's payout = ${formatCurrency(net)}. This is the figure counted in Total Revenue/Net P&L above.`;
+    return `Settled for ${period}. Real ${platform} sales for this day, net of the actual ${pctLabel} deduction from that week's payout = ${formatCurrency(net)} — an estimate of your take-home for this specific day. Total Revenue above counts the gross ${formatCurrency(gross)} instead, with the ${pctLabel} commission showing separately as a "${platform} Settlement Deduction" expense — so nothing is double-counted.`;
   }
   if (mode === "estimated") {
-    return `Not settled yet. Shown here as an estimate — this day's gross ${platform} sales (${formatCurrency(gross)}, from the imported report if available, otherwise the manually entered Daily Closing figure) × (1 − ${pctLabel}, the most recently settled deduction from ${period}) = ${formatCurrency(net)}. Total Revenue/Net P&L above still show ₹0 for this day until it's actually settled.`;
+    return `Not settled yet. Shown here as an estimate — this day's gross ${platform} sales (${formatCurrency(gross)}, from the imported report if available, otherwise the manually entered Daily Closing figure) × (1 − ${pctLabel}, the most recently settled deduction from ${period}) = ${formatCurrency(net)}. Total Revenue above still shows ₹0 for this day until it's actually settled.`;
   }
-  return `No ${platform} payout has ever been settled — showing the raw gross figure (${formatCurrency(gross)}) with no deduction applied, purely for reference. Total Revenue/Net P&L above show ₹0 for this day.`;
+  return `No ${platform} payout has ever been settled — showing the raw gross figure (${formatCurrency(gross)}) with no deduction applied, purely for reference. Total Revenue above shows ₹0 for this day.`;
 }
 
 function PlatformCell({
