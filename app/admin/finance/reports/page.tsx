@@ -74,6 +74,15 @@ interface ReportSummary {
   totalRevenue: number;
   totalExpense: number;
   netPnl: number;
+  // "Estimated" KPI set — everything above, except Zomato/Swiggy revenue is
+  // the Daily Breakdown table's net-of-deduction figure (real once settled,
+  // a best-effort estimate until then) instead of ₹0-until-settled. Backend
+  // already excludes the Settlement Deduction/Adjustment ledger postings
+  // from this set so the commission isn't subtracted twice — see the big
+  // comment above relevantTxForEstimate in pnl/route.ts.
+  estimatedTotalRevenue: number;
+  estimatedTotalExpense: number;
+  estimatedNetPnl: number;
   revenueBreakdown: RevenueBreakdown;
   expenseByCategory: CategoryItem[];
   ledgerIncomeByCategory: CategoryItem[];
@@ -286,6 +295,9 @@ export default function FinanceReportsPage() {
   const rows = report?.closings ?? [];
   const netPnl = s?.netPnl ?? 0;
   const grossMarginPct = s && s.totalRevenue > 0 ? Math.round(((s.totalRevenue - s.totalExpense) / s.totalRevenue) * 100) : null;
+  const estNetPnl = s?.estimatedNetPnl ?? 0;
+  const estGrossMarginPct =
+    s && s.estimatedTotalRevenue > 0 ? Math.round(((s.estimatedTotalRevenue - s.estimatedTotalExpense) / s.estimatedTotalRevenue) * 100) : null;
   const rb = s?.revenueBreakdown;
 
   return (
@@ -394,6 +406,34 @@ export default function FinanceReportsPage() {
                   value={grossMarginPct !== null ? `${grossMarginPct}%` : "—"}
                   tone={grossMarginPct !== null ? (grossMarginPct >= 0 ? "positive" : "negative") : "muted"}
                   sub="(Revenue − Expense) ÷ Revenue"
+                />
+              </div>
+            </section>
+
+            {/* ── "Estimated" KPI set — includes pending (not-yet-settled) Zomato/Swiggy ── */}
+            <section className="rounded-[28px] border border-amber-200 bg-amber-50/40 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
+                Including Pending Settlements — Estimated
+              </p>
+              <p className="mb-3 text-xs text-slate-500">
+                Same as the real cards above, but Zomato/Swiggy revenue is the day-by-day figure from the Daily Breakdown table below — actual once
+                that week&apos;s payout is settled, or a best-effort estimate (last settled week&apos;s deduction %) until then — instead of ₹0 until settled.
+                Everything else (cash, UPI, other income, all other Transactions) is identical to the real cards.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <KpiCard label="Est. Total Revenue" value={formatCurrency(s.estimatedTotalRevenue)} tone="positive" />
+                <KpiCard label="Est. Total Expenses" value={formatCurrency(s.estimatedTotalExpense)} tone="negative" />
+                <KpiCard
+                  label="Est. Net P&L"
+                  value={formatCurrency(estNetPnl)}
+                  tone={estNetPnl >= 0 ? "positive" : "negative"}
+                  sub={estNetPnl >= 0 ? "Profitable" : "Loss-making"}
+                />
+                <KpiCard
+                  label="Est. Gross Margin"
+                  value={estGrossMarginPct !== null ? `${estGrossMarginPct}%` : "—"}
+                  tone={estGrossMarginPct !== null ? (estGrossMarginPct >= 0 ? "positive" : "negative") : "muted"}
+                  sub="(Est. Revenue − Est. Expense) ÷ Est. Revenue"
                 />
               </div>
             </section>

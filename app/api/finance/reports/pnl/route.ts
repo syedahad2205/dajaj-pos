@@ -115,6 +115,27 @@ export async function GET(request: Request) {
         (t) => t.type === "expense" && !isCashAccount(t.fromAccountId),
       );
 
+      // Same as relevantTx, but ALSO excludes zomato_settlement/
+      // swiggy_settlement postings — needed for the "Estimated" KPI set
+      // below. That set's Zomato/Swiggy revenue is net-of-deduction already
+      // (real report gross × deductionPct once settled, an estimate until
+      // then — see displayNet in lib/platformRevenue.ts), so the commission
+      // is already baked into the revenue number. If the Settlement
+      // Deduction/Adjustment ledger postings (which reconcile a totally
+      // different pair of numbers — Daily Closing's entered gross vs the
+      // actual payout) were ALSO subtracted here, the commission would be
+      // subtracted twice. Every other ledger transaction (rent, vendor
+      // payments, manual income, etc.) still counts normally in both sets.
+      const relevantTxForEstimate = relevantTx.filter(
+        (t) => t.autoPostedSource !== "zomato_settlement" && t.autoPostedSource !== "swiggy_settlement",
+      );
+      const estLedgerIncomeTx = relevantTxForEstimate.filter(
+        (t) => t.type === "income" && !isCashAccount(t.toAccountId),
+      );
+      const estLedgerExpenseTx = relevantTxForEstimate.filter(
+        (t) => t.type === "expense" && !isCashAccount(t.fromAccountId),
+      );
+
       // ── Locked closings only for P&L totals ──
       const lockedClosings: FinanceDailyClosing[] = rawClosings.filter((c) => c.locked);
       const lockedClosingsWithSettled = closingsWithSettled.filter((c) => c.locked);
@@ -141,6 +162,22 @@ export async function GET(request: Request) {
       const totalRevenue = roundCurrency(closingRevenue + ledgerIncome);
       const totalExpense = roundCurrency(closingCashExpense + ledgerExpense);
       const netPnl = roundCurrency(totalRevenue - totalExpense);
+
+      // ── "Estimated" KPI set — everything the real set has, but Zomato/
+      // Swiggy revenue is the day-by-day net figure from the Daily
+      // Breakdown table (real once settled, a best-effort estimate off the
+      // most recently settled week's deduction % until then) instead of
+      // ₹0-until-settled. Uses estLedger*Tx (excludes the Settlement
+      // Deduction/Adjustment postings) so the commission isn't subtracted
+      // twice — see the comment above relevantTxForEstimate.
+      const zomatoDisplayTotal = roundCurrency(lockedClosingsWithSettled.reduce((s, c) => s + c.zomatoDisplayRevenue, 0));
+      const swiggyDisplayTotal = roundCurrency(lockedClosingsWithSettled.reduce((s, c) => s + c.swiggyDisplayRevenue, 0));
+      const estClosingRevenue = roundCurrency(closingCashRevenue + closingUpi + closingOther + zomatoDisplayTotal + swiggyDisplayTotal);
+      const estLedgerIncome = roundCurrency(estLedgerIncomeTx.reduce((s, t) => s + t.amount, 0));
+      const estLedgerExpense = roundCurrency(estLedgerExpenseTx.reduce((s, t) => s + t.amount, 0));
+      const estimatedTotalRevenue = roundCurrency(estClosingRevenue + estLedgerIncome);
+      const estimatedTotalExpense = roundCurrency(closingCashExpense + estLedgerExpense);
+      const estimatedNetPnl = roundCurrency(estimatedTotalRevenue - estimatedTotalExpense);
 
       // ── Revenue breakdown ──
       const revenueBreakdown = {
@@ -192,6 +229,9 @@ export async function GET(request: Request) {
           totalRevenue,
           totalExpense,
           netPnl,
+          estimatedTotalRevenue,
+          estimatedTotalExpense,
+          estimatedNetPnl,
           revenueBreakdown,
           expenseByCategory,
           ledgerIncomeByCategory,
