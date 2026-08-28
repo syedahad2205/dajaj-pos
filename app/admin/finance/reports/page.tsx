@@ -68,6 +68,13 @@ interface ReportSummary {
   totalRevenue: number;
   totalExpense: number;
   netPnl: number;
+  // Same as totalRevenue/netPnl, but with Zomato/Swiggy swapped for their
+  // net-of-deduction figure (actual once settled, estimated until then) —
+  // see PlatformCell / the Daily Breakdown table for the per-day version.
+  estimatedTotalRevenue: number;
+  estimatedNetPnl: number;
+  estimatedZomato: number;
+  estimatedSwiggy: number;
   revenueBreakdown: RevenueBreakdown;
   expenseByCategory: CategoryItem[];
   ledgerIncomeByCategory: CategoryItem[];
@@ -370,20 +377,32 @@ export default function FinanceReportsPage() {
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Summary — {s.closedDays} closed day{s.closedDays !== 1 ? "s" : ""}
               </p>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <KpiCard label="Total Revenue" value={formatCurrency(s.totalRevenue)} tone="positive" />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <KpiCard label="Total Revenue" value={formatCurrency(s.totalRevenue)} tone="positive" sub="Gross — includes full Zomato/Swiggy sales" />
                 <KpiCard label="Total Expenses" value={formatCurrency(s.totalExpense)} tone="negative" />
                 <KpiCard
                   label="Net P&L"
                   value={formatCurrency(netPnl)}
                   tone={netPnl >= 0 ? "positive" : "negative"}
-                  sub={netPnl >= 0 ? "Profitable" : "Loss-making"}
+                  sub={netPnl >= 0 ? "Profitable (gross)" : "Loss-making (gross)"}
                 />
                 <KpiCard
                   label="Gross Margin"
                   value={grossMarginPct !== null ? `${grossMarginPct}%` : "—"}
                   tone={grossMarginPct !== null ? (grossMarginPct >= 0 ? "positive" : "negative") : "muted"}
                   sub="(Revenue − Expense) ÷ Revenue"
+                />
+                <KpiCard
+                  label="Est. Total Revenue"
+                  value={formatCurrency(s.estimatedTotalRevenue)}
+                  tone="positive"
+                  sub="Zomato/Swiggy net of deduction (actual once settled)"
+                />
+                <KpiCard
+                  label="Est. Net P&L"
+                  value={formatCurrency(s.estimatedNetPnl)}
+                  tone={s.estimatedNetPnl >= 0 ? "positive" : "negative"}
+                  sub={s.estimatedNetPnl >= 0 ? "Profitable (net)" : "Loss-making (net)"}
                 />
               </div>
             </section>

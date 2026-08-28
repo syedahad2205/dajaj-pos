@@ -178,6 +178,17 @@ export async function GET(request: Request) {
       const totalExpense = roundCurrency(closingCashExpense + ledgerExpense);
       const netPnl = roundCurrency(totalRevenue - totalExpense);
 
+      // ── Estimated totals — same as above, but with Zomato/Swiggy swapped for
+      // their net-of-deduction figure (actual once settled, estimated until
+      // then — see buildPlatformEstimator above). Kept as a SEPARATE set of
+      // numbers rather than replacing totalRevenue/netPnl, so the existing
+      // gross KPI cards keep meaning exactly what they always have. ──
+      const lockedClosingsWithEstimates = closingsWithEstimates.filter((c) => c.locked);
+      const estimatedZomato = roundCurrency(lockedClosingsWithEstimates.reduce((s, c) => s + c.zomatoNetRevenue, 0));
+      const estimatedSwiggy = roundCurrency(lockedClosingsWithEstimates.reduce((s, c) => s + c.swiggyNetRevenue, 0));
+      const estimatedTotalRevenue = roundCurrency(totalRevenue - closingZomato - closingSwiggy + estimatedZomato + estimatedSwiggy);
+      const estimatedNetPnl = roundCurrency(estimatedTotalRevenue - totalExpense);
+
       // ── Revenue breakdown ──
       const revenueBreakdown = {
         cashSales: closingCashRevenue,
@@ -228,6 +239,10 @@ export async function GET(request: Request) {
           totalRevenue,
           totalExpense,
           netPnl,
+          estimatedTotalRevenue,
+          estimatedNetPnl,
+          estimatedZomato,
+          estimatedSwiggy,
           revenueBreakdown,
           expenseByCategory,
           ledgerIncomeByCategory,
