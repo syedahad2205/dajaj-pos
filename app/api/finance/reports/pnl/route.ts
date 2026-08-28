@@ -5,6 +5,71 @@ import { toDateKey, roundCurrency, DEFAULT_BRANCH_ID, type FinanceDailyClosing }
 import { getDailyClosingsForRange } from "@/services/financeClosingService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
 import { getPostedTransactionsForRange } from "@/services/financeTransactionsService";
+import { getZomatoImports } from "@/services/zomatoService";
+import { getSwiggyImports } from "@/services/swiggyService";
+
+// ─── Platform (Zomato/Swiggy) net-of-deduction estimator ──────────────────────
+//
+// Daily Closing's zomatoSales/swiggySales are a manually entered GROSS figure
+// (revenue recognized that day, before the platform's commission/GST/ads cut
+// is known). The Daily Breakdown table shows the NET figure instead:
+//   - "actual"    — this day falls inside a payout period that has already
+//                   been settled (services/zomatoService.ts /
+//                   services/swiggyService.ts) — use THAT period's own
+//                   deduction % (the real number).
+//   - "estimated" — no settlement covers this day yet — use the most
+//                   recently settled period's deduction % as a stand-in
+//                   ("last week's deduction"), since commission rates don't
+//                   swing much week to week.
+//   - "unavailable" — no settlement has EVER been recorded for this platform
+//                     — nothing to estimate from, so the gross figure is
+//                     shown as-is with no deduction applied.
+type PlatformMode = "actual" | "estimated" | "unavailable";
+
+interface PlatformImportLike {
+  reportStartDate: string;
+  reportEndDate: string;
+  deductionPct?: number;
+}
+
+interface PlatformEstimate {
+  net: number;
+  pct: number;
+  mode: PlatformMode;
+  sourceStart: string | null;
+  sourceEnd: string | null;
+}
+
+function buildPlatformEstimator(imports: PlatformImportLike[]) {
+  const settled = imports
+    .filter((i) => typeof i.deductionPct === "number")
+    .sort((a, b) => b.reportEndDate.localeCompare(a.reportEndDate));
+  const mostRecentSettled = settled[0] ?? null;
+
+  return function estimate(date: string, gross: number): PlatformEstimate {
+    const covering = imports.find((i) => date >= i.reportStartDate && date <= i.reportEndDate && typeof i.deductionPct === "number");
+
+    if (covering) {
+      return {
+        net: roundCurrency(gross * (1 - covering.deductionPct!)),
+        pct: covering.deductionPct!,
+        mode: "actual",
+        sourceStart: covering.reportStartDate,
+        sourceEnd: covering.reportEndDate,
+      };
+    }
+    if (mostRecentSettled) {
+      return {
+        net: roundCurrency(gross * (1 - mostRecentSettled.deductionPct!)),
+        pct: mostRecentSettled.deductionPct!,
+        mode: "estimated",
+        sourceStart: mostRecentSettled.reportStartDate,
+        sourceEnd: mostRecentSettled.reportEndDate,
+      };
+    }
+    return { net: gross, pct: 0, mode: "unavailable", sourceStart: null, sourceEnd: null };
+  };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -48,12 +113,35 @@ export async function GET(request: Request) {
       const dateTo = url.searchParams.get("dateTo") ?? today;
       const branchId = DEFAULT_BRANCH_ID;
 
-      // Fetch all three sources in parallel
-      const [rawClosings, accounts, rangeTransactions] = await Promise.all([
+      // Fetch all sources in parallel
+      const [rawClosings, accounts, rangeTransactions, zomatoImports, swiggyImports] = await Promise.all([
         getDailyClosingsForRange(dateFrom, dateTo, firestore, branchId),
         getFinanceAccounts({ branchId }, firestore),
         getPostedTransactionsForRange(dateFrom, dateTo, firestore, branchId),
+        getZomatoImports(firestore),
+        getSwiggyImports(firestore),
       ]);
+
+      const estimateZomato = buildPlatformEstimator(zomatoImports);
+      const estimateSwiggy = buildPlatformEstimator(swiggyImports);
+
+      const closingsWithEstimates = rawClosings.map((c) => {
+        const zomato = estimateZomato(c.date, c.zomatoSales);
+        const swiggy = estimateSwiggy(c.date, c.swiggySales);
+        return {
+          ...c,
+          zomatoNetRevenue: zomato.net,
+          zomatoDeductionPct: zomato.pct,
+          zomatoMode: zomato.mode,
+          zomatoSourceStart: zomato.sourceStart,
+          zomatoSourceEnd: zomato.sourceEnd,
+          swiggyNetRevenue: swiggy.net,
+          swiggyDeductionPct: swiggy.pct,
+          swiggyMode: swiggy.mode,
+          swiggySourceStart: swiggy.sourceStart,
+          swiggySourceEnd: swiggy.sourceEnd,
+        };
+      });
 
       const accountTypeById = new Map(accounts.map((a) => [a.id, a.type]));
       const isCashAccount = (accountId: string | null) =>
@@ -133,7 +221,7 @@ export async function GET(request: Request) {
 
       return NextResponse.json({
         success: true,
-        closings: rawClosings, // full rows for day-by-day table (includes drafts)
+        closings: closingsWithEstimates, // full rows for day-by-day table (includes drafts), with net-of-deduction Zomato/Swiggy estimates attached
         summary: {
           closedDays: lockedClosings.length,
           draftDays: rawClosings.length - lockedClosings.length,
