@@ -574,6 +574,25 @@ export async function getItemSalesForImport(
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ZomatoItemSale));
 }
 
+/**
+ * Item sales rows (item × date) across ALL imports whose `date` falls in
+ * [dateFrom, dateTo] — used by the P&L report to recognize real, settled
+ * Zomato revenue per calendar day instead of the manually-entered Daily
+ * Closing figure. Callers should cross-check `importId` against
+ * getZomatoImports() (active + settled) before trusting a row — this does
+ * NOT filter out rows belonging to a soft-deleted import.
+ */
+export async function getItemSalesForDateRange(
+  dateFrom: string,
+  dateTo: string,
+  db: Firestore = defaultFirestore,
+): Promise<ZomatoItemSale[]> {
+  const snap = await getDocs(
+    query(salesCol(db), where('date', '>=', dateFrom), where('date', '<=', dateTo)),
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ZomatoItemSale));
+}
+
 export async function getCategorySummaryForImport(
   importId: string,
   db: Firestore = defaultFirestore,

@@ -663,6 +663,25 @@ export async function getSwiggyItemSalesForImport(
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as SwiggyItemSale));
 }
 
+/**
+ * Item sales rows (item × date) across ALL imports whose `date` falls in
+ * [dateFrom, dateTo] — used by the P&L report to recognize real, settled
+ * Swiggy revenue per calendar day instead of the manually-entered Daily
+ * Closing figure. Callers should cross-check `importId` against
+ * getSwiggyImports() (active + settled) before trusting a row — this does
+ * NOT filter out rows belonging to a soft-deleted import.
+ */
+export async function getSwiggyItemSalesForDateRange(
+  dateFrom: string,
+  dateTo: string,
+  db: Firestore = defaultFirestore,
+): Promise<SwiggyItemSale[]> {
+  const snap = await getDocs(
+    query(salesCol(db), where('date', '>=', dateFrom), where('date', '<=', dateTo)),
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as SwiggyItemSale));
+}
+
 export async function getSwiggyCategorySummaryForImport(
   importId: string,
   db: Firestore = defaultFirestore,

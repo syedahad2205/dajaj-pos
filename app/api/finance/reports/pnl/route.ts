@@ -5,70 +5,77 @@ import { toDateKey, roundCurrency, DEFAULT_BRANCH_ID, type FinanceDailyClosing }
 import { getDailyClosingsForRange } from "@/services/financeClosingService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
 import { getPostedTransactionsForRange } from "@/services/financeTransactionsService";
-import { getZomatoImports } from "@/services/zomatoService";
-import { getSwiggyImports } from "@/services/swiggyService";
+import { getZomatoImports, getItemSalesForDateRange } from "@/services/zomatoService";
+import { getSwiggyImports, getSwiggyItemSalesForDateRange } from "@/services/swiggyService";
 
-// ─── Platform (Zomato/Swiggy) net-of-deduction estimator ──────────────────────
+// ─── Platform (Zomato/Swiggy) real settled revenue ─────────────────────────────
 //
-// Daily Closing's zomatoSales/swiggySales are a manually entered GROSS figure
+// Daily Closing's zomatoSales/swiggySales is a manually entered GROSS guess
 // (revenue recognized that day, before the platform's commission/GST/ads cut
-// is known). The Daily Breakdown table shows the NET figure instead:
-//   - "actual"    — this day falls inside a payout period that has already
-//                   been settled (services/zomatoService.ts /
-//                   services/swiggyService.ts) — use THAT period's own
-//                   deduction % (the real number).
-//   - "estimated" — no settlement covers this day yet — use the most
-//                   recently settled period's deduction % as a stand-in
-//                   ("last week's deduction"), since commission rates don't
-//                   swing much week to week.
-//   - "unavailable" — no settlement has EVER been recorded for this platform
-//                     — nothing to estimate from, so the gross figure is
-//                     shown as-is with no deduction applied.
-type PlatformMode = "actual" | "estimated" | "unavailable";
+// is even known). Rather than estimate a net figure from that guess, P&L now
+// recognizes Zomato/Swiggy revenue only once it's real:
+//   - "actual"  — this day's platform sales (from the imported Item Sales /
+//                 Past Orders report) fall inside a payout period that has
+//                 already been settled — net = that day's real CSV revenue
+//                 × (1 − that settlement's own deduction %).
+//   - "pending" — not settled yet (or nothing imported for this day at all)
+//                 — contributes ₹0 to revenue. It'll switch to "actual" the
+//                 moment that week's payout is recorded, with no guessing
+//                 in between.
+// The manually entered Daily Closing figure is no longer used for revenue
+// recognition at all — it still exists for Escrow bookkeeping (Finance
+// Defaults' zomato_sales/swiggy_sales events) but has no bearing on P&L.
+type PlatformMode = "actual" | "pending";
 
 interface PlatformImportLike {
+  id: string;
   reportStartDate: string;
   reportEndDate: string;
   deductionPct?: number;
 }
 
-interface PlatformEstimate {
+interface PlatformItemSaleLike {
+  date: string;
+  importId: string;
+  revenue: number;
+}
+
+interface PlatformDayRevenue {
   net: number;
-  pct: number;
+  deductionPct: number;
   mode: PlatformMode;
   sourceStart: string | null;
   sourceEnd: string | null;
 }
 
-function buildPlatformEstimator(imports: PlatformImportLike[]) {
-  const settled = imports
-    .filter((i) => typeof i.deductionPct === "number")
-    .sort((a, b) => b.reportEndDate.localeCompare(a.reportEndDate));
-  const mostRecentSettled = settled[0] ?? null;
+/** Builds a date -> real settled revenue map from imported item-sales rows, counting only rows whose import has actually been settled (has a deductionPct) — unsettled and soft-deleted imports are silently excluded. */
+function buildSettledRevenueByDate(
+  imports: PlatformImportLike[],
+  itemSales: PlatformItemSaleLike[],
+): Map<string, PlatformDayRevenue> {
+  const settledById = new Map(
+    imports.filter((i) => typeof i.deductionPct === "number").map((i) => [i.id, i]),
+  );
 
-  return function estimate(date: string, gross: number): PlatformEstimate {
-    const covering = imports.find((i) => date >= i.reportStartDate && date <= i.reportEndDate && typeof i.deductionPct === "number");
+  const byDate = new Map<string, PlatformDayRevenue>();
+  for (const row of itemSales) {
+    const imp = settledById.get(row.importId);
+    if (!imp) continue; // not settled yet, or belongs to a soft-deleted import — excluded entirely
+    const net = roundCurrency(row.revenue * (1 - imp.deductionPct!));
+    const existing = byDate.get(row.date);
+    byDate.set(row.date, {
+      net: roundCurrency((existing?.net ?? 0) + net),
+      deductionPct: imp.deductionPct!,
+      mode: "actual",
+      sourceStart: imp.reportStartDate,
+      sourceEnd: imp.reportEndDate,
+    });
+  }
+  return byDate;
+}
 
-    if (covering) {
-      return {
-        net: roundCurrency(gross * (1 - covering.deductionPct!)),
-        pct: covering.deductionPct!,
-        mode: "actual",
-        sourceStart: covering.reportStartDate,
-        sourceEnd: covering.reportEndDate,
-      };
-    }
-    if (mostRecentSettled) {
-      return {
-        net: roundCurrency(gross * (1 - mostRecentSettled.deductionPct!)),
-        pct: mostRecentSettled.deductionPct!,
-        mode: "estimated",
-        sourceStart: mostRecentSettled.reportStartDate,
-        sourceEnd: mostRecentSettled.reportEndDate,
-      };
-    }
-    return { net: gross, pct: 0, mode: "unavailable", sourceStart: null, sourceEnd: null };
-  };
+function lookupPlatformRevenue(byDate: Map<string, PlatformDayRevenue>, date: string): PlatformDayRevenue {
+  return byDate.get(date) ?? { net: 0, deductionPct: 0, mode: "pending", sourceStart: null, sourceEnd: null };
 }
 
 export const dynamic = "force-dynamic";
@@ -114,29 +121,31 @@ export async function GET(request: Request) {
       const branchId = DEFAULT_BRANCH_ID;
 
       // Fetch all sources in parallel
-      const [rawClosings, accounts, rangeTransactions, zomatoImports, swiggyImports] = await Promise.all([
+      const [rawClosings, accounts, rangeTransactions, zomatoImports, swiggyImports, zomatoItemSales, swiggyItemSales] = await Promise.all([
         getDailyClosingsForRange(dateFrom, dateTo, firestore, branchId),
         getFinanceAccounts({ branchId }, firestore),
         getPostedTransactionsForRange(dateFrom, dateTo, firestore, branchId),
         getZomatoImports(firestore),
         getSwiggyImports(firestore),
+        getItemSalesForDateRange(dateFrom, dateTo, firestore),
+        getSwiggyItemSalesForDateRange(dateFrom, dateTo, firestore),
       ]);
 
-      const estimateZomato = buildPlatformEstimator(zomatoImports);
-      const estimateSwiggy = buildPlatformEstimator(swiggyImports);
+      const zomatoByDate = buildSettledRevenueByDate(zomatoImports, zomatoItemSales);
+      const swiggyByDate = buildSettledRevenueByDate(swiggyImports, swiggyItemSales);
 
-      const closingsWithEstimates = rawClosings.map((c) => {
-        const zomato = estimateZomato(c.date, c.zomatoSales);
-        const swiggy = estimateSwiggy(c.date, c.swiggySales);
+      const closingsWithSettled = rawClosings.map((c) => {
+        const zomato = lookupPlatformRevenue(zomatoByDate, c.date);
+        const swiggy = lookupPlatformRevenue(swiggyByDate, c.date);
         return {
           ...c,
-          zomatoNetRevenue: zomato.net,
-          zomatoDeductionPct: zomato.pct,
+          zomatoActualRevenue: zomato.net,
+          zomatoDeductionPct: zomato.deductionPct,
           zomatoMode: zomato.mode,
           zomatoSourceStart: zomato.sourceStart,
           zomatoSourceEnd: zomato.sourceEnd,
-          swiggyNetRevenue: swiggy.net,
-          swiggyDeductionPct: swiggy.pct,
+          swiggyActualRevenue: swiggy.net,
+          swiggyDeductionPct: swiggy.deductionPct,
           swiggyMode: swiggy.mode,
           swiggySourceStart: swiggy.sourceStart,
           swiggySourceEnd: swiggy.sourceEnd,
@@ -161,15 +170,20 @@ export async function GET(request: Request) {
 
       // ── Locked closings only for P&L totals ──
       const lockedClosings: FinanceDailyClosing[] = rawClosings.filter((c) => c.locked);
+      const lockedClosingsWithSettled = closingsWithSettled.filter((c) => c.locked);
 
-      const closingRevenue = roundCurrency(lockedClosings.reduce((s, c) => s + c.totalRevenue, 0));
       const closingCashRevenue = roundCurrency(lockedClosings.reduce((s, c) => s + c.cashRevenue, 0));
       const closingUpi = roundCurrency(lockedClosings.reduce((s, c) => s + c.upiSales, 0));
-      const closingZomato = roundCurrency(lockedClosings.reduce((s, c) => s + c.zomatoSales, 0));
-      const closingSwiggy = roundCurrency(lockedClosings.reduce((s, c) => s + c.swiggySales, 0));
       const closingOther = roundCurrency(lockedClosings.reduce((s, c) => s + c.otherIncome, 0));
       const closingCashExpense = roundCurrency(lockedClosings.reduce((s, c) => s + c.cashExpenseTotal, 0));
       const closingDeposits = roundCurrency(lockedClosings.reduce((s, c) => s + c.depositTotal, 0));
+
+      // Real, settled Zomato/Swiggy revenue only (₹0 for any day whose
+      // platform payout hasn't been recorded yet) — see buildSettledRevenueByDate above.
+      const settledZomato = roundCurrency(lockedClosingsWithSettled.reduce((s, c) => s + c.zomatoActualRevenue, 0));
+      const settledSwiggy = roundCurrency(lockedClosingsWithSettled.reduce((s, c) => s + c.swiggyActualRevenue, 0));
+
+      const closingRevenue = roundCurrency(closingCashRevenue + closingUpi + closingOther + settledZomato + settledSwiggy);
 
       const ledgerIncome = roundCurrency(ledgerIncomeTx.reduce((s, t) => s + t.amount, 0));
       const ledgerExpense = roundCurrency(ledgerExpenseTx.reduce((s, t) => s + t.amount, 0));
@@ -178,23 +192,12 @@ export async function GET(request: Request) {
       const totalExpense = roundCurrency(closingCashExpense + ledgerExpense);
       const netPnl = roundCurrency(totalRevenue - totalExpense);
 
-      // ── Estimated totals — same as above, but with Zomato/Swiggy swapped for
-      // their net-of-deduction figure (actual once settled, estimated until
-      // then — see buildPlatformEstimator above). Kept as a SEPARATE set of
-      // numbers rather than replacing totalRevenue/netPnl, so the existing
-      // gross KPI cards keep meaning exactly what they always have. ──
-      const lockedClosingsWithEstimates = closingsWithEstimates.filter((c) => c.locked);
-      const estimatedZomato = roundCurrency(lockedClosingsWithEstimates.reduce((s, c) => s + c.zomatoNetRevenue, 0));
-      const estimatedSwiggy = roundCurrency(lockedClosingsWithEstimates.reduce((s, c) => s + c.swiggyNetRevenue, 0));
-      const estimatedTotalRevenue = roundCurrency(totalRevenue - closingZomato - closingSwiggy + estimatedZomato + estimatedSwiggy);
-      const estimatedNetPnl = roundCurrency(estimatedTotalRevenue - totalExpense);
-
       // ── Revenue breakdown ──
       const revenueBreakdown = {
         cashSales: closingCashRevenue,
         upi: closingUpi,
-        zomato: closingZomato,
-        swiggy: closingSwiggy,
+        zomato: settledZomato,
+        swiggy: settledSwiggy,
         otherIncome: closingOther,
         ledgerIncome,
       };
@@ -232,17 +235,13 @@ export async function GET(request: Request) {
 
       return NextResponse.json({
         success: true,
-        closings: closingsWithEstimates, // full rows for day-by-day table (includes drafts), with net-of-deduction Zomato/Swiggy estimates attached
+        closings: closingsWithSettled, // full rows for day-by-day table (includes drafts), with real settled Zomato/Swiggy revenue attached
         summary: {
           closedDays: lockedClosings.length,
           draftDays: rawClosings.length - lockedClosings.length,
           totalRevenue,
           totalExpense,
           netPnl,
-          estimatedTotalRevenue,
-          estimatedNetPnl,
-          estimatedZomato,
-          estimatedSwiggy,
           revenueBreakdown,
           expenseByCategory,
           ledgerIncomeByCategory,
