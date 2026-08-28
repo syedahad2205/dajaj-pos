@@ -293,6 +293,29 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ── Swiggy Sales Tracker ──────────────────────────────────────────────────
+    // Admin-only: import Past Orders CSVs, maintain the item→category map,
+    // manage history. Mirrors the Zomato Sales Tracker rules above.
+    match /swiggy_imports/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /swiggy_item_sales/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /swiggy_category_summary/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /swiggy_item_summary/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /swiggy_item_categories/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // ── Customer Feedback ─────────────────────────────────────────────────────
     // Customers sign in with Google (Firebase Auth) to submit feedback.
     // They can only create their own record — no reading or editing after submit.

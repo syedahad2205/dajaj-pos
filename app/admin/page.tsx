@@ -40,6 +40,11 @@ const adminLinks = [
     description: "Import payout CSVs, analyse item performance, and generate reports",
   },
   {
+    href: "/admin/swiggy",
+    title: "Swiggy Sales Tracker",
+    description: "Import Past Orders CSVs, analyse category performance, and generate reports",
+  },
+  {
     href: "/admin/feedback",
     title: "Customer Feedback",
     description: "Review direct feedback submitted by customers via QR code packaging",
