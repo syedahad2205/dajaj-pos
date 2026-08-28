@@ -1,10 +1,13 @@
 import type { Firestore } from "firebase/firestore";
 import { firestore as defaultFirestore } from "@/lib/firebase";
 import { DEFAULT_BRANCH_ID, depositEventKey, roundCurrency, toDateKey, type FinanceDailyClosing } from "@/lib/finance";
+import { buildPlatformDayInfo, lookupPlatformDayInfo } from "@/lib/platformRevenue";
 import { getDailyClosingsForRange } from "@/services/financeClosingService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
 import { getFinanceDefaultsMap } from "@/services/financeDefaultsService";
 import { getPostedTransactionsForRange } from "@/services/financeTransactionsService";
+import { getZomatoImports, getItemSalesForDateRange } from "@/services/zomatoService";
+import { getSwiggyImports, getSwiggyItemSalesForDateRange } from "@/services/swiggyService";
 
 /** Sum of one deposit type (e.g. Pigmi) across a set of Daily Closing days. Extending to other deposit types later just means calling this with a different type. */
 function sumDepositsOfType(closings: FinanceDailyClosing[], type: string): number {
@@ -70,7 +73,10 @@ function sumByLabel(items: Array<{ label: string; amount: number }>): FinanceDas
  * 1. Daily Closing (fin_daily_closing) — the cash drawer register. This is
  *    the sole source for "Today" cards and Cash on Hand; it's never
  *    recomputed from the ledger (Daily Closing intentionally stays a
- *    self-contained, physically-counted plug figure).
+ *    self-contained, physically-counted plug figure). NOTE: "Today" is a
+ *    same-day snapshot and deliberately does NOT settlement-gate Zomato/
+ *    Swiggy — a single day is too soon to have a payout anyway, so it just
+ *    shows Daily Closing's raw entry, same as it always has.
  * 2. Transactions (fin_transactions) — bank payments, settlements, and
  *    transfers recorded on the Transactions tab. These feed Monthly
  *    Revenue/Expense, the trend chart, and the category/income breakdowns,
@@ -78,6 +84,15 @@ function sumByLabel(items: Array<{ label: string; amount: number }>): FinanceDas
  *    `type === "cash"` account is excluded from these merges, since Daily
  *    Closing already fully owns cash-drawer accounting for that money.
  *    Transfers never affect revenue/expense (same rule as always).
+ *
+ * Zomato/Swiggy revenue within Monthly Revenue/Profit, the 14-day trend, and
+ * the income-source breakdown is settlement-gated exactly like the P&L
+ * report (Reports tab) — via the shared lib/platformRevenue.ts helper. A
+ * day's Zomato/Swiggy sales count as ₹0 profit-wise until that week's payout
+ * is actually recorded, at which point the GROSS daily figure counts (with
+ * the commission landing separately as a "Settlement Deduction" expense via
+ * the Transactions merge above) — see the big comment in
+ * lib/platformRevenue.ts for why this must be gross, not net.
  */
 export async function getFinanceDashboardSummary(
   db: Firestore = defaultFirestore,
@@ -91,13 +106,35 @@ export async function getFinanceDashboardSummary(
   const trendStartKey = toDateKey(trendStart);
   const rangeStartKey = trendStartKey < monthStartKey ? trendStartKey : monthStartKey;
 
-  const [rangeClosings, allTimeClosings, accounts, rangeTransactions, defaultsMap] = await Promise.all([
-    getDailyClosingsForRange(rangeStartKey, todayKey, db, branchId),
-    getDailyClosingsForRange("2000-01-01", todayKey, db, branchId),
-    getFinanceAccounts({ branchId }, db),
-    getPostedTransactionsForRange(rangeStartKey, todayKey, db, branchId),
-    getFinanceDefaultsMap(db, branchId),
-  ]);
+  const [rangeClosings, allTimeClosings, accounts, rangeTransactions, defaultsMap, zomatoImports, swiggyImports, zomatoItemSales, swiggyItemSales] =
+    await Promise.all([
+      getDailyClosingsForRange(rangeStartKey, todayKey, db, branchId),
+      getDailyClosingsForRange("2000-01-01", todayKey, db, branchId),
+      getFinanceAccounts({ branchId }, db),
+      getPostedTransactionsForRange(rangeStartKey, todayKey, db, branchId),
+      getFinanceDefaultsMap(db, branchId),
+      getZomatoImports(db),
+      getSwiggyImports(db),
+      getItemSalesForDateRange(rangeStartKey, todayKey, db),
+      getSwiggyItemSalesForDateRange(rangeStartKey, todayKey, db),
+    ]);
+
+  const zomatoClosingGrossByDate = new Map(rangeClosings.map((c) => [c.date, c.zomatoSales]));
+  const swiggyClosingGrossByDate = new Map(rangeClosings.map((c) => [c.date, c.swiggySales]));
+  const zomatoByDate = buildPlatformDayInfo(zomatoImports, zomatoItemSales, zomatoClosingGrossByDate);
+  const swiggyByDate = buildPlatformDayInfo(swiggyImports, swiggyItemSales, swiggyClosingGrossByDate);
+  // Settlement-gated GROSS revenue for a closed day — ₹0 until that week's
+  // payout is settled. Same helper, same rule as the P&L report.
+  const platformActualRevenueForDate = (date: string): number =>
+    roundCurrency(
+      lookupPlatformDayInfo(zomatoByDate, date).actualNet + lookupPlatformDayInfo(swiggyByDate, date).actualNet,
+    );
+  const zomatoActualRevenueForDate = (date: string): number => lookupPlatformDayInfo(zomatoByDate, date).actualNet;
+  const swiggyActualRevenueForDate = (date: string): number => lookupPlatformDayInfo(swiggyByDate, date).actualNet;
+  // A closing's non-platform revenue (cash + UPI + other) — the part of
+  // totalRevenue that's never settlement-gated.
+  const nonPlatformRevenue = (c: FinanceDailyClosing): number =>
+    roundCurrency(c.totalRevenue - c.zomatoSales - c.swiggySales);
 
   const accountTypeById = new Map(accounts.map((a) => [a.id, a.type]));
   const isCashAccount = (accountId: string | null) => (accountId ? accountTypeById.get(accountId) === "cash" : false);
@@ -145,9 +182,19 @@ export async function getFinanceDashboardSummary(
   const monthBankIncome = bankIncome.filter((t) => t.date >= monthStartKey && t.date <= todayKey);
   const monthBankExpense = bankExpense.filter((t) => t.date >= monthStartKey && t.date <= todayKey);
 
+  // Revenue = non-platform Daily Closing revenue (always immediate) +
+  // Zomato/Swiggy revenue gated on settlement (₹0 until that week's payout
+  // is recorded) + bank/ledger income (which already includes Settlement
+  // Adjustment income when a payout comes in higher than recognized).
   const monthlyRevenue = roundCurrency(
-    monthClosings.reduce((sum, c) => sum + c.totalRevenue, 0) + monthBankIncome.reduce((sum, t) => sum + t.amount, 0),
+    monthClosings.reduce((sum, c) => sum + nonPlatformRevenue(c) + platformActualRevenueForDate(c.date), 0) +
+      monthBankIncome.reduce((sum, t) => sum + t.amount, 0),
   );
+  // Expense is untouched by settlement-gating: cashExpenseTotal is
+  // unrelated to Zomato/Swiggy, and bank/ledger expense already includes
+  // the Settlement Deduction expense that nets against the gated revenue
+  // above — same identity as the P&L report (Revenue gross − Deduction
+  // expense = real payout, no double-counting).
   const monthlyExpense = roundCurrency(
     monthClosings.reduce((sum, c) => sum + c.cashExpenseTotal, 0) + monthBankExpense.reduce((sum, t) => sum + t.amount, 0),
   );
@@ -161,7 +208,8 @@ export async function getFinanceDashboardSummary(
     const dayClosing = rangeClosings.find((c) => c.date === key && c.locked);
     const dayBankIncome = bankIncome.filter((t) => t.date === key).reduce((sum, t) => sum + t.amount, 0);
     const dayBankExpense = bankExpense.filter((t) => t.date === key).reduce((sum, t) => sum + t.amount, 0);
-    const revenue = roundCurrency((dayClosing?.totalRevenue ?? 0) + dayBankIncome);
+    const dayNonPlatformRevenue = dayClosing ? nonPlatformRevenue(dayClosing) : 0;
+    const revenue = roundCurrency(dayNonPlatformRevenue + platformActualRevenueForDate(key) + dayBankIncome);
     const expense = roundCurrency((dayClosing?.cashExpenseTotal ?? 0) + dayBankExpense);
     trendDays.push({ date: key, revenue, expense, netCashFlow: roundCurrency(revenue - expense) });
   }
@@ -174,8 +222,8 @@ export async function getFinanceDashboardSummary(
   const incomeSources = sumByLabel([
     { label: "Cash Revenue", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + c.cashRevenue, 0)) },
     { label: "UPI Sales", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + c.upiSales, 0)) },
-    { label: "Zomato Sales", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + c.zomatoSales, 0)) },
-    { label: "Swiggy Sales", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + c.swiggySales, 0)) },
+    { label: "Zomato Sales", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + zomatoActualRevenueForDate(c.date), 0)) },
+    { label: "Swiggy Sales", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + swiggyActualRevenueForDate(c.date), 0)) },
     { label: "Other Income", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + c.otherIncome, 0)) },
     ...monthBankIncome.map((t) => ({ label: t.categoryName ?? "Uncategorized", amount: t.amount })),
   ]);

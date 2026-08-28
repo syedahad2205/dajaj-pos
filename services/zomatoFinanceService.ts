@@ -13,7 +13,7 @@
  */
 import { collection, doc, getDoc, serverTimestamp, updateDoc, type Firestore } from "firebase/firestore";
 import { auth, firestore as defaultFirestore } from "@/lib/firebase";
-import { DEFAULT_BRANCH_ID, roundCurrency, toDateKey } from "@/lib/finance";
+import { DEFAULT_BRANCH_ID, roundCurrency } from "@/lib/finance";
 import { getFinanceDefaultsMap } from "@/services/financeDefaultsService";
 import { createFinanceTransaction, getPostedTransactionsForRange, voidFinanceTransaction } from "@/services/financeTransactionsService";
 import { getOrCreateExpenseCategoryIdByName, getOrCreateIncomeCategoryIdByName } from "@/services/financeCategoriesService";
@@ -109,7 +109,15 @@ export async function postZomatoSettlementToFinance(
   const receivedMapping = defaultsMap.get(ZOMATO_SETTLEMENT_RECEIVED_EVENT_KEY);
   let transferTransactionId: string | null = null;
   let adjustmentTransactionId: string | null = null;
-  const today = toDateKey();
+  // Booked on reportEndDate (the settlement period's last day), NOT the day
+  // the settlement happens to be saved. Zomato pays out roughly a week
+  // later — if it's booked on "today" instead, a payout recorded the
+  // following week can land in the NEXT calendar month while the revenue
+  // it nets against (recognized per the actual sale days, reportStartDate
+  // through reportEndDate) stays in the earlier month, throwing off both
+  // months' P&L. Booking it on reportEndDate guarantees it always falls
+  // inside the exact same date range as the revenue it's settling.
+  const postingDate = importData.reportEndDate;
   const period = `${importData.reportStartDate} to ${importData.reportEndDate}`;
 
   if (!receivedMapping?.destinationAccountId) {
@@ -119,7 +127,7 @@ export async function postZomatoSettlementToFinance(
       const tx = await createFinanceTransaction(
         {
           type: "transfer",
-          date: today,
+          date: postingDate,
           amount: finalPayout,
           fromAccountId: escrowAccountId,
           toAccountId: receivedMapping.destinationAccountId,
@@ -144,7 +152,7 @@ export async function postZomatoSettlementToFinance(
       const tx = await createFinanceTransaction(
         {
           type: "expense",
-          date: today,
+          date: postingDate,
           categoryId,
           amount: difference,
           fromAccountId: escrowAccountId,
@@ -167,7 +175,7 @@ export async function postZomatoSettlementToFinance(
       const tx = await createFinanceTransaction(
         {
           type: "income",
-          date: today,
+          date: postingDate,
           categoryId,
           amount: Math.abs(difference),
           toAccountId: escrowAccountId,
