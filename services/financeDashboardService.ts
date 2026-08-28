@@ -257,12 +257,24 @@ export interface FinanceHistoryDay extends FinanceDailyClosing {
   bankExpense: number;
   /** cashExpenseTotal + bankExpense — same expense semantics as the web dashboard. */
   totalExpense: number;
+  /**
+   * Settlement-gated revenue for this day — cash + UPI + other income
+   * (always immediate) plus Zomato/Swiggy sales ONLY once that week's
+   * payout is actually settled (₹0 until then), plus any bank/ledger
+   * income (e.g. a Settlement Adjustment). Same rule, same shared helper
+   * (lib/platformRevenue.ts) as the web Dashboard/Reports — use this, NOT
+   * `totalRevenue` (which is Daily Closing's raw, unconditional figure),
+   * for anything meant to read as "real" revenue or profit.
+   */
+  settledRevenue: number;
 }
 
 /**
  * Per-day closings over a range, each augmented with blended expense figures
  * so the mobile History tab can show Revenue vs Expense exactly like the web
  * dashboard: Daily Closing owns cash; non-cash ledger transactions add on top.
+ * Also settlement-gates Zomato/Swiggy into `settledRevenue` — see its doc
+ * comment above and the big comment in lib/platformRevenue.ts.
  */
 export async function getFinanceHistoryRange(
   dateFrom: string,
@@ -270,25 +282,42 @@ export async function getFinanceHistoryRange(
   db: Firestore = defaultFirestore,
   branchId: string = DEFAULT_BRANCH_ID,
 ): Promise<FinanceHistoryDay[]> {
-  const [closings, accounts, transactions] = await Promise.all([
+  const [closings, accounts, transactions, zomatoImports, swiggyImports, zomatoItemSales, swiggyItemSales] = await Promise.all([
     getDailyClosingsForRange(dateFrom, dateTo, db, branchId),
     getFinanceAccounts({ branchId }, db),
     getPostedTransactionsForRange(dateFrom, dateTo, db, branchId),
+    getZomatoImports(db),
+    getSwiggyImports(db),
+    getItemSalesForDateRange(dateFrom, dateTo, db),
+    getSwiggyItemSalesForDateRange(dateFrom, dateTo, db),
   ]);
 
   const accountTypeById = new Map(accounts.map((a) => [a.id, a.type]));
   const isCashAccount = (accountId: string | null) => (accountId ? accountTypeById.get(accountId) === "cash" : false);
 
   const bankExpenseByDate = new Map<string, number>();
+  const bankIncomeByDate = new Map<string, number>();
   for (const t of transactions) {
     if (t.autoPostedSource === "daily_closing") continue; // Daily Closing generated it itself
-    if (t.type !== "expense") continue;
-    if (isCashAccount(t.fromAccountId)) continue; // Cash Drawer money belongs to Daily Closing
-    bankExpenseByDate.set(t.date, roundCurrency((bankExpenseByDate.get(t.date) ?? 0) + t.amount));
+    if (t.type === "expense" && !isCashAccount(t.fromAccountId)) {
+      bankExpenseByDate.set(t.date, roundCurrency((bankExpenseByDate.get(t.date) ?? 0) + t.amount));
+    } else if (t.type === "income" && !isCashAccount(t.toAccountId)) {
+      bankIncomeByDate.set(t.date, roundCurrency((bankIncomeByDate.get(t.date) ?? 0) + t.amount));
+    }
   }
+
+  const zomatoClosingGrossByDate = new Map(closings.map((c) => [c.date, c.zomatoSales]));
+  const swiggyClosingGrossByDate = new Map(closings.map((c) => [c.date, c.swiggySales]));
+  const zomatoByDate = buildPlatformDayInfo(zomatoImports, zomatoItemSales, zomatoClosingGrossByDate);
+  const swiggyByDate = buildPlatformDayInfo(swiggyImports, swiggyItemSales, swiggyClosingGrossByDate);
 
   return closings.map((c) => {
     const bankExpense = bankExpenseByDate.get(c.date) ?? 0;
-    return { ...c, bankExpense, totalExpense: roundCurrency(c.cashExpenseTotal + bankExpense) };
+    const bankIncome = bankIncomeByDate.get(c.date) ?? 0;
+    const nonPlatform = roundCurrency(c.totalRevenue - c.zomatoSales - c.swiggySales);
+    const settledRevenue = roundCurrency(
+      nonPlatform + lookupPlatformDayInfo(zomatoByDate, c.date).actualNet + lookupPlatformDayInfo(swiggyByDate, c.date).actualNet + bankIncome,
+    );
+    return { ...c, bankExpense, totalExpense: roundCurrency(c.cashExpenseTotal + bankExpense), settledRevenue };
   });
 }

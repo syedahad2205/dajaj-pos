@@ -58,7 +58,9 @@ export function HistoryScreen({ navigation }: Props) {
     return {
       closedDays: closed.length,
       totalDays: closings.length,
-      totalRevenue: closed.reduce((sum, c) => sum + (c.totalRevenue ?? 0), 0),
+      // Settlement-gated: Zomato/Swiggy only count once that week's payout
+      // is actually settled — matches the web Dashboard/Reports pages.
+      totalRevenue: closed.reduce((sum, c) => sum + (c.settledRevenue ?? c.totalRevenue ?? 0), 0),
       // Blended: daily-closing cash expenses + ledger (bank) transactions — matches web dashboard
       totalExpenses: closed.reduce((sum, c) => sum + (c.totalExpense ?? c.cashExpenseTotal ?? 0), 0),
     };
@@ -181,7 +183,7 @@ export function HistoryScreen({ navigation }: Props) {
                       <View style={styles.lockedBadge}>
                         <Text style={styles.lockedBadgeText}>🔒 Closed</Text>
                       </View>
-                      <Text style={styles.revenueText}>{formatCurrency(item.totalRevenue)}</Text>
+                      <Text style={styles.revenueText}>{formatCurrency(item.settledRevenue ?? item.totalRevenue)}</Text>
                     </>
                   ) : (
                     <Text style={styles.openText}>In Progress</Text>

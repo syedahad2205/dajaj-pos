@@ -17,6 +17,15 @@ export interface FinanceHistoryDay extends FinanceDailyClosing {
   bankExpense: number;
   /** cashExpenseTotal + bankExpense — matches the web dashboard. */
   totalExpense: number;
+  /**
+   * Settlement-gated revenue — cash + UPI + other income (always immediate)
+   * plus Zomato/Swiggy sales ONLY once that week's payout is actually
+   * settled (₹0 until then), plus any bank/ledger income. Matches the web
+   * Dashboard/Reports pages exactly. Use this for Revenue/Profit displays —
+   * NOT `totalRevenue`, which is Daily Closing's raw, unconditional figure
+   * (still useful for the single-day closing review screen, just not here).
+   */
+  settledRevenue: number;
 }
 
 const STALE_TIME = 60_000; // 1 min — history doesn't need to be as fresh as today's doc
