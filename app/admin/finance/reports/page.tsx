@@ -416,13 +416,14 @@ export default function FinanceReportsPage() {
                 Including Pending Settlements — Estimated
               </p>
               <p className="mb-3 text-xs text-slate-500">
-                Same as the real cards above, but Zomato/Swiggy revenue is the day-by-day figure from the Daily Breakdown table below — actual once
-                that week&apos;s payout is settled, or a best-effort estimate (last settled week&apos;s deduction %) until then — instead of ₹0 until settled.
-                Everything else (cash, UPI, other income, all other Transactions) is identical to the real cards.
+                The real numbers above, PLUS a projection for whatever Zomato/Swiggy revenue is still sitting in a week that hasn&apos;t been settled
+                yet (that day&apos;s gross × the most recently settled deduction %). Already-settled days are untouched — identical to the real cards, so
+                Est. Revenue is never lower than Total Revenue. Expenses are unchanged too: a pending settlement hasn&apos;t posted a real deduction to
+                the ledger yet, so there&apos;s nothing to add there.
               </p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard label="Est. Total Revenue" value={formatCurrency(s.estimatedTotalRevenue)} tone="positive" />
-                <KpiCard label="Est. Total Expenses" value={formatCurrency(s.estimatedTotalExpense)} tone="negative" />
+                <KpiCard label="Est. Total Expenses" value={formatCurrency(s.estimatedTotalExpense)} tone="negative" sub="= Total Expenses (unchanged)" />
                 <KpiCard
                   label="Est. Net P&L"
                   value={formatCurrency(estNetPnl)}
