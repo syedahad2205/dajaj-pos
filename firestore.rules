@@ -276,13 +276,21 @@ service cloud.firestore {
     }
 
     // ── Zomato Sales Tracker ──────────────────────────────────────────────────
-    // Admin-only: import payout CSVs, view analytics, manage history.
+    // Importing CSVs, editing settlements, and the /admin/zomato UI itself
+    // stay admin-only. Read is opened up to Finance Manager too because the
+    // Finance Dashboard/Reports pages (which Finance Manager CAN see) read
+    // these two collections directly to settlement-gate Zomato/Swiggy
+    // revenue (lib/platformRevenue.ts, via getZomatoImports/
+    // getItemSalesForDateRange) — without this, those pages 403 for a
+    // Finance Manager account with "Missing or insufficient permissions."
     match /zomato_imports/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdminOrFinanceManager();
+      allow write: if isAdmin();
     }
 
     match /zomato_item_sales/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdminOrFinanceManager();
+      allow write: if isAdmin();
     }
 
     match /zomato_category_summary/{docId} {
@@ -294,14 +302,18 @@ service cloud.firestore {
     }
 
     // ── Swiggy Sales Tracker ──────────────────────────────────────────────────
-    // Admin-only: import Past Orders CSVs, maintain the item→category map,
-    // manage history. Mirrors the Zomato Sales Tracker rules above.
+    // Mirrors the Zomato Sales Tracker rules above: writing (import, edit
+    // settlement, manage history) stays admin-only, but read is opened up
+    // to Finance Manager since the Dashboard/Reports pages read these two
+    // collections directly for settlement-gated revenue.
     match /swiggy_imports/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdminOrFinanceManager();
+      allow write: if isAdmin();
     }
 
     match /swiggy_item_sales/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdminOrFinanceManager();
+      allow write: if isAdmin();
     }
 
     match /swiggy_category_summary/{docId} {
