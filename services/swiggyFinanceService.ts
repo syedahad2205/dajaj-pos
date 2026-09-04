@@ -63,6 +63,7 @@ export async function postSwiggySettlementToFinance(
   const importData = importSnap.data() as {
     reportStartDate: string;
     reportEndDate: string;
+    payoutReceivedDate?: string;
     netPayout?: number;
     totalCustomerPaid?: number;
     financeTransferTransactionId?: string | null;
@@ -74,6 +75,23 @@ export async function postSwiggySettlementToFinance(
   }
   const netPayout = importData.netPayout;
   const warnings: string[] = [];
+  const postingDate = importData.payoutReceivedDate;
+
+  if (!postingDate) {
+    warnings.push("Set the bank transfer date on this settlement, then save or sync again so Finance can post on the right day.");
+    await updateDoc(importRef, {
+      financePostingWarnings: warnings,
+      updatedAt: serverTimestamp(),
+    });
+    return {
+      escrowTotal: 0,
+      netPayout,
+      difference: 0,
+      transferTransactionId: importData.financeTransferTransactionId ?? null,
+      adjustmentTransactionId: importData.financeAdjustmentTransactionId ?? null,
+      warnings,
+    };
+  }
 
   // Re-save / edited settlement: void whatever posted last time before posting fresh numbers.
   for (const txId of [importData.financeTransferTransactionId, importData.financeAdjustmentTransactionId]) {
@@ -114,15 +132,6 @@ export async function postSwiggySettlementToFinance(
   const receivedMapping = defaultsMap.get(SWIGGY_SETTLEMENT_RECEIVED_EVENT_KEY);
   let transferTransactionId: string | null = null;
   let adjustmentTransactionId: string | null = null;
-  // Booked on reportEndDate (the settlement period's last day), NOT the day
-  // the settlement happens to be saved. Swiggy pays out roughly a week
-  // later — if it's booked on "today" instead, a payout recorded the
-  // following week can land in the NEXT calendar month while the revenue
-  // it nets against (recognized per the actual sale days, reportStartDate
-  // through reportEndDate) stays in the earlier month, throwing off both
-  // months' P&L. Booking it on reportEndDate guarantees it always falls
-  // inside the exact same date range as the revenue it's settling.
-  const postingDate = importData.reportEndDate;
   const period = `${importData.reportStartDate} to ${importData.reportEndDate}`;
 
   if (!receivedMapping?.destinationAccountId) {

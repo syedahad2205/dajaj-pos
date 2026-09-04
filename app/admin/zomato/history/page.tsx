@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { requireAdmin } from '@/lib/roleGuard';
+import NativeDateField from '@/components/ui/NativeDateField';
 import {
   getZomatoImports,
   hardDeleteImport,
@@ -28,6 +29,11 @@ function fmtRupee(n: number) {
 
 function fmtRupeeExact(n: number) {
   return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function fmtTimestamp(ts: { toDate?: () => Date } | null | undefined) {
@@ -126,6 +132,7 @@ function SettlementForm({
 
   const [nov,      setNov]      = useState(imp.netOrderValue !== undefined ? String(imp.netOrderValue) : '');
   const [payout,   setPayout]   = useState(imp.finalPayout   !== undefined ? String(imp.finalPayout)   : '');
+  const [transferDate, setTransferDate] = useState(imp.payoutReceivedDate || todayIso());
   const [saving,   setSaving]   = useState(false);
   const [err,      setErr]      = useState<string | null>(null);
   const [expanded, setExpanded] = useState(!isFull); // collapse if already settled
@@ -142,10 +149,11 @@ function SettlementForm({
     if (isNaN(novNum) || novNum <= 0)       { setErr('Enter a valid Net Order Value.'); return; }
     if (isNaN(payoutNum) || payoutNum < 0)  { setErr('Enter a valid Final Payout.'); return; }
     if (payoutNum > novNum)                 { setErr('Final Payout cannot exceed Net Order Value (A).'); return; }
+    if (!transferDate)                      { setErr('Enter the date the payout was transferred to the bank.'); return; }
     setErr(null);
     setSaving(true);
     try {
-      await saveSettlement(imp.id, novNum, payoutNum);
+      await saveSettlement(imp.id, novNum, payoutNum, transferDate);
       onSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to save.');
@@ -320,6 +328,10 @@ function SettlementForm({
                 />
               </div>
             </div>
+            <div>
+              <label className="text-xs text-neutral-500 mb-1 block">Bank transfer date <span className="text-neutral-400">— when the payout left escrow</span></label>
+              <NativeDateField value={transferDate} onChange={(e) => setTransferDate(e.target.value)} />
+            </div>
 
             {/* Live preview */}
             {preview && previewDed !== null && previewPct !== null && (
@@ -345,7 +357,7 @@ function SettlementForm({
 
             <button
               onClick={handleSave}
-              disabled={saving || !nov || !payout}
+              disabled={saving || !nov || !payout || !transferDate}
               className="w-full py-2 rounded-lg bg-neutral-900 text-white text-xs font-semibold hover:bg-neutral-800 disabled:opacity-40 transition-colors"
             >
               {saving ? 'Saving…' : isFull ? 'Update Settlement' : 'Save Settlement'}
