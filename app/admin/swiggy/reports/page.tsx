@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { requireAdmin } from '@/lib/roleGuard';
+import NativeDateField from '@/components/ui/NativeDateField';
 import {
   getSwiggyImports,
   getSwiggySettlementReport,
@@ -28,6 +29,11 @@ function fmtRupee(n: number) {
 
 function fmtRupeeExact(n: number) {
   return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function downloadCsv(content: string, fileName: string) {
@@ -61,6 +67,7 @@ function SettlementEntryForm({
 }) {
   const [a, setA] = useState(imp.totalCustomerPaid !== undefined ? String(imp.totalCustomerPaid) : '');
   const [net, setNet] = useState(imp.netPayout !== undefined ? String(imp.netPayout) : '');
+  const [transferDate, setTransferDate] = useState(imp.payoutReceivedDate || todayIso());
   const [b, setB] = useState(imp.totalFees !== undefined ? String(imp.totalFees) : '');
   const [c, setC] = useState(imp.complaintCancellationCharges !== undefined ? String(imp.complaintCancellationCharges) : '');
   const [d, setD] = useState(imp.totalTaxes !== undefined ? String(imp.totalTaxes) : '');
@@ -89,6 +96,7 @@ function SettlementEntryForm({
     if (isNaN(aNum) || aNum <= 0)     { setErr('Enter a valid Total Customer Paid (A).'); return; }
     if (isNaN(netNum) || netNum < 0)  { setErr('Enter a valid Net Payout.'); return; }
     if (netNum > aNum)                { setErr('Net Payout cannot exceed Total Customer Paid (A).'); return; }
+    if (!transferDate)                { setErr('Enter the date the payout was transferred to the bank.'); return; }
     setErr(null);
     setSaving(true);
     try {
@@ -96,6 +104,7 @@ function SettlementEntryForm({
         importId: imp.id,
         totalCustomerPaid: aNum,
         netPayout: netNum,
+        payoutReceivedDate: transferDate,
         totalFees: b ? parseFloat(b) : undefined,
         complaintCancellationCharges: c ? parseFloat(c) : undefined,
         totalTaxes: d ? parseFloat(d) : undefined,
@@ -140,6 +149,14 @@ function SettlementEntryForm({
             />
           </div>
         </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-semibold text-neutral-600 mb-1.5 block">
+          Bank transfer date
+          <span className="ml-1 text-neutral-400 font-normal">when the payout left escrow</span>
+        </label>
+        <NativeDateField value={transferDate} onChange={(e) => setTransferDate(e.target.value)} />
       </div>
 
       <button
@@ -203,7 +220,7 @@ function SettlementEntryForm({
 
       <button
         onClick={handleSave}
-        disabled={saving || !a || !net}
+        disabled={saving || !a || !net || !transferDate}
         className="w-full py-2.5 rounded-lg bg-neutral-900 text-white text-sm font-semibold hover:bg-neutral-800 disabled:opacity-40 transition-colors"
       >
         {saving ? 'Saving…' : isFull ? 'Update Settlement' : 'Save Settlement & Generate Report'}
@@ -405,6 +422,9 @@ export default function SwiggyReportsPage() {
               <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-3 text-center">
                 <p className="text-lg font-black text-emerald-700">{fmtRupee(report.netPayout)}</p>
                 <p className="text-xs text-neutral-500 mt-0.5">Net Payout</p>
+                {selectedImport.payoutReceivedDate && (
+                  <p className="text-[11px] text-neutral-400 mt-0.5">Bank {fmtDate(selectedImport.payoutReceivedDate)}</p>
+                )}
               </div>
               <div className="bg-red-50 rounded-xl border border-red-200 p-3 text-center">
                 <p className="text-lg font-black text-red-600">{fmtRupee(report.totalDeductions)}</p>

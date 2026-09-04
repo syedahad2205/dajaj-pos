@@ -56,6 +56,8 @@ export interface ZomatoImport {
   netOrderValue?: number;
   /** Actual payout received */
   finalPayout?: number;
+  /** yyyy-MM-dd — date the payout left escrow into the bank */
+  payoutReceivedDate?: string;
   /** netOrderValue − finalPayout */
   totalDeductions?: number;
   /** totalDeductions / netOrderValue  (0–1 fraction) */
@@ -366,11 +368,15 @@ export async function saveSettlement(
   importId: string,
   netOrderValue: number,
   finalPayout: number,
+  payoutReceivedDate: string,
   db: Firestore = defaultFirestore,
 ): Promise<void> {
   if (netOrderValue <= 0)          throw new Error('Net Order Value must be greater than zero.');
   if (finalPayout < 0)             throw new Error('Final Payout must be a positive amount.');
   if (finalPayout > netOrderValue) throw new Error('Final Payout cannot exceed Net Order Value (A).');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(payoutReceivedDate)) {
+    throw new Error('Enter the date the payout was transferred to the bank.');
+  }
 
   const importSnap = await getDoc(doc(importsCol(db), importId));
   if (!importSnap.exists()) throw new Error('Import not found.');
@@ -389,6 +395,7 @@ export async function saveSettlement(
   ops.push((b) => b.update(doc(importsCol(db), importId), {
     netOrderValue:  Math.round(netOrderValue * 100) / 100,
     finalPayout:    Math.round(finalPayout   * 100) / 100,
+    payoutReceivedDate,
     totalDeductions: Math.round(totalDeductions * 100) / 100,
     deductionPct,   // stored at full precision for accurate downstream allocation
   }));

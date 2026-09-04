@@ -81,6 +81,8 @@ export interface SwiggyImport {
   totalCustomerPaid?: number;
   /** Actual payout received */
   netPayout?: number;
+  /** yyyy-MM-dd — date the payout left escrow into the bank */
+  payoutReceivedDate?: string;
   /** totalCustomerPaid − netPayout */
   totalDeductions?: number;
   /** totalDeductions / totalCustomerPaid  (0–1 fraction) */
@@ -411,6 +413,8 @@ export interface SaveSwiggySettlementInput {
   totalCustomerPaid: number;
   /** Actual payout received */
   netPayout: number;
+  /** yyyy-MM-dd — date the payout left escrow into the bank */
+  payoutReceivedDate: string;
   /** Reference-only breakdown (B–F on the payout card) */
   totalFees?: number;
   complaintCancellationCharges?: number;
@@ -450,6 +454,7 @@ export async function saveSwiggySettlement({
   importId,
   totalCustomerPaid,
   netPayout,
+  payoutReceivedDate,
   totalFees,
   complaintCancellationCharges,
   totalTaxes,
@@ -460,6 +465,9 @@ export async function saveSwiggySettlement({
   if (totalCustomerPaid <= 0)          throw new Error('Total Customer Paid must be greater than zero.');
   if (netPayout < 0)                   throw new Error('Net Payout must be a positive amount.');
   if (netPayout > totalCustomerPaid)   throw new Error('Net Payout cannot exceed Total Customer Paid (A).');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(payoutReceivedDate)) {
+    throw new Error('Enter the date the payout was transferred to the bank.');
+  }
 
   const importSnap = await getDoc(doc(importsCol(db), importId));
   if (!importSnap.exists()) throw new Error('Import not found.');
@@ -484,6 +492,7 @@ export async function saveSwiggySettlement({
   ops.push((b) => b.update(doc(importsCol(db), importId), {
     totalCustomerPaid: Math.round(totalCustomerPaid * 100) / 100,
     netPayout:          Math.round(netPayout * 100) / 100,
+    payoutReceivedDate,
     totalDeductions:    Math.round(totalDeductions * 100) / 100,
     deductionPct,
     ...referenceFields,

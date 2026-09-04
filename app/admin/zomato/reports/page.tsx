@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { requireAdmin } from '@/lib/roleGuard';
+import NativeDateField from '@/components/ui/NativeDateField';
 import {
   getZomatoImports,
   getSettlementReport,
@@ -28,6 +29,11 @@ function fmtRupee(n: number) {
 
 function fmtRupeeExact(n: number) {
   return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function downloadCsv(content: string, fileName: string) {
@@ -65,6 +71,7 @@ function SettlementEntryForm({
 
   const [nov,    setNov]    = useState(imp.netOrderValue !== undefined ? String(imp.netOrderValue) : '');
   const [payout, setPayout] = useState(imp.finalPayout   !== undefined ? String(imp.finalPayout)   : '');
+  const [transferDate, setTransferDate] = useState(imp.payoutReceivedDate || todayIso());
   const [saving, setSaving] = useState(false);
   const [err,    setErr]    = useState<string | null>(null);
 
@@ -78,10 +85,11 @@ function SettlementEntryForm({
     if (isNaN(novNum) || novNum <= 0)       { setErr('Enter a valid Net Order Value.'); return; }
     if (isNaN(payoutNum) || payoutNum < 0)  { setErr('Enter a valid Final Payout.'); return; }
     if (payoutNum > novNum)                 { setErr('Final Payout cannot exceed Net Order Value (A).'); return; }
+    if (!transferDate)                      { setErr('Enter the date the payout was transferred to the bank.'); return; }
     setErr(null);
     setSaving(true);
     try {
-      await saveSettlement(imp.id, novNum, payoutNum);
+      await saveSettlement(imp.id, novNum, payoutNum, transferDate);
       onSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to save settlement.');
@@ -136,6 +144,14 @@ function SettlementEntryForm({
         </div>
       </div>
 
+      <div>
+        <label className="text-xs font-semibold text-neutral-600 mb-1.5 block">
+          Bank transfer date
+          <span className="ml-1 text-neutral-400 font-normal">when the payout left escrow</span>
+        </label>
+        <NativeDateField value={transferDate} onChange={(e) => setTransferDate(e.target.value)} />
+      </div>
+
       {/* Live preview */}
       {preview && previewDed !== null && previewPct !== null && (
         <div className="grid grid-cols-3 gap-2 text-center">
@@ -160,7 +176,7 @@ function SettlementEntryForm({
 
       <button
         onClick={handleSave}
-        disabled={saving || !nov || !payout}
+        disabled={saving || !nov || !payout || !transferDate}
         className="w-full py-2.5 rounded-lg bg-neutral-900 text-white text-sm font-semibold hover:bg-neutral-800 disabled:opacity-40 transition-colors"
       >
         {saving ? 'Saving…' : isFull ? 'Update Settlement' : 'Save Settlement & Generate Report'}
@@ -374,6 +390,9 @@ export default function ZomatoReportsPage() {
               <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-3 text-center">
                 <p className="text-lg font-black text-emerald-700">{fmtRupee(report.finalPayout)}</p>
                 <p className="text-xs text-neutral-500 mt-0.5">Final Payout</p>
+                {selectedImport.payoutReceivedDate && (
+                  <p className="text-[11px] text-neutral-400 mt-0.5">Bank {fmtDate(selectedImport.payoutReceivedDate)}</p>
+                )}
               </div>
               <div className="bg-red-50 rounded-xl border border-red-200 p-3 text-center">
                 <p className="text-lg font-black text-red-600">{fmtRupee(report.totalDeductions)}</p>
