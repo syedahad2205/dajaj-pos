@@ -37,6 +37,14 @@ function financeDefaultsCollection(db: Firestore) {
   return collection(db, "finance_defaults");
 }
 
+const DEFAULTS_CACHE_TTL_MS = 180_000;
+const defaultsCache = new Map<string, { expiresAt: number; rows: FinanceDefault[] }>();
+
+export function invalidateFinanceDefaultsCache(branchId?: string) {
+  if (branchId) defaultsCache.delete(branchId);
+  else defaultsCache.clear();
+}
+
 function slugifyEventKey(name: string): string {
   const slug = name
     .trim()
@@ -154,6 +162,7 @@ export async function migrateLegacySettlementDefaults(
     // eslint-disable-next-line no-await-in-loop
     await batch.commit();
   }
+  invalidateFinanceDefaultsCache(branchId);
 }
 
 export async function getFinanceDefaults(
@@ -161,10 +170,18 @@ export async function getFinanceDefaults(
   db: Firestore = defaultFirestore,
 ): Promise<FinanceDefault[]> {
   const branchId = options.branchId ?? DEFAULT_BRANCH_ID;
-  const snapshot = await getDocs(
-    query(financeDefaultsCollection(db), where("branchId", "==", branchId), orderBy("displayOrder", "asc")),
-  );
-  const rows = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FinanceDefault, "id">) }));
+  const now = Date.now();
+  const cached = defaultsCache.get(branchId);
+  let rows: FinanceDefault[];
+  if (cached && cached.expiresAt > now) {
+    rows = cached.rows;
+  } else {
+    const snapshot = await getDocs(
+      query(financeDefaultsCollection(db), where("branchId", "==", branchId), orderBy("displayOrder", "asc")),
+    );
+    rows = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FinanceDefault, "id">) }));
+    defaultsCache.set(branchId, { expiresAt: now + DEFAULTS_CACHE_TTL_MS, rows });
+  }
   return options.includeInactive ? rows : rows.filter((r) => r.isActive);
 }
 
@@ -230,6 +247,7 @@ export async function createFinanceDefault(
     newValue: data,
   });
   await batch.commit();
+  invalidateFinanceDefaultsCache(branchId);
 
   return { id: eventKey, ...data };
 }
@@ -285,6 +303,7 @@ export async function updateFinanceDefault(
     newValue: updates,
   });
   await batch.commit();
+  invalidateFinanceDefaultsCache((before.branchId as string) ?? DEFAULT_BRANCH_ID);
 }
 
 export async function deleteFinanceDefault(eventKey: string, userId: string, userName: string, db: Firestore = defaultFirestore): Promise<void> {
@@ -305,6 +324,7 @@ export async function deleteFinanceDefault(eventKey: string, userId: string, use
     oldValue: data,
   });
   await batch.commit();
+  invalidateFinanceDefaultsCache((data.branchId as string) ?? DEFAULT_BRANCH_ID);
 }
 
 /** Seeds the built-in event rows (Cash Sales, UPI Sales, Zomato/Swiggy Sales, Other Income, Zomato/Swiggy Settlement Received, and one per supported Cash Deposit type) with no destination configured yet. Safe to call repeatedly — skips events that already exist. */
@@ -352,5 +372,6 @@ export async function seedDefaultFinanceDefaults(
     created += 1;
   }
 
+  if (created > 0) invalidateFinanceDefaultsCache(branchId);
   return created;
 }

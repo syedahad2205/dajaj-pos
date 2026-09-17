@@ -65,7 +65,10 @@ export interface DailyClosingWorkTarget {
   firstDay: boolean;
 }
 
-async function getLatestLockedClosingDate(db: Firestore, branchId: string): Promise<string | null> {
+export async function getLatestLockedClosing(
+  db: Firestore = defaultFirestore,
+  branchId: string = DEFAULT_BRANCH_ID,
+): Promise<FinanceDailyClosing | null> {
   const snapshot = await getDocs(
     query(
       dailyClosingCollection(db),
@@ -76,7 +79,11 @@ async function getLatestLockedClosingDate(db: Firestore, branchId: string): Prom
     ),
   );
   const row = snapshot.docs[0]?.data();
-  return typeof row?.date === "string" ? row.date : null;
+  return row ? normalizeClosing(row) : null;
+}
+
+async function getLatestLockedClosingDate(db: Firestore, branchId: string): Promise<string | null> {
+  return (await getLatestLockedClosing(db, branchId))?.date ?? null;
 }
 
 export async function getDailyClosingWorkTarget(

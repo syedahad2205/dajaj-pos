@@ -2,7 +2,7 @@ import type { Firestore } from "firebase/firestore";
 import { firestore as defaultFirestore } from "@/lib/firebase";
 import { DEFAULT_BRANCH_ID, depositEventKey, isPnlCashDrawerAccount, roundCurrency, toDateKey, type FinanceDailyClosing } from "@/lib/finance";
 import { buildPlatformDayInfo, lookupPlatformDayInfo } from "@/lib/platformRevenue";
-import { getDailyClosingsForRange } from "@/services/financeClosingService";
+import { getDailyClosingsForRange, getLatestLockedClosing } from "@/services/financeClosingService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
 import { getFinanceDefaultsMap } from "@/services/financeDefaultsService";
 import { getPostedTransactionsForRange } from "@/services/financeTransactionsService";
@@ -106,10 +106,10 @@ export async function getFinanceDashboardSummary(
   const trendStartKey = toDateKey(trendStart);
   const rangeStartKey = trendStartKey < monthStartKey ? trendStartKey : monthStartKey;
 
-  const [rangeClosings, allTimeClosings, accounts, rangeTransactions, defaultsMap, zomatoImports, swiggyImports, zomatoItemSales, swiggyItemSales] =
+  const [rangeClosings, lastLocked, accounts, rangeTransactions, defaultsMap, zomatoImports, swiggyImports, zomatoItemSales, swiggyItemSales] =
     await Promise.all([
       getDailyClosingsForRange(rangeStartKey, todayKey, db, branchId),
-      getDailyClosingsForRange("2000-01-01", todayKey, db, branchId),
+      getLatestLockedClosing(db, branchId),
       getFinanceAccounts({ branchId }, db),
       getPostedTransactionsForRange(rangeStartKey, todayKey, db, branchId),
       getFinanceDefaultsMap(db, branchId),
@@ -156,9 +156,7 @@ export async function getFinanceDashboardSummary(
   const bankExpense = notDailyClosingGenerated.filter((t) => t.type === "expense" && !isCashDrawer(t.fromAccountId));
 
   const todayClosing = rangeClosings.find((c) => c.date === todayKey) ?? null;
-  const lastLocked = [...allTimeClosings].reverse().find((c) => c.locked && typeof c.closingCash === "number");
-
-  const cashOnHand = lastLocked?.closingCash ?? 0;
+  const cashOnHand = lastLocked && typeof lastLocked.closingCash === "number" ? lastLocked.closingCash : 0;
   // The Pigmi account's own ledger balance — NOT a re-sum of deposits from Daily Closing history.
   // That raw sum ignores anything that happened to the money afterwards (a withdrawal from the
   // Pigmi account, its opening balance, a voided/edited posting), so it can drift from the real

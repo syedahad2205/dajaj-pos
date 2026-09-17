@@ -12,7 +12,7 @@ import {
 import { analyzePaymentScreenshot, isGeminiUnavailableError } from "@/lib/geminiVision";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
 import { getExpenseCategories } from "@/services/financeCategoriesService";
-import { createFinanceTransaction, getPostedTransactionsForRange } from "@/services/financeTransactionsService";
+import { createFinanceTransaction, getPostedTransactionsForDate } from "@/services/financeTransactionsService";
 import { matchPayeeRule, seedDefaultPayeeRules } from "@/services/quickEntryPayeeRulesService";
 import type { FinanceAccount, FinanceExpenseCategory, FinanceTransaction } from "@/lib/finance";
 
@@ -39,7 +39,6 @@ import type { FinanceAccount, FinanceExpenseCategory, FinanceTransaction } from 
 
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB — generous for a phone screenshot, small enough to stay well under Gemini's inline-data limit.
-const DUPLICATE_LOOKBACK_DAYS = 60;
 
 function quickEntryRecordsCollection(db: Firestore) {
   return collection(db, "quick_entry_records");
@@ -175,12 +174,7 @@ export async function findDuplicateCandidates(
   db: Firestore = defaultFirestore,
   branchId: string = DEFAULT_BRANCH_ID,
 ): Promise<DuplicateCandidate[]> {
-  const to = date > toDateKey() ? date : toDateKey();
-  const from = new Date(`${date}T00:00:00`);
-  from.setDate(from.getDate() - DUPLICATE_LOOKBACK_DAYS);
-  const dateFrom = toDateKey(from);
-
-  const transactions = await getPostedTransactionsForRange(dateFrom, to, db, branchId);
+  const transactions = await getPostedTransactionsForDate(date, db, branchId);
   const normalizedRef = referenceNumber?.trim().toLowerCase();
 
   const matches = transactions.filter((t) => {

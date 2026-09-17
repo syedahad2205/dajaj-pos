@@ -18,6 +18,7 @@ import {
   SUPPORTED_CASH_DEPOSIT_TYPES,
   generateLocalId,
   isValidDateKey,
+  previousDateKey,
   roundCurrency,
   toDateKey,
   toTimeKey,
@@ -179,17 +180,11 @@ function buildFinanceSnapshotText(summary: FinanceDashboardSummary, accounts: Fi
 }
 
 /**
- * The FULL history, not just a recent window — every locked Daily Closing
- * day plus every non-cash-drawer, non-auto-posted ledger transaction (same
- * blending rule as the Dashboard/getFinanceHistoryRange: Daily Closing owns
- * cash, bank-side transactions add on top, nothing double-counted), rolled
- * up into month-by-month totals with each month's top expense categories
- * (so the assistant can actually compare "this month vs last month" and
- * spot where spending changed), plus day-by-day detail for the most recent
- * stretch (so it can also answer specific-date questions like "what did I
- * spend on the 16th"). Bounded to the last 60 days of DAILY detail only to
- * keep the prompt a sane size as history grows over years — the monthly
- * rollups above that window are unbounded and cover the entire history.
+ * The recent history the assistant can quote: last 60 locked Daily Closing
+ * days plus matching non-cash-drawer, non-auto-posted ledger transactions
+ * (same blending rule as the Dashboard). Dashboard cards already cover
+ * today, this month, and cash-on-hand — this snapshot does not reload the
+ * full ledger from 2000.
  */
 function buildFinanceHistorySnapshot(
   closings: FinanceDailyClosing[],
@@ -251,9 +246,9 @@ function buildFinanceHistorySnapshot(
 
   const lines: string[] = [];
   lines.push(
-    `Full recorded history: ${sortedMonths[0]} through ${sortedMonths[sortedMonths.length - 1]}. All-time totals: Revenue ${formatCurrency(
+    `Last 60 days: ${sortedMonths[0]} through ${sortedMonths[sortedMonths.length - 1]}. Totals in this window: Revenue ${formatCurrency(
       allTimeRevenue,
-    )}, Expense ${formatCurrency(allTimeExpense)}, Profit ${formatCurrency(roundCurrency(allTimeRevenue - allTimeExpense))}.`,
+    )}, Expense ${formatCurrency(allTimeExpense)}, Profit ${formatCurrency(roundCurrency(allTimeRevenue - allTimeExpense))}. Current month and cash-on-hand are in the dashboard snapshot above.`,
   );
 
   lines.push("Month-by-month, oldest to newest (revenue / expense / profit, then that month's top expense categories):");
@@ -491,13 +486,16 @@ export async function sendFinanceAiChatMessage(
   await setDoc(userMessageRef, { ...userMessage, createdAt: serverTimestamp() });
 
   const todayKey = toDateKey();
-  const [expenseCategories, incomeCategories, accounts, dashboardSummary, allClosings, allTransactions, defaultsMap] = await Promise.all([
+  let historyFrom = todayKey;
+  for (let i = 0; i < 59; i += 1) historyFrom = previousDateKey(historyFrom);
+
+  const [expenseCategories, incomeCategories, accounts, dashboardSummary, recentClosings, recentTransactions, defaultsMap] = await Promise.all([
     getExpenseCategories({ branchId }, db),
     getIncomeCategories({ branchId }, db),
     getFinanceAccounts({ branchId }, db),
     getFinanceDashboardSummary(db, branchId),
-    getDailyClosingsForRange("2000-01-01", todayKey, db, branchId),
-    getPostedTransactionsForRange("2000-01-01", todayKey, db, branchId),
+    getDailyClosingsForRange(historyFrom, todayKey, db, branchId),
+    getPostedTransactionsForRange(historyFrom, todayKey, db, branchId),
     getFinanceDefaultsMap(db, branchId),
   ]);
 
@@ -509,7 +507,7 @@ export async function sendFinanceAiChatMessage(
       incomeCategoryNames: incomeCategories.map((c) => c.name),
       accountNames: accounts.filter((a) => a.status === "active").map((a) => a.name),
       depositTypeLabels: SUPPORTED_CASH_DEPOSIT_TYPES.map((t) => CASH_DEPOSIT_TYPE_LABELS[t]),
-      financeSnapshot: `${buildFinanceSnapshotText(dashboardSummary, accounts)}\n\n${buildFinanceHistorySnapshot(allClosings, allTransactions, accounts, defaultsMap.get("cash_sales")?.destinationAccountId ?? null)}`,
+      financeSnapshot: `${buildFinanceSnapshotText(dashboardSummary, accounts)}\n\n${buildFinanceHistorySnapshot(recentClosings, recentTransactions, accounts, defaultsMap.get("cash_sales")?.destinationAccountId ?? null)}`,
     });
   } catch (error) {
     analysis = {
