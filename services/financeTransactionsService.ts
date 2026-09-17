@@ -225,7 +225,24 @@ export async function createFinanceTransaction(
     return { id: txRef.id, ...transactionData };
   });
 
-  return result as FinanceTransaction;
+  const posted = result as FinanceTransaction;
+  await syncDailyClosingAfterCashDrawerTransaction(posted, userId, userName, db);
+  return posted;
+}
+
+async function syncDailyClosingAfterCashDrawerTransaction(
+  transaction: Pick<FinanceTransaction, "date" | "fromAccountId" | "toAccountId" | "autoPostedSource" | "branchId">,
+  userId: string,
+  userName: string,
+  db: Firestore,
+): Promise<void> {
+  if (transaction.autoPostedSource === "daily_closing") return;
+  try {
+    const { refreshDailyClosingForCashDrawerTransaction } = await import("@/services/financeClosingService");
+    await refreshDailyClosingForCashDrawerTransaction(transaction, userId, userName, db);
+  } catch (err) {
+    console.error("Failed to refresh Daily Closing opening cash after a cash-drawer transaction", err);
+  }
 }
 
 function describeTransactionForAudit(
@@ -250,12 +267,14 @@ export async function voidFinanceTransaction(
 ): Promise<void> {
   if (!reason?.trim()) throw new Error("A reason is required to void a transaction.");
 
+  let voided: FinanceTransaction | null = null;
   await runTransaction(db, async (tx) => {
     const txRef = doc(transactionsCollection(db), transactionId);
     const txSnap = await tx.get(txRef);
     if (!txSnap.exists()) throw new Error("Transaction not found.");
     const data = txSnap.data() as FinanceTransaction;
     if (data.status === "void") throw new Error("This transaction has already been voided.");
+    voided = { ...data, id: transactionId };
 
     const fromAccountRef = data.fromAccountId ? doc(accountsCollection(db), data.fromAccountId) : null;
     const toAccountRef = data.toAccountId ? doc(accountsCollection(db), data.toAccountId) : null;
@@ -326,6 +345,10 @@ export async function voidFinanceTransaction(
       reason: reason.trim(),
     });
   });
+
+  if (voided) {
+    await syncDailyClosingAfterCashDrawerTransaction(voided, userId, userName, db);
+  }
 }
 
 export interface FinanceTransactionFilters {

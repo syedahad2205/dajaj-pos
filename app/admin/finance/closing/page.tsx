@@ -43,6 +43,7 @@ interface DailyClosing {
   date: string;
   openingCash: number;
   openingCashSource: "chained" | "manual";
+  externalCashAdjustment?: number;
   expenses: ExpenseEntry[];
   cashExpenseTotal: number;
   deposits: DepositEntry[];
@@ -478,7 +479,12 @@ function FinanceClosingContent() {
                 {closing.openingCashSource === "chained" ? (
                   <>
                     <p className={`text-2xl font-black ${closing.openingCash < 0 ? "text-rose-600" : "text-slate-900"}`}>
-                      {formatCurrency(closing.openingCash)} <span className="text-sm font-normal text-slate-400">(yesterday&apos;s closing cash)</span>
+                      {formatCurrency(closing.openingCash)}{" "}
+                      <span className="text-sm font-normal text-slate-400">
+                        {closing.externalCashAdjustment
+                          ? `(yesterday ${formatCurrency(roundCurrency(closing.openingCash - closing.externalCashAdjustment))} ${closing.externalCashAdjustment >= 0 ? "+" : "−"} today's cash transfer ${formatCurrency(Math.abs(closing.externalCashAdjustment))})`
+                          : "(yesterday's closing cash)"}
+                      </span>
                     </p>
                     {closing.openingCash < 0 ? (
                       <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">

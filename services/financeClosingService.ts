@@ -242,6 +242,37 @@ function applySameDayExternalAdjustment(chainedOpeningCash: number, externalCash
   return roundCurrency(chainedOpeningCash + externalCashAdjustment);
 }
 
+/** Manual Opening Cash with any previously folded transfer taken back out, so a later load can apply today's transfers once instead of stacking them. */
+function manualOpeningBeforeExternal(existing: FinanceDailyClosing): number {
+  if (existing.openingCashSource !== "manual") return 0;
+  return roundCurrency(existing.openingCash - existing.externalCashAdjustment);
+}
+
+function mergeOpeningWithExternal(
+  base: FinanceDailyClosing,
+  resolved: { openingCash: number; openingCashSource: "chained" | "manual" },
+  externalCashAdjustment: number,
+): FinanceDailyClosing {
+  const merged = {
+    ...base,
+    openingCash: applySameDayExternalAdjustment(resolved.openingCash, externalCashAdjustment),
+    openingCashSource: resolved.openingCashSource,
+    externalCashAdjustment,
+  };
+  return { ...merged, ...computeDerivedTotals(merged) };
+}
+
+/** Net cash-drawer transfers/income/expense for this date that Daily Closing doesn't already track. 0 if Cash Sales isn't mapped or the ledger can't be read. */
+async function lookupExternalCashDrawerAdjustment(date: string, db: Firestore, branchId: string): Promise<number> {
+  const cashDrawerAccountId = (await getFinanceDefaultsMap(db, branchId)).get("cash_sales")?.destinationAccountId ?? null;
+  if (!cashDrawerAccountId) return 0;
+  try {
+    return await computeExternalCashDrawerAdjustment(cashDrawerAccountId, date, db, branchId);
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Shared entry point for every mutation inside a Firestore transaction
  * (add/remove an expense or deposit, update sales, set manual Opening
@@ -264,28 +295,28 @@ async function loadOrBootstrapClosingInTx(
   // same Promise.all as their other reads and pass it in here, saving a
   // sequential round trip. Falls back to fetching it itself otherwise.
   const prevSnap = prefetchedPrevSnap ?? (await tx.get(doc(dailyClosingCollection(db), previousDateKey(date))));
+  const externalCashAdjustment = await lookupExternalCashDrawerAdjustment(date, db, branchId);
 
   if (closingSnap.exists()) {
     const existing = normalizeClosing(closingSnap.data());
     assertNotLocked(existing, date);
-    const existingManual = existing.openingCashSource === "manual" ? existing.openingCash : 0;
-    const resolved = resolveOpeningCash(prevSnap.exists() ? prevSnap.data() : undefined, existingManual);
-    const merged = { ...existing, openingCash: resolved.openingCash, openingCashSource: resolved.openingCashSource };
-    return { ...merged, ...computeDerivedTotals(merged) };
+    const resolved = resolveOpeningCash(prevSnap.exists() ? prevSnap.data() : undefined, manualOpeningBeforeExternal(existing));
+    return mergeOpeningWithExternal(existing, resolved, externalCashAdjustment);
   }
 
   const resolved = resolveOpeningCash(prevSnap.exists() ? prevSnap.data() : undefined, 0);
-  return emptyClosing(date, branchId, resolved.openingCash, resolved.openingCashSource);
+  return mergeOpeningWithExternal(emptyClosing(date, branchId, resolved.openingCash, resolved.openingCashSource), resolved, externalCashAdjustment);
 }
 
 /**
  * Non-transactional counterpart of loadOrBootstrapClosingInTx — used by
  * read-only views and by closeDailyClosing, neither of which need (or can
- * cheaply get) a Firestore transaction here. Same self-healing behavior: a
- * not-yet-locked day always re-resolves Opening Cash against the previous
- * day's current Closing Cash rather than trusting whatever was stored the
- * last time this day was touched. A locked day is returned exactly as
- * stored — immutable until explicitly reopened.
+ * cheaply get) a Firestore transaction here. Same self-healing behavior:
+ * Opening Cash is always re-resolved against the previous day's current
+ * Closing Cash, then today's cash-drawer transfers are folded in (see
+ * applySameDayExternalAdjustment). That includes a locked day on read, so
+ * a Transfer posted after close still shows on Opening Cash; mutations
+ * continue to refuse locked days via loadOrBootstrapClosingInTx.
  */
 async function loadOrBootstrapClosing(date: string, db: Firestore, branchId: string): Promise<FinanceDailyClosing> {
   const [snap, prevSnap] = await Promise.all([
@@ -293,17 +324,17 @@ async function loadOrBootstrapClosing(date: string, db: Firestore, branchId: str
     getDoc(doc(dailyClosingCollection(db), previousDateKey(date))),
   ]);
 
+  const externalCashAdjustment = await lookupExternalCashDrawerAdjustment(date, db, branchId);
+
   if (snap.exists()) {
     const existing = normalizeClosing(snap.data());
-    if (existing.locked) return existing;
-    const existingManual = existing.openingCashSource === "manual" ? existing.openingCash : 0;
+    const existingManual = manualOpeningBeforeExternal(existing);
     const resolved = resolveOpeningCash(prevSnap.exists() ? prevSnap.data() : undefined, existingManual);
-    const merged = { ...existing, openingCash: resolved.openingCash, openingCashSource: resolved.openingCashSource };
-    return { ...merged, ...computeDerivedTotals(merged) };
+    return mergeOpeningWithExternal(existing, resolved, externalCashAdjustment);
   }
 
   const resolved = resolveOpeningCash(prevSnap.exists() ? prevSnap.data() : undefined, 0);
-  return emptyClosing(date, branchId, resolved.openingCash, resolved.openingCashSource);
+  return mergeOpeningWithExternal(emptyClosing(date, branchId, resolved.openingCash, resolved.openingCashSource), resolved, externalCashAdjustment);
 }
 
 /**
@@ -1323,6 +1354,84 @@ async function revoidAndRepostRecountAdjustment(
 }
 
 /**
+ * Recomputes one already-locked day's Opening Cash (previous Closing Cash
+ * + that day's own cash-drawer transfers) and re-posts Cash Sales / recount
+ * if the numbers moved. Used by the forward cascade and when a Transfer
+ * hits the cash drawer after that day was already closed.
+ */
+async function rechainLockedClosingAt(
+  date: string,
+  userId: string,
+  userName: string,
+  db: Firestore,
+  branchId: string,
+  contextNote: string,
+  auditReason: string,
+): Promise<"updated" | "unchanged" | "skipped"> {
+  const ref = doc(dailyClosingCollection(db), date);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return "skipped";
+
+  const current = normalizeClosing(snap.data());
+  if (!current.locked) return "skipped";
+
+  const prevSnap = await getDoc(doc(dailyClosingCollection(db), previousDateKey(date)));
+  const resolved = resolveOpeningCash(prevSnap.exists() ? prevSnap.data() : undefined, manualOpeningBeforeExternal(current));
+
+  const cascadeWarnings: string[] = [];
+  let externalCashAdjustment = current.externalCashAdjustment;
+  const cashDrawerAccountIdForExternal = (await getFinanceDefaultsMap(db, branchId)).get("cash_sales")?.destinationAccountId ?? null;
+  if (cashDrawerAccountIdForExternal) {
+    try {
+      externalCashAdjustment = await computeExternalCashDrawerAdjustment(cashDrawerAccountIdForExternal, date, db, branchId);
+    } catch (err) {
+      cascadeWarnings.push(
+        `Could not recompute ${date}'s external cash-drawer transfers ${contextNote} — ${err instanceof Error ? err.message : "unknown error"}.`,
+      );
+    }
+  }
+  const effectiveOpeningCash = applySameDayExternalAdjustment(resolved.openingCash, externalCashAdjustment);
+
+  if (
+    effectiveOpeningCash === current.openingCash &&
+    resolved.openingCashSource === current.openingCashSource &&
+    externalCashAdjustment === current.externalCashAdjustment
+  ) {
+    return "unchanged";
+  }
+
+  const merged = { ...current, openingCash: effectiveOpeningCash, openingCashSource: resolved.openingCashSource, externalCashAdjustment };
+  const totals = computeDerivedTotals(merged);
+  const draft: FinanceDailyClosing = { ...merged, ...totals };
+
+  const warnings = [...cascadeWarnings, ...draft.postingWarnings.filter((w) => !w.startsWith("Cash Sales:") && !w.startsWith("Cash Recount Adjustment:"))];
+  const autoPosted = { ...draft.autoPostedTransactionsByEvent };
+
+  await revoidAndRepostCashSales(draft, autoPosted, warnings, contextNote, userId, userName, db, branchId);
+  await revoidAndRepostRecountAdjustment(draft, autoPosted, warnings, contextNote, userId, userName, db, branchId);
+
+  const final: FinanceDailyClosing = { ...draft, autoPostedTransactionsByEvent: autoPosted, postingWarnings: warnings };
+  await setDoc(ref, { ...final, updatedAt: serverTimestamp() }, { merge: true });
+
+  await logFinanceAudit(
+    {
+      module: "closing",
+      entityId: date,
+      entityLabel: date,
+      action: "update",
+      userId,
+      userName,
+      oldValue: { openingCash: current.openingCash, cashRevenue: current.cashRevenue, totalRevenue: current.totalRevenue },
+      newValue: { openingCash: final.openingCash, cashRevenue: final.cashRevenue, totalRevenue: final.totalRevenue },
+      reason: auditReason,
+    },
+    db,
+  );
+
+  return "updated";
+}
+
+/**
  * After a day's Closing Cash is set or corrected (see closeDailyClosing),
  * walks forward through any already-LOCKED days chained off it and re-syncs
  * each one's Opening Cash against what it should be right now — the same
@@ -1358,85 +1467,56 @@ async function cascadeOpeningCashForward(
   let currentDate = nextDateKey(fromDate);
 
   for (let i = 0; i < MAX_CASCADE_DAYS; i++) {
-    const ref = doc(dailyClosingCollection(db), currentDate);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) break;
-
-    const current = normalizeClosing(snap.data());
-    if (!current.locked) break;
-
-    const prevSnap = await getDoc(doc(dailyClosingCollection(db), previousDateKey(currentDate)));
-    const resolved = resolveOpeningCash(prevSnap.exists() ? prevSnap.data() : undefined, 0);
-
-    // The one exception to the rule (see applySameDayExternalAdjustment):
-    // fold THIS day's own external transfers into its Opening Cash too,
-    // recomputed fresh since a Reopen/re-close upstream could have shifted
-    // what's actually posted for this exact date.
-    const cascadeWarnings: string[] = [];
-    let externalCashAdjustment = current.externalCashAdjustment;
-    const cashDrawerAccountIdForExternal = (await getFinanceDefaultsMap(db, branchId)).get("cash_sales")?.destinationAccountId ?? null;
-    if (cashDrawerAccountIdForExternal) {
-      try {
-        externalCashAdjustment = await computeExternalCashDrawerAdjustment(cashDrawerAccountIdForExternal, currentDate, db, branchId);
-      } catch (err) {
-        cascadeWarnings.push(
-          `Could not recompute ${currentDate}'s external cash-drawer transfers while re-chaining from ${fromDate} — ${err instanceof Error ? err.message : "unknown error"}.`,
-        );
-      }
-    }
-    const effectiveOpeningCash = applySameDayExternalAdjustment(resolved.openingCash, externalCashAdjustment);
-
-    if (
-      effectiveOpeningCash === current.openingCash &&
-      resolved.openingCashSource === current.openingCashSource &&
-      externalCashAdjustment === current.externalCashAdjustment
-    ) {
-      break;
-    }
-
-    const merged = { ...current, openingCash: effectiveOpeningCash, openingCashSource: resolved.openingCashSource, externalCashAdjustment };
-    const totals = computeDerivedTotals(merged);
-    const draft: FinanceDailyClosing = { ...merged, ...totals };
-
-    // Drop any previous "Cash Sales"/"Cash Recount Adjustment" warning
-    // before deciding fresh below — otherwise a stale complaint (e.g. from
-    // before Finance Defaults was configured) would keep piling up forever
-    // across repeated corrections.
-    const warnings = [...cascadeWarnings, ...draft.postingWarnings.filter((w) => !w.startsWith("Cash Sales:") && !w.startsWith("Cash Recount Adjustment:"))];
-    const autoPosted = { ...draft.autoPostedTransactionsByEvent };
-    const contextNote = `was automatically re-chained after a Closing Cash correction on ${fromDate}`;
-
-    await revoidAndRepostCashSales(draft, autoPosted, warnings, contextNote, userId, userName, db, branchId);
-
-    // Same rule as closeDailyClosing: the cash drawer's balance must always
-    // end up equal to this day's own Closing Cash. Opening Cash (and so
-    // Cash Sales) may have just shifted above, so re-void and re-post the
-    // adjustment fresh against wherever the drawer balance actually landed.
-    await revoidAndRepostRecountAdjustment(draft, autoPosted, warnings, contextNote, userId, userName, db, branchId);
-
-    const final: FinanceDailyClosing = { ...draft, autoPostedTransactionsByEvent: autoPosted, postingWarnings: warnings };
-    await setDoc(ref, { ...final, updatedAt: serverTimestamp() }, { merge: true });
-
-    await logFinanceAudit(
-      {
-        module: "closing",
-        entityId: currentDate,
-        entityLabel: currentDate,
-        action: "update",
-        userId,
-        userName,
-        oldValue: { openingCash: current.openingCash, cashRevenue: current.cashRevenue, totalRevenue: current.totalRevenue },
-        newValue: { openingCash: final.openingCash, cashRevenue: final.cashRevenue, totalRevenue: final.totalRevenue },
-        reason: `Automatically re-chained after ${fromDate}'s Closing Cash was corrected`,
-      },
+    const result = await rechainLockedClosingAt(
+      currentDate,
+      userId,
+      userName,
       db,
+      branchId,
+      `was automatically re-chained after a Closing Cash correction on ${fromDate}`,
+      `Automatically re-chained after ${fromDate}'s Closing Cash was corrected`,
     );
-
+    if (result !== "updated") break;
     updatedDates.push(currentDate);
     currentDate = nextDateKey(currentDate);
   }
 
   return updatedDates;
+}
+
+/**
+ * When a manager posts (or voids) a Transfer/Income/Expense that hits the
+ * cash drawer, fold it into that date's Opening Cash. Unlocked days pick
+ * this up on the next Daily Closing load. Locked days are re-chained here
+ * so the register and Cash Sales posting don't stay stuck on yesterday's
+ * Closing Cash.
+ */
+export async function refreshDailyClosingForCashDrawerTransaction(
+  transaction: Pick<FinanceTransaction, "date" | "fromAccountId" | "toAccountId" | "autoPostedSource" | "branchId">,
+  userId: string,
+  userName: string,
+  db: Firestore = defaultFirestore,
+): Promise<void> {
+  if (transaction.autoPostedSource === "daily_closing") return;
+  if (!isValidDateKey(transaction.date)) return;
+
+  const branchId = transaction.branchId || DEFAULT_BRANCH_ID;
+  const cashDrawerAccountId = (await getFinanceDefaultsMap(db, branchId)).get("cash_sales")?.destinationAccountId ?? null;
+  if (!cashDrawerAccountId) return;
+  if (transaction.fromAccountId !== cashDrawerAccountId && transaction.toAccountId !== cashDrawerAccountId) return;
+
+  const result = await rechainLockedClosingAt(
+    transaction.date,
+    userId,
+    userName,
+    db,
+    branchId,
+    "was re-chained after a cash-drawer transfer on this date",
+    `Automatically re-chained after a cash-drawer transaction on ${transaction.date}`,
+  );
+  if (result === "updated") {
+    await cascadeOpeningCashForward(transaction.date, userId, userName, db, branchId);
+  }
 }
 
 export async function closeDailyClosing(
@@ -1453,11 +1533,9 @@ export async function closeDailyClosing(
   const base = await loadOrBootstrapClosing(date, db, branchId);
   if (base.locked) throw new Error(`${date} is already closed. Ask an admin to reopen it first.`);
 
-  // The one exception to "Opening Cash is always the previous day's
-  // Closing Cash" (see applySameDayExternalAdjustment): fold today's own
-  // external transfers into Opening Cash BEFORE Cash Revenue is computed,
-  // so they're correctly absorbed here rather than showing up later as a
-  // Cash Recount Adjustment that would otherwise cancel them back out.
+  // Recompute today's cash-drawer transfers fresh at save time (load already
+  // folded in whatever it could see). Subtract the load-time adjustment first
+  // so we never apply the same transfer twice.
   const warnings: string[] = [];
   let externalCashAdjustment = 0;
   const cashDrawerAccountIdForExternal = (await getFinanceDefaultsMap(db, branchId)).get("cash_sales")?.destinationAccountId ?? null;
@@ -1470,7 +1548,8 @@ export async function closeDailyClosing(
       );
     }
   }
-  const effectiveOpeningCash = applySameDayExternalAdjustment(base.openingCash, externalCashAdjustment);
+  const chainedOpeningCash = roundCurrency(base.openingCash - base.externalCashAdjustment);
+  const effectiveOpeningCash = applySameDayExternalAdjustment(chainedOpeningCash, externalCashAdjustment);
 
   const merged = { ...base, openingCash: effectiveOpeningCash, closingCash: roundCurrency(closingCash) };
   const totals = computeDerivedTotals(merged);
@@ -1729,7 +1808,40 @@ export async function getDailyClosingsForRange(
       orderBy("date", "asc"),
     ),
   );
-  return snapshot.docs.map((d) => normalizeClosing(d.data()));
+  const closings = snapshot.docs.map((d) => normalizeClosing(d.data()));
+  if (closings.length === 0) return closings;
+
+  const cashDrawerAccountId = (await getFinanceDefaultsMap(db, branchId)).get("cash_sales")?.destinationAccountId ?? null;
+  let adjByDate = new Map<string, number>();
+  if (cashDrawerAccountId) {
+    const transactions = await getPostedTransactionsForRange(dateFrom, dateTo, db, branchId);
+    adjByDate = sumExternalCashDrawerEffectsByDate(transactions, cashDrawerAccountId);
+  }
+
+  const prevOfRangeSnap = await getDoc(doc(dailyClosingCollection(db), previousDateKey(dateFrom)));
+  let prevClosingBeforeRange: number | undefined;
+  if (prevOfRangeSnap.exists()) {
+    const prev = normalizeClosing(prevOfRangeSnap.data());
+    if (prev.locked && typeof prev.closingCash === "number") prevClosingBeforeRange = prev.closingCash;
+  }
+
+  return closings.map((closing, index) => {
+    const prevInRange = index > 0 ? closings[index - 1] : null;
+    const prevClosingCash =
+      prevInRange?.locked && typeof prevInRange.closingCash === "number"
+        ? prevInRange.closingCash
+        : index === 0
+          ? prevClosingBeforeRange
+          : undefined;
+    const resolved =
+      prevClosingCash !== undefined
+        ? { openingCash: prevClosingCash, openingCashSource: "chained" as const }
+        : {
+            openingCash: roundCurrency(closing.openingCash - closing.externalCashAdjustment),
+            openingCashSource: closing.openingCashSource,
+          };
+    return mergeOpeningWithExternal(closing, resolved, adjByDate.get(closing.date) ?? 0);
+  });
 }
 
 export interface CashDrawerRecountBackfillResult {

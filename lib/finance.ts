@@ -211,8 +211,9 @@ export interface FinanceDailyClosing {
   // Cash Revenue instead of quietly becoming "extra revenue" or getting
   // canceled out by that day's own Cash Recount Adjustment. Closing Cash
   // is never touched by this — it always stays the physical count.
-  // Computed once when this day closes (or during a history resync); 0
-  // for any day it hasn't been computed for yet.
+  // Recomputed whenever this day is loaded (and again on close / history
+  // resync), so a Transfer into the cash counter is visible on Opening
+  // Cash immediately — not only after the day is saved.
   externalCashAdjustment: number;
 
   expenses: DailyClosingExpenseEntry[];

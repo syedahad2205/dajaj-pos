@@ -33,7 +33,13 @@ export function OpeningCashCard({ date, closing, readonly }: Props) {
           <Text style={[styles.valueText, isDeficit && styles.deficit]}>
             {formatCurrency(closing?.openingCash ?? null)}
           </Text>
-          {isChained && <Text style={styles.chainedNote}>Carried over from yesterday&apos;s closing</Text>}
+          {isChained && (
+            <Text style={styles.chainedNote}>
+              {closing && closing.externalCashAdjustment
+                ? `Yesterday ${formatCurrency(closing.openingCash - closing.externalCashAdjustment)} ${closing.externalCashAdjustment >= 0 ? '+' : '−'} today's cash transfer ${formatCurrency(Math.abs(closing.externalCashAdjustment))}`
+                : "Carried over from yesterday's closing"}
+            </Text>
+          )}
           {isDeficit && (
             <View style={styles.deficitBadge}>
               <Text style={styles.deficitText}>⚠ Opening with cash deficit</Text>
