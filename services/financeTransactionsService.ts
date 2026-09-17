@@ -237,7 +237,7 @@ async function syncDailyClosingAfterCashDrawerTransaction(
   db: Firestore,
 ): Promise<void> {
   if (transaction.autoPostedSource === "daily_closing") return;
-  if (transaction.type === "expense") return;
+  if (transaction.type !== "transfer") return;
   try {
     const { refreshDailyClosingForCashDrawerTransaction } = await import("@/services/financeClosingService");
     await refreshDailyClosingForCashDrawerTransaction(transaction, userId, userName, db);

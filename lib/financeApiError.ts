@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isFirebaseRouteAuthError } from "@/lib/firebaseServerApp";
 import { isFinanceRouteForbiddenError } from "@/lib/financeRouteAuth";
+import { ClosingSequenceError } from "@/lib/finance";
 
 /**
  * Shared error → HTTP response mapping for every Finance module API route,
@@ -19,6 +20,12 @@ export function financeErrorResponse(error: unknown, context: string) {
   let status = 400;
   if (isFirebaseRouteAuthError(error)) status = 401;
   else if (isFinanceRouteForbiddenError(error)) status = 403;
+  else if (error instanceof ClosingSequenceError) {
+    return NextResponse.json(
+      { success: false, message, workDate: error.workDate, latestLockedDate: error.latestLockedDate },
+      { status: 409 },
+    );
+  }
   else if (errorCode === "permission-denied") status = 403;
   else if (errorCode === "resource-exhausted" || /quota exceeded/i.test(message)) {
     status = 429;

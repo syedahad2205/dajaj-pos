@@ -8,7 +8,6 @@
  */
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { FinanceDailyClosing } from '@/modules/daily-closing/types';
-import { toDateKey } from '@/modules/daily-closing/utils/dateUtils';
 import { getFirebaseAuth } from '@/core/firebase/firebaseClient';
 import { API_BASE } from '@/config';
 
@@ -68,12 +67,68 @@ export function useDailyClosing(date: string): UseQueryResult<FinanceDailyClosin
       });
       return closing;
     },
+    enabled: Boolean(date),
     staleTime: DEFAULT_STALE_TIME,
     retry: 2,
     retryDelay: 1000,
   });
 }
 
+export interface DailyClosingWorkTarget {
+  workDate: string;
+  latestLockedDate: string | null;
+  firstDay: boolean;
+}
+
+async function fetchClosingWorkTarget(): Promise<DailyClosingWorkTarget> {
+  const auth = getFirebaseAuth();
+  let currentUser = auth.currentUser;
+  if (!currentUser) {
+    currentUser = await new Promise((resolve) => {
+      const unsub = auth.onAuthStateChanged((u) => {
+        unsub();
+        resolve(u);
+      });
+    });
+  }
+  const idToken = await currentUser?.getIdToken(true);
+  if (!idToken) {
+    throw new Error('Not authenticated.');
+  }
+
+  const response = await fetch(`${API_BASE}/finance/closing/work-date`, {
+    method: 'GET',
+    headers: {
+      'X-Auth-Token': `Bearer ${idToken}`,
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const data = (await response.json()) as
+    | { success: true; workDate: string; latestLockedDate: string | null; firstDay: boolean }
+    | { success: false; message: string };
+
+  if (!data.success) {
+    throw new Error(data.message);
+  }
+
+  return {
+    workDate: data.workDate,
+    latestLockedDate: data.latestLockedDate,
+    firstDay: data.firstDay,
+  };
+}
+
+export function useClosingWorkTarget() {
+  return useQuery({
+    queryKey: ['dailyClosingWorkTarget'],
+    queryFn: fetchClosingWorkTarget,
+    staleTime: DEFAULT_STALE_TIME,
+  });
+}
+
 export function useTodaysClosing() {
-  return useDailyClosing(toDateKey());
+  const { data: target } = useClosingWorkTarget();
+  return useDailyClosing(target?.workDate ?? '');
 }

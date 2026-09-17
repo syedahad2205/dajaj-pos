@@ -8,7 +8,7 @@ import { ScrollView, View, Text, StyleSheet, ActivityIndicator, RefreshControl, 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 import { ConnectivityBanner } from '@/core/ui/components/ConnectivityBanner';
-import { useDailyClosing } from '@/modules/daily-closing/hooks/useDailyClosing';
+import { useDailyClosing, useClosingWorkTarget } from '@/modules/daily-closing/hooks/useDailyClosing';
 import { DateNav } from '@/modules/daily-closing/components/DateNav';
 import { OpeningCashCard } from '@/modules/daily-closing/components/OpeningCashCard';
 import { CashExpensesSection } from '@/modules/daily-closing/components/CashExpensesSection';
@@ -23,6 +23,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'DailyClosing'>;
 export function DailyClosingScreen({ route, navigation }: Props) {
   const { date: initialDate, mode } = route.params;
   const [date, setDate] = React.useState(initialDate);
+  const { data: target } = useClosingWorkTarget();
   const { data: closing, isLoading, isError, refetch, isRefetching } = useDailyClosing(date);
 
   // Read-only is driven by the day's actual lock state once loaded — so
@@ -70,7 +71,7 @@ export function DailyClosingScreen({ route, navigation }: Props) {
       <View style={[styles.card, styles.headerCard]}>
         <Text style={styles.financeLabel}>Finance</Text>
         <Text style={styles.pageTitle}>Daily Closing</Text>
-        <DateNav date={date} onChange={setDate} />
+        <DateNav date={date} onChange={setDate} maxDate={target?.workDate} />
         {readonly && (
           <View style={styles.readonlyBadge}>
             <Text style={styles.readonlyText}>Read-only view</Text>

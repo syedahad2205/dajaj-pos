@@ -283,5 +283,8 @@ export function useCloseDailyClosing(date: string) {
         (closing: FinanceDailyClosing) => queryClient.setQueryData<FinanceDailyClosing | null>(['dailyClosing', date], closing),
       );
     },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['dailyClosingWorkTarget'] });
+    },
   });
 }

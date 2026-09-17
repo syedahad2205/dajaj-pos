@@ -12,7 +12,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TabParamList, RootStackParamList } from '@/navigation/AppNavigator';
 import { ConnectivityBanner } from '@/core/ui/components/ConnectivityBanner';
 import { DajajLogo } from '@/core/ui/components/DajajLogo';
-import { useTodaysClosing } from '@/modules/daily-closing/hooks/useDailyClosing';
+import { useDailyClosing, useClosingWorkTarget } from '@/modules/daily-closing/hooks/useDailyClosing';
 import { toDateKey, formatDateDisplay } from '@/modules/daily-closing/utils/dateUtils';
 import { formatCurrency } from '@/modules/daily-closing/utils/formatUtils';
 import { colors, radius, shadow } from '@/core/ui/theme/colors';
@@ -40,13 +40,16 @@ const STATUS_CONFIG: Record<ClosingStatus, { bg: string; fg: string; border: str
 export function HomeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const today = toDateKey();
-  const { data: closing, isLoading, refetch, isRefetching } = useTodaysClosing();
+  const { data: target, refetch: refetchTarget } = useClosingWorkTarget();
+  const workDate = target?.workDate ?? today;
+  const { data: closing, isLoading, refetch, isRefetching } = useDailyClosing(target?.workDate ?? '');
   const status = deriveStatus(closing);
   const cfg = STATUS_CONFIG[status];
+  const catchingUp = Boolean(target && target.workDate < today && status !== 'Closed');
 
   function openDailyClosing() {
     (navigation as { navigate: (name: string, params: object) => void }).navigate('DailyClosing', {
-      date: today,
+      date: workDate,
       mode: status === 'Closed' ? 'readonly' : 'edit',
     });
   }
@@ -55,7 +58,7 @@ export function HomeScreen({ navigation }: Props) {
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={colors.orange600} />}
+      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => { void refetch(); void refetchTarget(); }} tintColor={colors.orange600} />}
     >
       <StatusBar barStyle="dark-content" backgroundColor={colors.pageBg} />
 
@@ -63,13 +66,13 @@ export function HomeScreen({ navigation }: Props) {
       <View style={[styles.card, styles.headerCard]}>
         <DajajLogo width={80} height={115} />
         <View style={styles.headerDivider} />
-        <Text style={styles.dateText}>{formatDateDisplay(today)}</Text>
+        <Text style={styles.dateText}>{formatDateDisplay(workDate)}</Text>
         <ConnectivityBanner />
       </View>
 
       {/* Status card */}
       <View style={[styles.card, { borderColor: cfg.border, backgroundColor: cfg.bg }]}>
-        <Text style={styles.sectionLabel}>Today's Status</Text>
+        <Text style={styles.sectionLabel}>{catchingUp ? 'Next day to close' : "Today's Status"}</Text>
         <Text style={[styles.statusValue, { color: cfg.fg }]} testID="status-badge">
           {isLoading ? '…' : status}
         </Text>

@@ -34,6 +34,7 @@ hand in the console.
 | `fin_audit_logs` | `entityId` ASC, `timestamp` DESC | `getFinanceAuditLogs` (filtered by entity) |
 | `fin_daily_closing` | `branchId` ASC, `date` ASC | `getDailyClosingsForRange` (Reports, Dashboard, Pigmi/Lock settings) |
 | `fin_daily_closing` | `branchId` ASC, `date` DESC | Mobile app History screen date-range query (same filter shape as `getDailyClosingsForRange`, but newest-first) |
+| `fin_daily_closing` | `branchId` ASC, `locked` ASC, `date` DESC | Latest locked Daily Closing (work date = next day) |
 | `finance_defaults` | `branchId` ASC, `displayOrder` ASC | `getFinanceDefaults` |
 
 ## Why filters beyond these aren't all indexed

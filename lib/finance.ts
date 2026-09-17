@@ -199,22 +199,19 @@ export interface FinanceDailyClosing {
 
   openingCash: number;
   openingCashSource: "chained" | "manual";
-  // Net effect, on the cash drawer account, of transactions dated on THIS
-  // day that Daily Closing doesn't already know about — a manual Transfer
-  // in/out of the drawer via the Transactions tab (e.g. "Transfer from
-  // ICICI"), as opposed to cash_sales/cash_expenses/*_deposit/
-  // cash_recount_adjustment, which are already reflected in closingCash.
-  // This is the ONE explicit exception to "Opening Cash is always the
-  // previous day's Closing Cash": THIS day's own Opening Cash is bumped
-  // by this amount (see applySameDayExternalAdjustment), so a
-  // known/recorded transfer is correctly absorbed into the same day's
-  // Cash Revenue instead of quietly becoming "extra revenue" or getting
-  // canceled out by that day's own Cash Recount Adjustment. Closing Cash
-  // is never touched by this — it always stays the physical count.
-  // Recomputed whenever this day is loaded (and again on close / history
-  // resync), so a Transfer into the cash counter is visible on Opening
-  // Cash immediately — not only after the day is saved.
+  // Net of THIS day's posted Transfer rows that touch the Cash Drawer
+  // (into minus out). Income, Expense, Pigmi, Daily Closing auto-posts,
+  // and sales are never included. Formula:
+  //   openingCash = yesterday's locked closingCash + externalCashAdjustment
+  // Recomputed on Daily Closing GET (unlocked days) and again on Close.
+  // After lock, the stored value is frozen — the next day's base is this
+  // day's closingCash, not this field.
   externalCashAdjustment: number;
+
+  // Ledger balance of the Cash Drawer as of this locked day AFTER recount.
+  // Used only to compute the next close's recount without scanning the
+  // whole history. NEVER used as the next day's openingCash.
+  cashDrawerBalanceAsOfDate: number | null;
 
   expenses: DailyClosingExpenseEntry[];
   cashExpenseTotal: number; // sum of expenses[].amount — the real business expense
@@ -423,12 +420,77 @@ export function nextDateKey(dateKey: string): string {
   return toDateKey(d);
 }
 
+/**
+ * The only date Daily Closing may open/edit: the day after the most recent
+ * locked closing (so Opening Cash always exists). Caps at `today` after
+ * today's close. With no locked day yet, that's today (first closing).
+ */
+export function dailyClosingWorkDate(latestLockedDate: string | null, today: string): string {
+  if (!latestLockedDate) return today;
+  const next = nextDateKey(latestLockedDate);
+  return next > today ? today : next;
+}
+
+export function canEditDailyClosingDate(date: string, latestLockedDate: string | null, today: string): boolean {
+  if (!isValidDateKey(date) || date > today) return false;
+  return date === dailyClosingWorkDate(latestLockedDate, today);
+}
+
+export class ClosingSequenceError extends Error {
+  workDate: string;
+  latestLockedDate: string | null;
+
+  constructor(workDate: string, latestLockedDate: string | null) {
+    const message = latestLockedDate
+      ? `Daily Closing can only be done for ${workDate}, the day after the last closed date (${latestLockedDate}). Close days in order so opening cash exists.`
+      : `Daily Closing can only be started for ${workDate}.`;
+    super(message);
+    this.name = "ClosingSequenceError";
+    this.workDate = workDate;
+    this.latestLockedDate = latestLockedDate;
+  }
+}
+
 export function isValidDateKey(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 export function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Net Cash Drawer Transfers for a set of ledger rows:
+ *   transfers INTO the drawer − transfers OUT OF the drawer.
+ * Posted Transfer rows only. Skips Daily Closing auto-posts, Income,
+ * Expense, and voided rows. This is the only amount that may be added
+ * to yesterday's locked Closing Cash to get today's Opening Cash.
+ */
+export function netCashDrawerTransferAdjustment(
+  transactions: Array<{
+    type: string;
+    amount: number;
+    status?: string | null;
+    autoPostedSource?: string | null;
+    fromAccountId?: string | null;
+    toAccountId?: string | null;
+  }>,
+  cashDrawerAccountId: string,
+): number {
+  let delta = 0;
+  for (const t of transactions) {
+    if (t.status && t.status !== "posted") continue;
+    if (t.autoPostedSource === "daily_closing") continue;
+    if (t.type !== "transfer") continue;
+    if (t.toAccountId === cashDrawerAccountId) delta += t.amount;
+    if (t.fromAccountId === cashDrawerAccountId) delta -= t.amount;
+  }
+  return roundCurrency(delta);
+}
+
+/** openingCash = yesterday's locked closingCash + net same-day Cash Drawer Transfers. */
+export function openingCashFromPrevClosingAndTransfers(prevLockedClosingCash: number, netTransfers: number): number {
+  return roundCurrency(prevLockedClosingCash + netTransfers);
 }
 
 /**

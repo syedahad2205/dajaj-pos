@@ -12,6 +12,7 @@ import { colors, radius } from '@/core/ui/theme/colors';
 interface Props {
   date: string;
   onChange: (dateKey: string) => void;
+  maxDate?: string;
 }
 
 function shiftDay(dateKey: string, days: number): string {
@@ -20,11 +21,12 @@ function shiftDay(dateKey: string, days: number): string {
   return toDateKey(d);
 }
 
-export function DateNav({ date, onChange }: Props) {
+export function DateNav({ date, onChange, maxDate }: Props) {
   const [showPicker, setShowPicker] = useState(false);
   const today = toDateKey();
+  const cap = maxDate && maxDate < today ? maxDate : today;
   const isToday = date === today;
-  const isFuture = date > today;
+  const atCap = date >= cap;
 
   return (
     <View style={styles.row}>
@@ -46,13 +48,13 @@ export function DateNav({ date, onChange }: Props) {
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.arrowBtn, (isToday || isFuture) && styles.arrowBtnDisabled]}
-        onPress={() => !isToday && !isFuture && onChange(shiftDay(date, 1))}
-        disabled={isToday || isFuture}
+        style={[styles.arrowBtn, atCap && styles.arrowBtnDisabled]}
+        onPress={() => !atCap && onChange(shiftDay(date, 1))}
+        disabled={atCap}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         testID="next-day-button"
       >
-        <Text style={[styles.arrowText, (isToday || isFuture) && styles.arrowTextDisabled]}>›</Text>
+        <Text style={[styles.arrowText, atCap && styles.arrowTextDisabled]}>›</Text>
       </TouchableOpacity>
 
       {showPicker && (
@@ -60,10 +62,12 @@ export function DateNav({ date, onChange }: Props) {
           value={new Date(`${date}T00:00:00`)}
           mode="date"
           display="default"
-          maximumDate={new Date()}
+          maximumDate={new Date(`${cap}T00:00:00`)}
           onChange={(_, selected) => {
             setShowPicker(false);
-            if (selected) onChange(toDateKey(selected));
+            if (!selected) return;
+            const key = toDateKey(selected);
+            onChange(key > cap ? cap : key);
           }}
         />
       )}

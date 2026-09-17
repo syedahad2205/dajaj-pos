@@ -7,7 +7,7 @@ import { ArrowLeft, Calendar, History, Plus, Trash2 } from "lucide-react";
 import { requireFinanceAccess } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, formatDateDisplay, todayDateKey } from "@/lib/financeFormat";
-import { roundCurrency, SUPPORTED_CASH_DEPOSIT_TYPES, CASH_DEPOSIT_TYPE_LABELS, type CashDepositType, type FinanceExpenseSubcategory } from "@/lib/finance";
+import { roundCurrency, SUPPORTED_CASH_DEPOSIT_TYPES, CASH_DEPOSIT_TYPE_LABELS, nextDateKey, type CashDepositType, type FinanceExpenseSubcategory } from "@/lib/finance";
 import FinanceNav from "@/components/finance/FinanceNav";
 import Modal from "@/components/finance/Modal";
 import NativeSelectField from "@/components/ui/NativeSelectField";
@@ -91,7 +91,8 @@ function FinanceClosingContent() {
   const today = todayDateKey();
   const searchParams = useSearchParams();
 
-  const [date, setDate] = useState(searchParams?.get("date") || today);
+  const [date, setDate] = useState(searchParams?.get("date") || "");
+  const [workDate, setWorkDate] = useState("");
   const [closing, setClosing] = useState<DailyClosing | null>(null);
   const [categories, setCategories] = useState<ExpenseCategoryOption[]>([]);
   const [subcategories, setSubcategories] = useState<FinanceExpenseSubcategory[]>([]);
@@ -163,9 +164,31 @@ function FinanceClosingContent() {
 
   useEffect(() => {
     if (!canQuery) return;
+    void (async () => {
+      try {
+        const res = await firebaseAuthedFetch("/api/finance/closing/work-date");
+        const payload = await readJson(res);
+        const nextWork = payload.workDate as string;
+        setWorkDate(nextWork);
+        const requested = searchParams?.get("date");
+        setDate((current) => {
+          const candidate = requested || current;
+          if (candidate && candidate <= nextWork) return candidate;
+          return nextWork;
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load Daily Closing.");
+        setFetching(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canQuery]);
+
+  useEffect(() => {
+    if (!canQuery || !date || !workDate) return;
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canQuery, date]);
+  }, [canQuery, date, workDate]);
 
   if (loading) {
     return <main className="min-h-screen bg-[#fff8ed] px-4 py-10 text-slate-900">Checking your session…</main>;
@@ -355,6 +378,11 @@ function FinanceClosingContent() {
       });
       const payload = await readJson(response);
       setClosing(payload.closing);
+      const following = nextDateKey(date);
+      if (following <= today) {
+        setWorkDate(following);
+        setDate(following);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save Daily Closing.");
     } finally {
@@ -375,6 +403,7 @@ function FinanceClosingContent() {
           body: JSON.stringify({ reason }),
         }),
       );
+      setWorkDate(date);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reopen the day.");
@@ -421,7 +450,7 @@ function FinanceClosingContent() {
             <input
               type="date"
               value={date}
-              max={today}
+              max={workDate || today}
               onChange={(e) => setDate(e.target.value)}
               aria-label="Choose date"
               className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
@@ -457,6 +486,11 @@ function FinanceClosingContent() {
       <div className="flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto max-w-2xl space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-5">
           {error ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p> : null}
+          {workDate && workDate < today && !locked ? (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Close {formatDateDisplay(workDate)} next. Later dates stay empty until this day is locked so opening cash can chain.
+            </p>
+          ) : null}
 
           {closing?.postingWarnings && closing.postingWarnings.length > 0 ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -946,7 +980,10 @@ function FinanceClosingContent() {
               }
             })();
           }}
-          onDateDetected={(detectedDate) => setDate(detectedDate)}
+          onDateDetected={(detectedDate) => {
+            if (workDate && detectedDate > workDate) setDate(workDate);
+            else setDate(detectedDate);
+          }}
           onClosingCashSuggested={(value) => {
             pendingClosingCashRef.current = value;
             setClosingCashDraft(value);
