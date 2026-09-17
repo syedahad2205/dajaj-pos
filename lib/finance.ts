@@ -431,6 +431,27 @@ export function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+/**
+ * P&L / dashboard "is this the till?" check. Daily Closing already owns
+ * the physical cash drawer, so ledger expenses/income on THAT account are
+ * skipped to avoid double-counting. Pigmi/Unity (and any other holding
+ * account) must still count even if someone typed the account as "cash" —
+ * collecting Pigmi is profit via Daily Closing cash sales; paying salary
+ * from Pigmi is a real expense.
+ *
+ * When Cash Sales has a mapped destination, only that account is the
+ * drawer. If it isn't mapped yet, fall back to `type === "cash"`.
+ */
+export function isPnlCashDrawerAccount(
+  accountId: string | null | undefined,
+  cashDrawerAccountId: string | null | undefined,
+  accountTypeById: Map<string, string>,
+): boolean {
+  if (!accountId) return false;
+  if (cashDrawerAccountId) return accountId === cashDrawerAccountId;
+  return accountTypeById.get(accountId) === "cash";
+}
+
 /** Display label for every known deposit type, including ones not yet exposed in the UI. */
 export const CASH_DEPOSIT_TYPE_LABELS: Record<CashDepositType, string> = {
   pigmi: "Pigmi",

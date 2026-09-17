@@ -1,6 +1,6 @@
 import type { Firestore } from "firebase/firestore";
 import { firestore as defaultFirestore } from "@/lib/firebase";
-import { DEFAULT_BRANCH_ID, depositEventKey, roundCurrency, toDateKey, type FinanceDailyClosing } from "@/lib/finance";
+import { DEFAULT_BRANCH_ID, depositEventKey, isPnlCashDrawerAccount, roundCurrency, toDateKey, type FinanceDailyClosing } from "@/lib/finance";
 import { buildPlatformDayInfo, lookupPlatformDayInfo } from "@/lib/platformRevenue";
 import { getDailyClosingsForRange } from "@/services/financeClosingService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
@@ -137,7 +137,8 @@ export async function getFinanceDashboardSummary(
     roundCurrency(c.totalRevenue - c.zomatoSales - c.swiggySales);
 
   const accountTypeById = new Map(accounts.map((a) => [a.id, a.type]));
-  const isCashAccount = (accountId: string | null) => (accountId ? accountTypeById.get(accountId) === "cash" : false);
+  const cashDrawerAccountId = defaultsMap.get("cash_sales")?.destinationAccountId ?? null;
+  const isCashDrawer = (accountId: string | null) => isPnlCashDrawerAccount(accountId, cashDrawerAccountId, accountTypeById);
 
   // Two reasons a ledger transaction is excluded from the "bank activity" merge below:
   // 1. It's tagged to the Cash Drawer — Daily Closing already owns that money.
@@ -149,9 +150,10 @@ export async function getFinanceDashboardSummary(
   //    adjustment they post is genuinely new information about real profit,
   //    not money already counted elsewhere. Manually-entered Transactions
   //    tab rows (autoPosted false) also flow through as before.
+  // Pigmi/Unity is not the cash drawer even if the account is typed "cash".
   const notDailyClosingGenerated = rangeTransactions.filter((t) => t.autoPostedSource !== "daily_closing");
-  const bankIncome = notDailyClosingGenerated.filter((t) => t.type === "income" && !isCashAccount(t.toAccountId));
-  const bankExpense = notDailyClosingGenerated.filter((t) => t.type === "expense" && !isCashAccount(t.fromAccountId));
+  const bankIncome = notDailyClosingGenerated.filter((t) => t.type === "income" && !isCashDrawer(t.toAccountId));
+  const bankExpense = notDailyClosingGenerated.filter((t) => t.type === "expense" && !isCashDrawer(t.fromAccountId));
 
   const todayClosing = rangeClosings.find((c) => c.date === todayKey) ?? null;
   const lastLocked = [...allTimeClosings].reverse().find((c) => c.locked && typeof c.closingCash === "number");
@@ -282,7 +284,7 @@ export async function getFinanceHistoryRange(
   db: Firestore = defaultFirestore,
   branchId: string = DEFAULT_BRANCH_ID,
 ): Promise<FinanceHistoryDay[]> {
-  const [closings, accounts, transactions, zomatoImports, swiggyImports, zomatoItemSales, swiggyItemSales] = await Promise.all([
+  const [closings, accounts, transactions, zomatoImports, swiggyImports, zomatoItemSales, swiggyItemSales, defaultsMap] = await Promise.all([
     getDailyClosingsForRange(dateFrom, dateTo, db, branchId),
     getFinanceAccounts({ branchId }, db),
     getPostedTransactionsForRange(dateFrom, dateTo, db, branchId),
@@ -290,18 +292,20 @@ export async function getFinanceHistoryRange(
     getSwiggyImports(db),
     getItemSalesForDateRange(dateFrom, dateTo, db),
     getSwiggyItemSalesForDateRange(dateFrom, dateTo, db),
+    getFinanceDefaultsMap(db, branchId),
   ]);
 
   const accountTypeById = new Map(accounts.map((a) => [a.id, a.type]));
-  const isCashAccount = (accountId: string | null) => (accountId ? accountTypeById.get(accountId) === "cash" : false);
+  const cashDrawerAccountId = defaultsMap.get("cash_sales")?.destinationAccountId ?? null;
+  const isCashDrawer = (accountId: string | null) => isPnlCashDrawerAccount(accountId, cashDrawerAccountId, accountTypeById);
 
   const bankExpenseByDate = new Map<string, number>();
   const bankIncomeByDate = new Map<string, number>();
   for (const t of transactions) {
     if (t.autoPostedSource === "daily_closing") continue; // Daily Closing generated it itself
-    if (t.type === "expense" && !isCashAccount(t.fromAccountId)) {
+    if (t.type === "expense" && !isCashDrawer(t.fromAccountId)) {
       bankExpenseByDate.set(t.date, roundCurrency((bankExpenseByDate.get(t.date) ?? 0) + t.amount));
-    } else if (t.type === "income" && !isCashAccount(t.toAccountId)) {
+    } else if (t.type === "income" && !isCashDrawer(t.toAccountId)) {
       bankIncomeByDate.set(t.date, roundCurrency((bankIncomeByDate.get(t.date) ?? 0) + t.amount));
     }
   }

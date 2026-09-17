@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedFirestoreForRequest } from "@/lib/firebaseServerApp";
 import { financeErrorResponse } from "@/lib/financeApiError";
-import { toDateKey, roundCurrency, DEFAULT_BRANCH_ID, type FinanceDailyClosing } from "@/lib/finance";
+import { toDateKey, roundCurrency, DEFAULT_BRANCH_ID, isPnlCashDrawerAccount, type FinanceDailyClosing } from "@/lib/finance";
 import { buildPlatformDayInfo, lookupPlatformDayInfo } from "@/lib/platformRevenue";
 import { getDailyClosingsForRange } from "@/services/financeClosingService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
 import { getPostedTransactionsForRange } from "@/services/financeTransactionsService";
+import { getFinanceDefaultsMap } from "@/services/financeDefaultsService";
 import { getZomatoImports, getItemSalesForDateRange } from "@/services/zomatoService";
 import { getSwiggyImports, getSwiggyItemSalesForDateRange } from "@/services/swiggyService";
 
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
       const branchId = DEFAULT_BRANCH_ID;
 
       // Fetch all sources in parallel
-      const [rawClosings, accounts, rangeTransactions, zomatoImports, swiggyImports, zomatoItemSales, swiggyItemSales] = await Promise.all([
+      const [rawClosings, accounts, rangeTransactions, zomatoImports, swiggyImports, zomatoItemSales, swiggyItemSales, defaultsMap] = await Promise.all([
         getDailyClosingsForRange(dateFrom, dateTo, firestore, branchId),
         getFinanceAccounts({ branchId }, firestore),
         getPostedTransactionsForRange(dateFrom, dateTo, firestore, branchId),
@@ -67,6 +68,7 @@ export async function GET(request: Request) {
         getSwiggyImports(firestore),
         getItemSalesForDateRange(dateFrom, dateTo, firestore),
         getSwiggyItemSalesForDateRange(dateFrom, dateTo, firestore),
+        getFinanceDefaultsMap(firestore, branchId),
       ]);
 
       const zomatoClosingGrossByDate = new Map(rawClosings.map((c) => [c.date, c.zomatoSales]));
@@ -100,19 +102,21 @@ export async function GET(request: Request) {
       });
 
       const accountTypeById = new Map(accounts.map((a) => [a.id, a.type]));
-      const isCashAccount = (accountId: string | null) =>
-        accountId ? accountTypeById.get(accountId) === "cash" : false;
+      const cashDrawerAccountId = defaultsMap.get("cash_sales")?.destinationAccountId ?? null;
+      const isCashDrawer = (accountId: string | null) => isPnlCashDrawerAccount(accountId, cashDrawerAccountId, accountTypeById);
 
       // Exclude daily_closing auto-posts (already counted in closing totals)
-      // and transfers (not P&L items)
+      // and transfers (not P&L items). Ledger expenses/income on the cash
+      // DRAWER are skipped (Daily Closing owns the till); Pigmi/Unity and
+      // other accounts still count even if typed "cash".
       const relevantTx = rangeTransactions.filter(
         (t) => t.autoPostedSource !== "daily_closing" && t.type !== "transfer",
       );
       const ledgerIncomeTx = relevantTx.filter(
-        (t) => t.type === "income" && !isCashAccount(t.toAccountId),
+        (t) => t.type === "income" && !isCashDrawer(t.toAccountId),
       );
       const ledgerExpenseTx = relevantTx.filter(
-        (t) => t.type === "expense" && !isCashAccount(t.fromAccountId),
+        (t) => t.type === "expense" && !isCashDrawer(t.fromAccountId),
       );
 
       // ── Locked closings only for P&L totals ──
@@ -124,6 +128,12 @@ export async function GET(request: Request) {
       const closingOther = roundCurrency(lockedClosings.reduce((s, c) => s + c.otherIncome, 0));
       const closingCashExpense = roundCurrency(lockedClosings.reduce((s, c) => s + c.cashExpenseTotal, 0));
       const closingDeposits = roundCurrency(lockedClosings.reduce((s, c) => s + c.depositTotal, 0));
+      const closingPigmi = roundCurrency(
+        lockedClosings.reduce((s, c) => s + c.deposits.filter((d) => d.type === "pigmi").reduce((sum, d) => sum + d.amount, 0), 0),
+      );
+      // Cash sales already includes Pigmi (cashRevenue = closing − opening + expenses + deposits).
+      // Split it out for the breakdown so Pigmi shows as collected profit without double-counting.
+      const closingCashSalesExPigmi = roundCurrency(closingCashRevenue - closingPigmi);
 
       // Gross Zomato/Swiggy revenue, counted only for days whose platform
       // payout has actually been settled (₹0 otherwise) — see
@@ -169,7 +179,8 @@ export async function GET(request: Request) {
 
       // ── Revenue breakdown ──
       const revenueBreakdown = {
-        cashSales: closingCashRevenue,
+        cashSales: closingCashSalesExPigmi,
+        pigmi: closingPigmi,
         upi: closingUpi,
         zomato: settledZomato,
         swiggy: settledSwiggy,

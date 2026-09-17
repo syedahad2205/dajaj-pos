@@ -27,6 +27,7 @@ import {
   type FinanceExpenseCategory,
   type FinanceIncomeCategory,
   type FinanceTransaction,
+  isPnlCashDrawerAccount,
 } from "@/lib/finance";
 import {
   FINANCE_AI_CHAT_COLLECTION,
@@ -42,6 +43,7 @@ import { payeeTextsLooselyMatch } from "@/lib/quickEntry";
 import { formatCurrency } from "@/lib/financeFormat";
 import { getExpenseCategories, getIncomeCategories } from "@/services/financeCategoriesService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
+import { getFinanceDefaultsMap } from "@/services/financeDefaultsService";
 import { getFinanceDashboardSummary, type FinanceDashboardSummary } from "@/services/financeDashboardService";
 import {
   addDailyClosingDeposit,
@@ -189,16 +191,21 @@ function buildFinanceSnapshotText(summary: FinanceDashboardSummary, accounts: Fi
  * keep the prompt a sane size as history grows over years — the monthly
  * rollups above that window are unbounded and cover the entire history.
  */
-function buildFinanceHistorySnapshot(closings: FinanceDailyClosing[], transactions: FinanceTransaction[], accounts: FinanceAccount[]): string {
+function buildFinanceHistorySnapshot(
+  closings: FinanceDailyClosing[],
+  transactions: FinanceTransaction[],
+  accounts: FinanceAccount[],
+  cashDrawerAccountId: string | null,
+): string {
   const accountTypeById = new Map(accounts.map((a) => [a.id, a.type]));
-  const isCashAccount = (id: string | null) => (id ? accountTypeById.get(id) === "cash" : false);
+  const isCashDrawer = (id: string | null) => isPnlCashDrawerAccount(id, cashDrawerAccountId, accountTypeById);
 
   // Same rule as financeDashboardService.ts: a transaction Daily Closing
   // itself generated is already inside that day's totalRevenue/
   // cashExpenseTotal below — counting it again here would double it.
   const notDailyClosingGenerated = transactions.filter((t) => t.autoPostedSource !== "daily_closing");
-  const bankIncome = notDailyClosingGenerated.filter((t) => t.type === "income" && !isCashAccount(t.toAccountId));
-  const bankExpense = notDailyClosingGenerated.filter((t) => t.type === "expense" && !isCashAccount(t.fromAccountId));
+  const bankIncome = notDailyClosingGenerated.filter((t) => t.type === "income" && !isCashDrawer(t.toAccountId));
+  const bankExpense = notDailyClosingGenerated.filter((t) => t.type === "expense" && !isCashDrawer(t.fromAccountId));
   const lockedClosings = closings.filter((c) => c.locked);
 
   if (lockedClosings.length === 0 && bankIncome.length === 0 && bankExpense.length === 0) {
@@ -484,13 +491,14 @@ export async function sendFinanceAiChatMessage(
   await setDoc(userMessageRef, { ...userMessage, createdAt: serverTimestamp() });
 
   const todayKey = toDateKey();
-  const [expenseCategories, incomeCategories, accounts, dashboardSummary, allClosings, allTransactions] = await Promise.all([
+  const [expenseCategories, incomeCategories, accounts, dashboardSummary, allClosings, allTransactions, defaultsMap] = await Promise.all([
     getExpenseCategories({ branchId }, db),
     getIncomeCategories({ branchId }, db),
     getFinanceAccounts({ branchId }, db),
     getFinanceDashboardSummary(db, branchId),
     getDailyClosingsForRange("2000-01-01", todayKey, db, branchId),
     getPostedTransactionsForRange("2000-01-01", todayKey, db, branchId),
+    getFinanceDefaultsMap(db, branchId),
   ]);
 
   let analysis: FinanceAiChatAnalysis;
@@ -501,7 +509,7 @@ export async function sendFinanceAiChatMessage(
       incomeCategoryNames: incomeCategories.map((c) => c.name),
       accountNames: accounts.filter((a) => a.status === "active").map((a) => a.name),
       depositTypeLabels: SUPPORTED_CASH_DEPOSIT_TYPES.map((t) => CASH_DEPOSIT_TYPE_LABELS[t]),
-      financeSnapshot: `${buildFinanceSnapshotText(dashboardSummary, accounts)}\n\n${buildFinanceHistorySnapshot(allClosings, allTransactions, accounts)}`,
+      financeSnapshot: `${buildFinanceSnapshotText(dashboardSummary, accounts)}\n\n${buildFinanceHistorySnapshot(allClosings, allTransactions, accounts, defaultsMap.get("cash_sales")?.destinationAccountId ?? null)}`,
     });
   } catch (error) {
     analysis = {

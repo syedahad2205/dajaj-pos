@@ -61,6 +61,7 @@ interface CategoryItem {
 
 interface RevenueBreakdown {
   cashSales: number;
+  pigmi?: number;
   upi: number;
   zomato: number;
   swiggy: number;
@@ -451,8 +452,11 @@ export default function FinanceReportsPage() {
                   <p className="text-sm text-slate-400">No revenue recorded.</p>
                 ) : (
                   <div className="space-y-2.5">
-                    {rb && rb.cashSales > 0 && (
+                    {rb && rb.cashSales !== 0 && (
                       <BarRow label="Cash Sales" amount={rb.cashSales} total={s.totalRevenue} color="bg-emerald-400" />
+                    )}
+                    {rb && (rb.pigmi ?? 0) > 0 && (
+                      <BarRow label="Pigmi collected" amount={rb.pigmi ?? 0} total={s.totalRevenue} color="bg-teal-400" />
                     )}
                     {rb && rb.upi > 0 && (
                       <BarRow label="UPI" amount={rb.upi} total={s.totalRevenue} color="bg-blue-400" />
@@ -517,7 +521,9 @@ export default function FinanceReportsPage() {
                   ))}
                 </div>
                 <p className="text-xs text-slate-400">
-                  Deposits don&apos;t affect P&amp;L — they move cash from the drawer to another account (e.g. bank or Pigmi).
+                  Pigmi collected is already counted as revenue (it&apos;s part of that day&apos;s cash sales). This list is the same money
+                  sitting in Unity — not an extra profit line. Paying salary or anything else <span className="font-semibold">from Pigmi/Unity as an Expense</span> reduces
+                  P&amp;L. Transfers out of Pigmi do not. You do not need to reopen Daily Closings for past Pigmi days.
                 </p>
               </section>
             )}

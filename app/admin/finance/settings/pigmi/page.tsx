@@ -75,9 +75,9 @@ export default function PigmiSettingsPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.28em] text-orange-600">Finance · Settings</p>
           <h1 className="mt-1 text-3xl font-black">Pigmi Settings</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Pigmi deposits are recorded independently on the Daily Closing screen, under Cash Deposits — cash moved out of the
-            drawer, reducing what&apos;s on hand, but never counted as a business expense. This is a running record of what&apos;s
-            gone into Pigmi so far. Reconciling it against actual bank deposits is a future feature.
+            Pigmi deposits on Daily Closing are cash collected into Unity — that amount is already in that day&apos;s cash sales
+            (profit when collected). Paying later from Unity as an Expense reduces P&amp;L. You don&apos;t reopen Daily Closings
+            for that. This page is a running record of what went into Pigmi.
           </p>
           <div className="mt-5">
             <FinanceNav />
