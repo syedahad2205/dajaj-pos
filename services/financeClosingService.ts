@@ -1485,19 +1485,24 @@ async function cascadeOpeningCashForward(
 }
 
 /**
- * When a manager posts (or voids) a Transfer/Income/Expense that hits the
- * cash drawer, fold it into that date's Opening Cash. Unlocked days pick
- * this up on the next Daily Closing load. Locked days are re-chained here
- * so the register and Cash Sales posting don't stay stuck on yesterday's
- * Closing Cash.
+ * When a manager posts (or voids) a Transfer/Income that hits the cash
+ * drawer, fold it into that date's Opening Cash. Unlocked days pick this
+ * up on the next Daily Closing load. Locked days are re-chained here so
+ * the register and Cash Sales posting don't stay stuck on yesterday's
+ * Closing Cash. Expenses are ignored — they belong on P&L, not opening cash.
  */
 export async function refreshDailyClosingForCashDrawerTransaction(
-  transaction: Pick<FinanceTransaction, "date" | "fromAccountId" | "toAccountId" | "autoPostedSource" | "branchId">,
+  transaction: Pick<FinanceTransaction, "date" | "type" | "fromAccountId" | "toAccountId" | "autoPostedSource" | "branchId">,
   userId: string,
   userName: string,
   db: Firestore = defaultFirestore,
 ): Promise<void> {
   if (transaction.autoPostedSource === "daily_closing") return;
+  // Opening Cash's same-day exception is money moved into/out of the drawer
+  // via Transfer (or income received into it). Quick Entry and other
+  // Expenses are P&L items, not opening-cash adjustments — and re-chaining
+  // a locked day here scans the whole ledger and blows past Firestore quota.
+  if (transaction.type === "expense") return;
   if (!isValidDateKey(transaction.date)) return;
 
   const branchId = transaction.branchId || DEFAULT_BRANCH_ID;

@@ -231,12 +231,13 @@ export async function createFinanceTransaction(
 }
 
 async function syncDailyClosingAfterCashDrawerTransaction(
-  transaction: Pick<FinanceTransaction, "date" | "fromAccountId" | "toAccountId" | "autoPostedSource" | "branchId">,
+  transaction: Pick<FinanceTransaction, "date" | "type" | "fromAccountId" | "toAccountId" | "autoPostedSource" | "branchId">,
   userId: string,
   userName: string,
   db: Firestore,
 ): Promise<void> {
   if (transaction.autoPostedSource === "daily_closing") return;
+  if (transaction.type === "expense") return;
   try {
     const { refreshDailyClosingForCashDrawerTransaction } = await import("@/services/financeClosingService");
     await refreshDailyClosingForCashDrawerTransaction(transaction, userId, userName, db);

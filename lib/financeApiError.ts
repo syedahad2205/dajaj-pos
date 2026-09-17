@@ -20,7 +20,17 @@ export function financeErrorResponse(error: unknown, context: string) {
   if (isFirebaseRouteAuthError(error)) status = 401;
   else if (isFinanceRouteForbiddenError(error)) status = 403;
   else if (errorCode === "permission-denied") status = 403;
-  else if (/not found/i.test(message)) status = 404;
+  else if (errorCode === "resource-exhausted" || /quota exceeded/i.test(message)) {
+    status = 429;
+    return NextResponse.json(
+      {
+        success: false,
+        message:
+          "Firebase quota was exceeded while saving. Wait a minute and try again. If it keeps failing, the project has hit today's Firestore limit (common on the Spark plan) — try again later or upgrade billing.",
+      },
+      { status },
+    );
+  } else if (/not found/i.test(message)) status = 404;
   else if (!(error instanceof Error)) status = 500;
 
   return NextResponse.json({ success: false, message }, { status });
