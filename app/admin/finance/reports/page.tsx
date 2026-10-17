@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { requireFinanceAccess } from "@/lib/roleGuard";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency, formatDateDisplay, todayDateKey } from "@/lib/financeFormat";
@@ -89,6 +90,9 @@ interface ReportSummary {
   ledgerIncomeByCategory: CategoryItem[];
   depositBreakdown: CategoryItem[];
   closingDeposits: number;
+  /** Admin only — absent for Finance Managers. */
+  ownerWithdrawals?: { count: number; total: number; ownerTotal: number; partnerTotal: number };
+  retainedProfit?: number;
 }
 
 interface PnlReport {
@@ -205,7 +209,7 @@ function KpiCard({
   label: string;
   value: string;
   sub?: string;
-  tone?: "positive" | "negative" | "muted" | "default";
+  tone?: "positive" | "negative" | "muted" | "default" | "withdrawn";
 }) {
   const valueClass =
     tone === "positive"
@@ -214,9 +218,11 @@ function KpiCard({
         ? "text-rose-600"
         : tone === "muted"
           ? "text-slate-400"
-          : "text-slate-900";
+          : tone === "withdrawn"
+            ? "text-violet-600"
+            : "text-slate-900";
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className={`rounded-2xl border bg-white p-5 shadow-sm ${tone === "withdrawn" ? "border-violet-200" : "border-slate-200"}`}>
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
       <p className={`mt-1 text-2xl font-black ${valueClass}`}>{value}</p>
       {sub && <p className="mt-0.5 text-xs text-slate-400">{sub}</p>}
@@ -388,7 +394,7 @@ export default function FinanceReportsPage() {
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Summary — {s.closedDays} closed day{s.closedDays !== 1 ? "s" : ""}
               </p>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className={`grid gap-3 sm:grid-cols-2 ${s.ownerWithdrawals ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
                 <KpiCard
                   label="Total Revenue"
                   value={formatCurrency(s.totalRevenue)}
@@ -402,6 +408,22 @@ export default function FinanceReportsPage() {
                   tone={netPnl >= 0 ? "positive" : "negative"}
                   sub={netPnl >= 0 ? "Profitable" : "Loss-making"}
                 />
+                {s.ownerWithdrawals && typeof s.retainedProfit === "number" ? (
+                  <>
+                    <KpiCard
+                      label="Profit Taken Out"
+                      value={formatCurrency(s.ownerWithdrawals.total)}
+                      tone="withdrawn"
+                      sub={`Self ${formatCurrency(s.ownerWithdrawals.ownerTotal)} · Juice Lab ${formatCurrency(s.ownerWithdrawals.partnerTotal)}`}
+                    />
+                    <KpiCard
+                      label="Retained Profit"
+                      value={formatCurrency(s.retainedProfit)}
+                      tone={s.retainedProfit >= 0 ? "positive" : "negative"}
+                      sub="Net P&L − profit taken out"
+                    />
+                  </>
+                ) : null}
                 <KpiCard
                   label="Gross Margin"
                   value={grossMarginPct !== null ? `${grossMarginPct}%` : "—"}
@@ -409,6 +431,15 @@ export default function FinanceReportsPage() {
                   sub="(Revenue − Expense) ÷ Revenue"
                 />
               </div>
+              {s.ownerWithdrawals ? (
+                <p className="mt-1 text-xs text-slate-400">
+                  Profit taken out = owner withdrawals ({s.ownerWithdrawals.count} in this period). It leaves the bank but isn&apos;t an expense, so
+                  Net P&amp;L is unchanged.{" "}
+                  <Link href="/admin/finance/owner-withdrawals" className="font-semibold text-violet-600 underline">
+                    Owner Withdrawals
+                  </Link>
+                </p>
+              ) : null}
             </section>
 
             {/* ── "Estimated" KPI set — includes pending (not-yet-settled) Zomato/Swiggy ── */}

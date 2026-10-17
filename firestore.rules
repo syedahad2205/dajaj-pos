@@ -351,10 +351,68 @@ service cloud.firestore {
     // never deleted) so history/audit trail stays intact.
     // =========================================================================
 
-    // Read+write for Finance Manager too — needed to post transactions and
-    // Daily Closing sales/deposits, which update account balances.
+    // ── Ledger integrity for Finance Manager ─────────────────────────────────
+    // Admin keeps full write. A Finance Manager can only move money through
+    // createFinanceTransaction / voidFinanceTransaction: every fin_accounts
+    // balance change must name (lastTransactionId) a fin_transactions row
+    // created or voided in the SAME commit, by exactly that row's amount, and
+    // that row must be written with its matching fin_audit_logs entry
+    // (deterministic id `<txId>_create` / `<txId>_void`). No direct edits of
+    // amounts, balances, or deletes.
+    function finTransactionPath(txId) {
+      return /databases/$(database)/documents/fin_transactions/$(txId);
+    }
+
+    function finAccountPath(accountId) {
+      return /databases/$(database)/documents/fin_accounts/$(accountId);
+    }
+
+    // Signed effect of a posted transaction on one account.
+    function ledgerDelta(accountId, t) {
+      return (t.get('toAccountId', null) == accountId ? t.amount : 0)
+           - (t.get('fromAccountId', null) == accountId ? t.amount : 0);
+    }
+
+    function balanceMovedBy(expectedDelta) {
+      return math.abs((request.resource.data.currentBalance - resource.data.currentBalance) - expectedDelta) < 0.01;
+    }
+
+    function isLedgerBalanceUpdate(accountId) {
+      let txId = request.resource.data.get('lastTransactionId', null);
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentBalance', 'lastTransactionId', 'updatedAt'])
+        && request.resource.data.currentBalance is number
+        && txId is string
+        && txId != resource.data.get('lastTransactionId', null)
+        && existsAfter(finTransactionPath(txId))
+        && (
+          // created in this commit
+          (!exists(finTransactionPath(txId))
+            && getAfter(finTransactionPath(txId)).data.status == 'posted'
+            && balanceMovedBy(ledgerDelta(accountId, getAfter(finTransactionPath(txId)).data)))
+          // voided in this commit
+          || (exists(finTransactionPath(txId))
+            && get(finTransactionPath(txId)).data.status == 'posted'
+            && getAfter(finTransactionPath(txId)).data.status == 'void'
+            && balanceMovedBy(-ledgerDelta(accountId, getAfter(finTransactionPath(txId)).data)))
+        );
+    }
+
+    // Every account the transaction touches was updated in this same commit for it.
+    function ledgerAccountsLinked(txId, t) {
+      return (t.get('fromAccountId', null) == null
+              || getAfter(finAccountPath(t.fromAccountId)).data.get('lastTransactionId', null) == txId)
+          && (t.get('toAccountId', null) == null
+              || getAfter(finAccountPath(t.toAccountId)).data.get('lastTransactionId', null) == txId);
+    }
+
+    function ledgerAuditWritten(txId, action) {
+      return existsAfter(/databases/$(database)/documents/fin_audit_logs/$(txId + '_' + action));
+    }
+
     match /fin_accounts/{accountId} {
-      allow read, write: if isAdminOrFinanceManager();
+      allow read: if isAdminOrFinanceManager();
+      allow write: if isAdmin();
+      allow update: if isFinanceManager() && isLedgerBalanceUpdate(accountId);
     }
 
     // Finance Manager gets read-only here for managing the category itself —
@@ -404,13 +462,31 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Ledger records are immutable once created except for the status/void
-    // fields — enforced at the service layer via runTransaction. Rules stay
-    // admin-or-finance-manager; field-level immutability is an app-layer
-    // guarantee here since Admin SDK-style granular rule checks would
-    // require duplicating the whole transaction shape in rules.
+    // Ledger records are immutable once created except for the posted → void
+    // flip. Finance Manager: create a posted row (with its account balance
+    // updates + audit row in the same commit), or void a posted row (same).
+    // Never edit amounts/accounts/dates, un-void, or delete.
     match /fin_transactions/{transactionId} {
-      allow read, write: if isAdminOrFinanceManager();
+      allow read: if isAdminOrFinanceManager();
+      allow write: if isAdmin();
+      // Owner Withdrawals (profit taken out) are Admin-only, create and void.
+      allow create: if isFinanceManager()
+        && request.resource.data.type != 'owner_withdrawal'
+        && request.resource.data.status == 'posted'
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && ledgerAccountsLinked(transactionId, request.resource.data)
+        && ledgerAuditWritten(transactionId, 'create');
+      allow update: if isFinanceManager()
+        && resource.data.type != 'owner_withdrawal'
+        && resource.data.status == 'posted'
+        && request.resource.data.status == 'void'
+        && request.resource.data.voidedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'voidedBy', 'voidedByName', 'voidedAt', 'voidReason', 'updatedAt'])
+        && ledgerAccountsLinked(transactionId, resource.data)
+        && ledgerAuditWritten(transactionId, 'void');
     }
 
     match /fin_daily_closing/{closingId} {

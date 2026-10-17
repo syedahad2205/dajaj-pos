@@ -27,6 +27,8 @@ export interface FinanceAccount {
   branchId: string;
   description: string;
   displayOrder: number;
+  /** Ledger row behind the latest balance change (set by create/void; checked by firestore.rules). */
+  lastTransactionId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -88,7 +90,38 @@ export interface FinanceVendor {
   updatedAt?: Timestamp;
 }
 
-export type FinanceTransactionType = "income" | "expense" | "transfer";
+/**
+ * owner_withdrawal — profit taken out of the business (an owner's drawing),
+ * split between the owner and the partner. It reduces the source account
+ * like any ledger entry, but it is NOT an expense: P&L and the Dashboard
+ * only ever sum "income"/"expense", so withdrawals never lower profit.
+ */
+export type FinanceTransactionType = "income" | "expense" | "transfer" | "owner_withdrawal";
+
+export const OWNER_WITHDRAWAL_OWNER_NAME = "Self (Owner)";
+export const OWNER_WITHDRAWAL_PARTNER_NAME = "Juice Lab (Manager)";
+export const DEFAULT_OWNER_WITHDRAWAL_PARTNER_PCT = 25;
+
+export interface OwnerWithdrawalSplit {
+  ownerName: string;
+  ownerAmount: number;
+  partnerName: string;
+  partnerAmount: number;
+  /** Partner's share of this withdrawal, 0–100. */
+  partnerPct: number;
+}
+
+/** Partner gets partnerPct% (rounded to the paisa); the owner gets exactly the rest, so the two always add up to amount. */
+export function splitOwnerWithdrawal(amount: number, partnerPct: number): OwnerWithdrawalSplit {
+  const partnerAmount = roundCurrency((amount * partnerPct) / 100);
+  return {
+    ownerName: OWNER_WITHDRAWAL_OWNER_NAME,
+    ownerAmount: roundCurrency(amount - partnerAmount),
+    partnerName: OWNER_WITHDRAWAL_PARTNER_NAME,
+    partnerAmount,
+    partnerPct,
+  };
+}
 export type FinanceTransactionStatus = "posted" | "void";
 export type FinancePaymentMethod = "cash" | "upi" | "card" | "bank_transfer" | "cheque" | "other";
 
@@ -137,6 +170,8 @@ export interface FinanceTransaction {
   //   "swiggy_settlement" — same idea, for the Swiggy settlement
   //                         reconciliation (services/swiggyFinanceService.ts).
   autoPostedSource?: "daily_closing" | "zomato_settlement" | "swiggy_settlement" | null;
+  /** Only on type "owner_withdrawal": who received how much. */
+  withdrawalSplit?: OwnerWithdrawalSplit | null;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   voidedBy?: string | null;
@@ -326,7 +361,8 @@ export type FinanceAuditModule =
   | "closing_expense"
   | "closing_deposit"
   | "finance_default"
-  | "finance_user";
+  | "finance_user"
+  | "backup";
 
 export type FinanceAuditAction =
   | "create"
@@ -462,9 +498,11 @@ export function roundCurrency(value: number): number {
 /**
  * Net Cash Drawer Transfers for a set of ledger rows:
  *   transfers INTO the drawer − transfers OUT OF the drawer.
- * Posted Transfer rows only. Skips Daily Closing auto-posts, Income,
- * Expense, and voided rows. This is the only amount that may be added
- * to yesterday's locked Closing Cash to get today's Opening Cash.
+ * Posted Transfer and Owner Withdrawal rows only (cash taken from the till
+ * as profit must not read as lower Cash Sales at close). Skips Daily
+ * Closing auto-posts, Income, Expense, and voided rows. This is the only
+ * amount that may be added to yesterday's locked Closing Cash to get
+ * today's Opening Cash.
  */
 export function netCashDrawerTransferAdjustment(
   transactions: Array<{
@@ -481,7 +519,7 @@ export function netCashDrawerTransferAdjustment(
   for (const t of transactions) {
     if (t.status && t.status !== "posted") continue;
     if (t.autoPostedSource === "daily_closing") continue;
-    if (t.type !== "transfer") continue;
+    if (t.type !== "transfer" && t.type !== "owner_withdrawal") continue;
     if (t.toAccountId === cashDrawerAccountId) delta += t.amount;
     if (t.fromAccountId === cashDrawerAccountId) delta -= t.amount;
   }

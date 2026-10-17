@@ -22,6 +22,10 @@ interface DashboardSummary {
     monthlyRevenue: number;
     monthlyExpense: number;
     monthlyProfit: number;
+    monthlyWithdrawn?: number;
+    monthlyWithdrawnOwner?: number;
+    monthlyWithdrawnPartner?: number;
+    monthlyRetainedProfit?: number;
   };
   revenueExpenseTrend: { date: string; revenue: number; expense: number; netCashFlow: number }[];
   categoryWiseExpenses: { label: string; amount: number }[];
@@ -35,12 +39,32 @@ async function readJson(response: Response) {
   return payload;
 }
 
-function StatCard({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "positive" | "negative" | "muted" }) {
-  const toneClass = tone === "positive" ? "text-emerald-600" : tone === "negative" ? "text-rose-600" : tone === "muted" ? "text-slate-400" : "text-slate-900";
+function StatCard({
+  label,
+  value,
+  tone = "default",
+  sub,
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "positive" | "negative" | "muted" | "withdrawn";
+  sub?: string;
+}) {
+  const toneClass =
+    tone === "positive"
+      ? "text-emerald-600"
+      : tone === "negative"
+      ? "text-rose-600"
+      : tone === "muted"
+      ? "text-slate-400"
+      : tone === "withdrawn"
+      ? "text-violet-600"
+      : "text-slate-900";
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className={`rounded-2xl border bg-white p-4 shadow-sm ${tone === "withdrawn" ? "border-violet-200" : "border-slate-200"}`}>
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
       <p className={`mt-1 text-xl font-black ${toneClass}`}>{value}</p>
+      {sub ? <p className="mt-0.5 text-xs text-slate-400">{sub}</p> : null}
     </div>
   );
 }
@@ -117,11 +141,32 @@ export default function FinanceDashboardPage() {
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">This Month</p>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className={`grid gap-3 sm:grid-cols-3 ${typeof summary.cards.monthlyWithdrawn === "number" ? "lg:grid-cols-5" : ""}`}>
                 <StatCard label="Monthly Revenue" value={formatCurrency(summary.cards.monthlyRevenue)} tone="positive" />
                 <StatCard label="Monthly Expense" value={formatCurrency(summary.cards.monthlyExpense)} tone="negative" />
                 <StatCard label="Monthly Profit" value={formatCurrency(summary.cards.monthlyProfit)} tone={summary.cards.monthlyProfit >= 0 ? "positive" : "negative"} />
+                {typeof summary.cards.monthlyWithdrawn === "number" && typeof summary.cards.monthlyRetainedProfit === "number" ? (
+                  <>
+                    <StatCard
+                      label="Profit Taken Out"
+                      value={formatCurrency(summary.cards.monthlyWithdrawn)}
+                      tone="withdrawn"
+                      sub={`Self ${formatCurrency(summary.cards.monthlyWithdrawnOwner ?? 0)} · Juice Lab ${formatCurrency(summary.cards.monthlyWithdrawnPartner ?? 0)}`}
+                    />
+                    <StatCard
+                      label="Retained Profit"
+                      value={formatCurrency(summary.cards.monthlyRetainedProfit)}
+                      tone={summary.cards.monthlyRetainedProfit >= 0 ? "positive" : "negative"}
+                      sub="Profit − taken out"
+                    />
+                  </>
+                ) : null}
               </div>
+              {typeof summary.cards.monthlyWithdrawn === "number" ? (
+                <p className="mt-1 text-xs text-slate-400">
+                  Profit taken out is owner withdrawals — it leaves the bank balance but is not an expense, so Monthly Profit is unchanged.
+                </p>
+              ) : null}
             </div>
 
             <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">

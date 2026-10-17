@@ -107,9 +107,32 @@ async function assertCanEditDailyClosingDate(
   if (!isValidDateKey(date)) throw new Error("Invalid date.");
   const target = await getDailyClosingWorkTarget(db, branchId);
   if (!canEditDailyClosingDate(date, target.latestLockedDate, toDateKey())) {
+    if (await isEditableReopenedDay(date, db)) return target;
     throw new ClosingSequenceError(target.workDate, target.latestLockedDate);
   }
   return target;
+}
+
+/**
+ * A past day that was Reopened while later days are still locked sits
+ * behind the normal work date, but it must stay editable/closable or it is
+ * stranded open forever. Allowed only when its Opening Cash can still chain:
+ * the previous day is locked, or this day uses a manual Opening Cash (the
+ * very first day). Re-closing it cascades the corrected Closing Cash forward
+ * through the later locked days (cascadeOpeningCashForward).
+ */
+async function isEditableReopenedDay(date: string, db: Firestore): Promise<boolean> {
+  if (date > toDateKey()) return false;
+  const [snap, prevSnap] = await Promise.all([
+    getDoc(doc(dailyClosingCollection(db), date)),
+    getDoc(doc(dailyClosingCollection(db), previousDateKey(date))),
+  ]);
+  if (!snap.exists()) return false;
+  const existing = normalizeClosing(snap.data());
+  if (existing.locked || (existing.reopenCount ?? 0) < 1) return false;
+  if (prevSnap.exists() && Boolean(prevSnap.data().locked)) return true;
+  // Raw field, not normalizeClosing's "manual" fallback for legacy docs.
+  return snap.data().openingCashSource === "manual" && !prevSnap.exists();
 }
 
 function expenseCategoriesCollection(db: Firestore) {

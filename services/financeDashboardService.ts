@@ -30,6 +30,12 @@ export interface FinanceDashboardCards {
   monthlyRevenue: number;
   monthlyExpense: number;
   monthlyProfit: number;
+  /** Owner Withdrawals this month (profit taken out — not an expense). Admin-only: stripped by the API for Finance Managers. */
+  monthlyWithdrawn?: number;
+  monthlyWithdrawnOwner?: number;
+  monthlyWithdrawnPartner?: number;
+  /** monthlyProfit − monthlyWithdrawn: profit still in the business. */
+  monthlyRetainedProfit?: number;
 }
 
 export interface FinanceDashboardTrendPoint {
@@ -200,6 +206,13 @@ export async function getFinanceDashboardSummary(
   );
   const monthlyProfit = roundCurrency(monthlyRevenue - monthlyExpense);
 
+  // Profit taken out this month. Never part of expense/profit above — shown
+  // next to them so the money leaving the business is visible.
+  const monthWithdrawals = rangeTransactions.filter((t) => t.type === "owner_withdrawal" && t.date >= monthStartKey && t.date <= todayKey);
+  const monthlyWithdrawn = roundCurrency(monthWithdrawals.reduce((sum, t) => sum + t.amount, 0));
+  const monthlyWithdrawnOwner = roundCurrency(monthWithdrawals.reduce((sum, t) => sum + (t.withdrawalSplit?.ownerAmount ?? t.amount), 0));
+  const monthlyWithdrawnPartner = roundCurrency(monthWithdrawals.reduce((sum, t) => sum + (t.withdrawalSplit?.partnerAmount ?? 0), 0));
+
   const trendDays: FinanceDashboardTrendPoint[] = [];
   for (let i = 13; i >= 0; i -= 1) {
     const d = new Date(referenceDate);
@@ -242,6 +255,10 @@ export async function getFinanceDashboardSummary(
       monthlyRevenue,
       monthlyExpense,
       monthlyProfit,
+      monthlyWithdrawn,
+      monthlyWithdrawnOwner,
+      monthlyWithdrawnPartner,
+      monthlyRetainedProfit: roundCurrency(monthlyProfit - monthlyWithdrawn),
     },
     revenueExpenseTrend: trendDays,
     categoryWiseExpenses,

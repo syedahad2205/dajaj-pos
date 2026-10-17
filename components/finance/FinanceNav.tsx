@@ -11,6 +11,8 @@ const tabs = [
   { href: "/admin/finance/transactions", label: "Transactions" },
   { href: "/admin/finance/quick-entry/passbook", label: "Passbook" },
   { href: "/admin/finance/reports", label: "Reports" },
+  // Profit taken out of the business — Admin-only (see role filter below).
+  { href: "/admin/finance/owner-withdrawals", label: "Owner Withdrawals" },
   { href: "/admin/finance/quick-entry/activity", label: "Activity Log" },
   // Zomato/Swiggy Sales Trackers live under /admin (not /admin/finance) since
   // they predate this nav and have their own hub pages, but they're
@@ -31,7 +33,7 @@ const tabs = [
   { href: "/admin/finance/ai-chat", label: "🤖 AI Assistant" },
 ];
 
-const FINANCE_MANAGER_HIDDEN_TABS = new Set(["/admin/finance/settings", "/admin/finance/ai-chat", "/admin/zomato", "/admin/swiggy"]);
+const FINANCE_MANAGER_HIDDEN_TABS = new Set(["/admin/finance/owner-withdrawals", "/admin/finance/settings", "/admin/finance/ai-chat", "/admin/zomato", "/admin/swiggy"]);
 
 export default function FinanceNav({ role }: { role?: UserRole | null } = {}) {
   const pathname = usePathname();

@@ -17,6 +17,7 @@ import { firestore as defaultFirestore } from "@/lib/firebase";
 import {
   DEFAULT_BRANCH_ID,
   roundCurrency,
+  splitOwnerWithdrawal,
   toDateKey,
   toTimeKey,
   type FinancePaymentMethod,
@@ -24,7 +25,7 @@ import {
   type FinanceTransactionStatus,
   type FinanceTransactionType,
 } from "@/lib/finance";
-import { logFinanceAudit, writeFinanceAuditLog } from "@/services/financeAuditService";
+import { ledgerAuditLogId, logFinanceAudit, writeFinanceAuditLog } from "@/services/financeAuditService";
 import { getFinanceAccount } from "@/services/financeAccountsService";
 
 function transactionsCollection(db: Firestore) {
@@ -71,6 +72,8 @@ export interface CreateFinanceTransactionInput {
   branchId?: string;
   autoPosted?: boolean;
   autoPostedSource?: "daily_closing" | "zomato_settlement" | "swiggy_settlement";
+  /** owner_withdrawal only: partner's share, 0–100. */
+  partnerPct?: number;
 }
 
 function validateInput(input: CreateFinanceTransactionInput) {
@@ -86,6 +89,12 @@ function validateInput(input: CreateFinanceTransactionInput) {
   } else if (input.type === "transfer") {
     if (!input.fromAccountId || !input.toAccountId) throw new Error("Both From and To accounts are required for a transfer.");
     if (input.fromAccountId === input.toAccountId) throw new Error("From and To accounts must be different.");
+  } else if (input.type === "owner_withdrawal") {
+    if (!input.fromAccountId) throw new Error("Choose the account the money is taken from.");
+    if (input.toAccountId || input.categoryId || input.vendorId) throw new Error("An Owner Withdrawal only has a From account.");
+    if (typeof input.partnerPct !== "number" || !Number.isFinite(input.partnerPct) || input.partnerPct < 0 || input.partnerPct > 100) {
+      throw new Error("Partner share must be between 0 and 100%.");
+    }
   } else {
     throw new Error("Unknown transaction type.");
   }
@@ -139,6 +148,12 @@ export async function createFinanceTransaction(
     if (toAccountRef && (!toAccountSnap?.exists() || toAccountSnap.data()?.status !== "active")) {
       throw new Error("The 'To' / 'Received into' account is invalid or archived.");
     }
+    // Profit can only come out of money that is actually there.
+    if (input.type === "owner_withdrawal" && fromAccountSnap?.exists() && (fromAccountSnap.data().currentBalance as number) < amount) {
+      throw new Error(
+        `${fromAccountSnap.data().name as string} only holds ₹${fromAccountSnap.data().currentBalance as number} — choose another account or a smaller amount.`,
+      );
+    }
     if (categoryRef && !categorySnap?.exists()) {
       throw new Error("Selected category no longer exists.");
     }
@@ -180,21 +195,26 @@ export async function createFinanceTransaction(
       createdByName: userName,
       autoPosted: input.autoPosted ?? false,
       autoPostedSource: input.autoPostedSource ?? null,
+      ...(input.type === "owner_withdrawal" ? { withdrawalSplit: splitOwnerWithdrawal(amount, input.partnerPct ?? 0) } : {}),
       createdAt: serverTimestamp() as unknown as Timestamp,
       updatedAt: serverTimestamp() as unknown as Timestamp,
     };
 
     tx.set(txRef, transactionData);
 
+    // lastTransactionId ties each balance change to the ledger row that
+    // caused it — firestore.rules requires it for Finance Manager writes.
     if (fromAccountRef && fromAccountSnap?.exists()) {
       tx.update(fromAccountRef, {
         currentBalance: roundCurrency((fromAccountSnap.data().currentBalance as number) - amount),
+        lastTransactionId: txRef.id,
         updatedAt: serverTimestamp(),
       });
     }
     if (toAccountRef && toAccountSnap?.exists()) {
       tx.update(toAccountRef, {
         currentBalance: roundCurrency((toAccountSnap.data().currentBalance as number) + amount),
+        lastTransactionId: txRef.id,
         updatedAt: serverTimestamp(),
       });
     }
@@ -220,7 +240,7 @@ export async function createFinanceTransaction(
       userId,
       userName,
       newValue: transactionData,
-    });
+    }, ledgerAuditLogId(txRef.id, "create"));
 
     return { id: txRef.id, ...transactionData };
   });
@@ -255,6 +275,7 @@ function describeTransactionForAudit(
 ) {
   if (type === "transfer") return `${fromAccountName} → ${toAccountName} · ₹${amount}`;
   if (type === "income") return `${categoryName} → ${toAccountName} · ₹${amount}`;
+  if (type === "owner_withdrawal") return `Owner Withdrawal ← ${fromAccountName} · ₹${amount}`;
   return `${categoryName} ← ${fromAccountName} · ₹${amount}`;
 }
 
@@ -300,12 +321,14 @@ export async function voidFinanceTransaction(
     if (fromAccountRef && fromAccountSnap?.exists()) {
       tx.update(fromAccountRef, {
         currentBalance: roundCurrency((fromAccountSnap.data().currentBalance as number) + data.amount),
+        lastTransactionId: transactionId,
         updatedAt: serverTimestamp(),
       });
     }
     if (toAccountRef && toAccountSnap?.exists()) {
       tx.update(toAccountRef, {
         currentBalance: roundCurrency((toAccountSnap.data().currentBalance as number) - data.amount),
+        lastTransactionId: transactionId,
         updatedAt: serverTimestamp(),
       });
     }
@@ -344,7 +367,7 @@ export async function voidFinanceTransaction(
       oldValue: { status: data.status },
       newValue: { status: "void" },
       reason: reason.trim(),
-    });
+    }, ledgerAuditLogId(transactionId, "void"));
   });
 
   if (voided) {
@@ -484,6 +507,22 @@ export async function getPostedTransactionsForRange(
     .filter((t) => t.status === "posted");
 }
 
+/**
+ * Every Owner Withdrawal ever recorded (posted and void), newest first.
+ * Single-field equality on `type` — served by Firestore's automatic index,
+ * and only reads withdrawal rows, never the whole ledger.
+ */
+export async function getOwnerWithdrawals(
+  db: Firestore = defaultFirestore,
+  branchId: string = DEFAULT_BRANCH_ID,
+): Promise<FinanceTransaction[]> {
+  const snapshot = await getDocs(query(transactionsCollection(db), where("type", "==", "owner_withdrawal")));
+  return snapshot.docs
+    .map((d) => ({ id: d.id, ...(d.data() as Omit<FinanceTransaction, "id">) }))
+    .filter((t) => (t.branchId ?? DEFAULT_BRANCH_ID) === branchId)
+    .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.time < b.time ? 1 : a.time > b.time ? -1 : 0));
+}
+
 export interface AccountStatementRow {
   transactionId: string;
   date: string;
@@ -562,7 +601,9 @@ export async function getAccountStatement(
         ? t.fromAccountId === accountId
           ? `Transfer to ${t.toAccountName ?? "—"}`
           : `Transfer from ${t.fromAccountName ?? "—"}`
-        : t.categoryName ?? (t.type === "income" ? "Income" : "Expense");
+        : t.type === "owner_withdrawal"
+          ? "Owner Withdrawal"
+          : t.categoryName ?? (t.type === "income" ? "Income" : "Expense");
 
     return {
       transactionId: t.id,

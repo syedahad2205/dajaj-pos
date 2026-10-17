@@ -44,6 +44,7 @@ const MODULE_LABELS: Record<FinanceAuditModule, string> = {
   closing_deposit: "Daily Closing · Deposit",
   finance_default: "Finance Default",
   finance_user: "Finance User",
+  backup: "Backup / Restore",
 };
 
 const ACTION_STYLES: Record<FinanceAuditAction, string> = {

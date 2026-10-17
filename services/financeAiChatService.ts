@@ -601,12 +601,14 @@ export async function resolveFinanceAiAction(
     throw new Error(`This action was already ${action.status}.`);
   }
 
+  // resolvedAt uses Timestamp.now(), not serverTimestamp(): Firestore rejects
+  // sentinel values inside array elements, and proposedActions is an array.
   if (input.decision === "discard") {
     actions[index] = {
       ...action,
       status: "discarded",
       resolvedNote: null,
-      resolvedAt: serverTimestamp() as never,
+      resolvedAt: Timestamp.now(),
       resolvedBy: userId,
       resolvedByName: userName,
     };
@@ -649,7 +651,7 @@ export async function resolveFinanceAiAction(
           resultRef,
           errorMessage: null,
           resolvedNote,
-          resolvedAt: serverTimestamp() as never,
+          resolvedAt: Timestamp.now(),
           resolvedBy: userId,
           resolvedByName: userName,
         };
@@ -668,6 +670,7 @@ export async function resolveFinanceAiAction(
       // always in a finally block so the day is never left stuck open.
       const wasLocked = await isDayLocked(date, db);
       let closingCashToRestore: number | null = null;
+      let recloseError: string | null = null;
       if (wasLocked) {
         const [current] = await getDailyClosingsForRange(date, date, db, branchId);
         closingCashToRestore = current?.closingCash ?? null;
@@ -694,12 +697,19 @@ export async function resolveFinanceAiAction(
         resultRef = date;
       } finally {
         if (wasLocked && closingCashToRestore !== null) {
-          await closeDailyClosing(date, closingCashToRestore, userId, userName, db, branchId).catch((err) => {
+          try {
+            await closeDailyClosing(date, closingCashToRestore, userId, userName, db, branchId);
+          } catch (err) {
             console.error("[financeAiChatService] Failed to re-close after an AI Assistant correction — the day may be left unlocked; check Lock Settings.", err);
-          });
+            recloseError = err instanceof Error ? err.message : "unknown error";
+          }
         }
       }
-      resolvedNote = wasLocked ? `${date} was already closed — reopened, corrected, and re-closed.` : null;
+      if (recloseError) {
+        resolvedNote = `${date} was corrected but could NOT be re-closed (${recloseError}). It is still open — close it from Daily Closing.`;
+      } else {
+        resolvedNote = wasLocked ? `${date} was already closed — reopened, corrected, and re-closed.` : null;
+      }
     } else if (action.kind === "transaction") {
       const t = action.transaction;
       if (!t) throw new Error("This action is missing its transaction details.");
@@ -736,7 +746,7 @@ export async function resolveFinanceAiAction(
       resultRef,
       errorMessage: null,
       resolvedNote,
-      resolvedAt: serverTimestamp() as never,
+      resolvedAt: Timestamp.now(),
       resolvedBy: userId,
       resolvedByName: userName,
     };
@@ -749,7 +759,7 @@ export async function resolveFinanceAiAction(
       status: "failed",
       errorMessage,
       resolvedNote: null,
-      resolvedAt: serverTimestamp() as never,
+      resolvedAt: Timestamp.now(),
       resolvedBy: userId,
       resolvedByName: userName,
     };

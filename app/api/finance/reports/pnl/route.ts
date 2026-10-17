@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedFirestoreForRequest } from "@/lib/firebaseServerApp";
 import { financeErrorResponse } from "@/lib/financeApiError";
+import { requireAdminCaller } from "@/lib/financeRouteAuth";
 import { toDateKey, roundCurrency, DEFAULT_BRANCH_ID, isPnlCashDrawerAccount, type FinanceDailyClosing } from "@/lib/finance";
 import { buildPlatformDayInfo, lookupPlatformDayInfo } from "@/lib/platformRevenue";
 import { getDailyClosingsForRange } from "@/services/financeClosingService";
@@ -51,7 +52,7 @@ function sumByLabel(items: Array<{ label: string; amount: number }>): Array<{ la
  */
 export async function GET(request: Request) {
   try {
-    const { cleanup, firestore } = await getAuthenticatedFirestoreForRequest(request);
+    const { cleanup, firestore, userId } = await getAuthenticatedFirestoreForRequest(request);
     try {
       const url = new URL(request.url);
       const today = toDateKey();
@@ -152,6 +153,17 @@ export async function GET(request: Request) {
       const totalExpense = roundCurrency(closingCashExpense + ledgerExpense);
       const netPnl = roundCurrency(totalRevenue - totalExpense);
 
+      // ── Owner Withdrawals — profit taken out. Not an expense (never in
+      // totalExpense/netPnl above); shown alongside so "retained" is visible.
+      const withdrawalTx = rangeTransactions.filter((t) => t.type === "owner_withdrawal");
+      const ownerWithdrawals = {
+        count: withdrawalTx.length,
+        total: roundCurrency(withdrawalTx.reduce((s, t) => s + t.amount, 0)),
+        ownerTotal: roundCurrency(withdrawalTx.reduce((s, t) => s + (t.withdrawalSplit?.ownerAmount ?? t.amount), 0)),
+        partnerTotal: roundCurrency(withdrawalTx.reduce((s, t) => s + (t.withdrawalSplit?.partnerAmount ?? 0), 0)),
+      };
+      const retainedProfit = roundCurrency(netPnl - ownerWithdrawals.total);
+
       // ── "Estimated" KPI set — the REAL numbers above, PLUS a projection
       // for whatever Zomato/Swiggy revenue is still sitting in NOT-YET-
       // SETTLED days. It never touches a day that's already settled — for
@@ -236,6 +248,8 @@ export async function GET(request: Request) {
           ledgerIncomeByCategory,
           depositBreakdown,
           closingDeposits,
+          // Owner payouts are Admin-only information.
+          ...((await requireAdminCaller(firestore, userId).then(() => true, () => false)) ? { ownerWithdrawals, retainedProfit } : {}),
         },
         accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, currentBalance: a.currentBalance })),
       });

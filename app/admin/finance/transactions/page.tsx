@@ -10,6 +10,8 @@ import NativeSelectField from "@/components/ui/NativeSelectField";
 import NativeDateField from "@/components/ui/NativeDateField";
 
 type TxType = "income" | "expense" | "transfer";
+/** Rows can also be Owner Withdrawals, which are created on their own page, not from this form. */
+type RowType = TxType | "owner_withdrawal";
 
 interface AccountOption {
   id: string;
@@ -31,7 +33,7 @@ interface SubcategoryOption {
 
 interface TransactionRow {
   id: string;
-  type: TxType;
+  type: RowType;
   date: string;
   categoryName: string | null;
   subcategoryName: string | null;
@@ -49,13 +51,15 @@ async function readJson(response: Response) {
   return payload;
 }
 
-function TypeBadge({ type }: { type: TxType }) {
-  const styles: Record<TxType, string> = {
+function TypeBadge({ type }: { type: RowType }) {
+  const styles: Record<RowType, string> = {
     income: "bg-emerald-100 text-emerald-700",
     expense: "bg-rose-100 text-rose-700",
     transfer: "bg-sky-100 text-sky-700",
+    owner_withdrawal: "bg-violet-100 text-violet-700",
   };
-  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${styles[type]}`}>{type}</span>;
+  const label = type === "owner_withdrawal" ? "Owner Withdrawal" : type;
+  return <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${styles[type]}`}>{label}</span>;
 }
 
 function FinanceTransactionsContent() {
@@ -475,12 +479,15 @@ function FinanceTransactionsContent() {
               <NativeSelectField
                 value={filters.type}
                 onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value, page: 1 }))}
-                displayValue={filters.type ? filters.type[0].toUpperCase() + filters.type.slice(1) : "All"}
+                displayValue={
+                  filters.type === "owner_withdrawal" ? "Owner Withdrawal" : filters.type ? filters.type[0].toUpperCase() + filters.type.slice(1) : "All"
+                }
               >
                 <option value="">All</option>
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
                 <option value="transfer">Transfer</option>
+                <option value="owner_withdrawal">Owner Withdrawal</option>
               </NativeSelectField>
             </div>
             <div>
@@ -539,7 +546,7 @@ function FinanceTransactionsContent() {
                         <TypeBadge type={t.type} />
                       </td>
                       <td className="px-4 py-3 text-slate-700">
-                        {t.categoryName ?? "—"}
+                        {t.type === "owner_withdrawal" ? "Profit taken out" : t.categoryName ?? "—"}
                         {t.subcategoryName ? <span className="text-slate-400"> · {t.subcategoryName}</span> : null}
                         {t.autoPosted ? (
                           <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400" title="Automatically posted from Daily Closing">
@@ -552,14 +559,20 @@ function FinanceTransactionsContent() {
                       </td>
                       <td
                         className={`px-4 py-3 text-right font-bold ${
-                          t.type === "income" ? "text-emerald-600" : t.type === "expense" ? "text-rose-600" : "text-sky-600"
+                          t.type === "income"
+                            ? "text-emerald-600"
+                            : t.type === "expense"
+                            ? "text-rose-600"
+                            : t.type === "owner_withdrawal"
+                            ? "text-violet-600"
+                            : "text-sky-600"
                         }`}
                       >
                         {formatCurrency(t.amount)}
                       </td>
                       <td className="px-4 py-3 text-slate-500">{t.remarks || "—"}</td>
                       <td className="px-4 py-3 text-right">
-                        {t.status === "posted" && !t.id.startsWith("optimistic-") ? (
+                        {t.status === "posted" && !t.id.startsWith("optimistic-") && (t.type !== "owner_withdrawal" || role === "admin") ? (
                           <button
                             type="button"
                             disabled={voidBusyId === t.id}

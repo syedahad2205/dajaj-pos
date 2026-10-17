@@ -41,6 +41,11 @@ export interface WriteFinanceAuditParams {
   reason?: string | null;
 }
 
+/** Deterministic audit doc id for a ledger create/void, so firestore.rules can require the audit row in the same commit. */
+export function ledgerAuditLogId(transactionId: string, action: "create" | "void"): string {
+  return `${transactionId}_${action}`;
+}
+
 /**
  * Appends a single audit log entry using an in-flight Firestore transaction
  * or batch, so the audit record is written atomically alongside the mutation
@@ -51,8 +56,9 @@ export function writeFinanceAuditLog(
   writer: FinanceAuditWriter,
   db: Firestore,
   params: WriteFinanceAuditParams,
+  logId?: string,
 ): void {
-  const logRef = doc(financeAuditLogsCollection(db));
+  const logRef = logId ? doc(financeAuditLogsCollection(db), logId) : doc(financeAuditLogsCollection(db));
   writer.set(logRef, {
     module: params.module,
     entityId: params.entityId,
