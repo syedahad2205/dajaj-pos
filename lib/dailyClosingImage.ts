@@ -30,6 +30,13 @@ export interface DailyClosingImageClosingLine {
   sign: 1 | -1;
 }
 
+/** The sheet's "Juice Lab" row (Revenue / Collected / Pending). Each value is null when blank on the sheet — never invented. */
+export interface DailyClosingImageJuiceLab {
+  revenue: number | null;
+  collected: number | null;
+  pending: number | null;
+}
+
 /** Raw, validated (but not yet category-resolved) AI extraction. */
 export interface DailyClosingImageExtraction {
   /** YYYY-MM-DD if a date was clearly visible on the sheet — never guessed. */
@@ -38,6 +45,8 @@ export interface DailyClosingImageExtraction {
   readable: boolean;
   items: DailyClosingImageItem[];
   closingLine: DailyClosingImageClosingLine | null;
+  /** null when the sheet has no Juice Lab row or all three cells are blank. */
+  juiceLab: DailyClosingImageJuiceLab | null;
 }
 
 export const EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION: DailyClosingImageExtraction = {
@@ -45,6 +54,7 @@ export const EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION: DailyClosingImageExtraction =
   readable: false,
   items: [],
   closingLine: null,
+  juiceLab: null,
 };
 
 /** How an item's category ended up resolved (or not) — surfaced to the UI so an AI-guessed match can be shown differently from a deterministic one, per spec §6's priority ladder. "misc_fallback" means neither a deterministic nor a validated AI match was found, so it was defaulted to the existing "Misc"-style category rather than left blank — still fully editable by the Finance Manager. */
@@ -74,4 +84,5 @@ export interface ResolvedDailyClosingImageExtraction {
   items: ResolvedDailyClosingImageItem[];
   closingLine: DailyClosingImageClosingLine | null;
   deposits: DailyClosingImageDepositCandidate[];
+  juiceLab: DailyClosingImageJuiceLab | null;
 }

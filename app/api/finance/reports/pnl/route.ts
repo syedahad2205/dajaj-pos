@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthenticatedFirestoreForRequest } from "@/lib/firebaseServerApp";
 import { financeErrorResponse } from "@/lib/financeApiError";
 import { requireAdminCaller } from "@/lib/financeRouteAuth";
-import { toDateKey, roundCurrency, DEFAULT_BRANCH_ID, isPnlCashDrawerAccount, type FinanceDailyClosing } from "@/lib/finance";
+import { toDateKey, roundCurrency, DEFAULT_BRANCH_ID, isPnlCashDrawerAccount, pnlLedgerTransactions, type FinanceDailyClosing } from "@/lib/finance";
 import { buildPlatformDayInfo, lookupPlatformDayInfo } from "@/lib/platformRevenue";
 import { getDailyClosingsForRange } from "@/services/financeClosingService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
@@ -110,22 +110,18 @@ export async function GET(request: Request) {
       // and transfers (not P&L items). Ledger expenses/income on the cash
       // DRAWER are skipped (Daily Closing owns the till); Pigmi/Unity and
       // other accounts still count even if typed "cash".
-      const relevantTx = rangeTransactions.filter(
-        (t) => t.autoPostedSource !== "daily_closing" && t.type !== "transfer",
-      );
-      const ledgerIncomeTx = relevantTx.filter(
-        (t) => t.type === "income" && !isCashDrawer(t.toAccountId),
-      );
-      const ledgerExpenseTx = relevantTx.filter(
-        (t) => t.type === "expense" && !isCashDrawer(t.fromAccountId),
-      );
+      // JUICE LAB INVARIANT: the shared filter keeps Daily Closing's own UPI Sales
+      // / Juice Lab Payout postings out — don't replace it with a hand-written one.
+      const { income: ledgerIncomeTx, expense: ledgerExpenseTx } = pnlLedgerTransactions(rangeTransactions, isCashDrawer);
 
       // ── Locked closings only for P&L totals ──
       const lockedClosings: FinanceDailyClosing[] = rawClosings.filter((c) => c.locked);
       const lockedClosingsWithSettled = closingsWithSettled.filter((c) => c.locked);
 
       const closingCashRevenue = roundCurrency(lockedClosings.reduce((s, c) => s + c.cashRevenue, 0));
-      const closingUpi = roundCurrency(lockedClosings.reduce((s, c) => s + c.upiSales, 0));
+      // JUICE LAB INVARIANT: DAJAJ's own UPI (upiNetSales), never raw upiSales —
+      // Juice Lab's pending share is not our revenue. May be negative.
+      const closingUpi = roundCurrency(lockedClosings.reduce((s, c) => s + c.upiNetSales, 0));
       const closingOther = roundCurrency(lockedClosings.reduce((s, c) => s + c.otherIncome, 0));
       const closingCashExpense = roundCurrency(lockedClosings.reduce((s, c) => s + c.cashExpenseTotal, 0));
       const closingDeposits = roundCurrency(lockedClosings.reduce((s, c) => s + c.depositTotal, 0));
@@ -231,6 +227,18 @@ export async function GET(request: Request) {
       }
       const depositBreakdown = Array.from(depositMap.values()).sort((a, b) => b.amount - a.amount);
 
+      // ── Juice Lab — sold through our till/UPI but NOT our revenue (never in
+      // the totals above). JUICE LAB INVARIANT: display only — never add these
+      // to totalRevenue/totalExpense/netPnl. Collected = cash taken from the drawer; pending =
+      // paid to Juice Lab out of UPI at close.
+      const juiceDays = lockedClosings.filter((c) => c.juiceLabRevenue > 0);
+      const juiceLab = {
+        days: juiceDays.length,
+        revenue: roundCurrency(juiceDays.reduce((s, c) => s + c.juiceLabRevenue, 0)),
+        collected: roundCurrency(juiceDays.reduce((s, c) => s + c.juiceLabCollected, 0)),
+        pending: roundCurrency(juiceDays.reduce((s, c) => s + c.juiceLabPending, 0)),
+      };
+
       return NextResponse.json({
         success: true,
         closings: closingsWithSettled, // full rows for day-by-day table (includes drafts), with real settled Zomato/Swiggy revenue attached
@@ -248,6 +256,7 @@ export async function GET(request: Request) {
           ledgerIncomeByCategory,
           depositBreakdown,
           closingDeposits,
+          juiceLab,
           // Owner payouts are Admin-only information.
           ...((await requireAdminCaller(firestore, userId).then(() => true, () => false)) ? { ownerWithdrawals, retainedProfit } : {}),
         },

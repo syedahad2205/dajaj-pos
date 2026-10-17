@@ -17,6 +17,8 @@ export async function PATCH(request: Request, { params }: { params: { date: stri
           zomatoSales: body.zomatoSales !== undefined ? Number(body.zomatoSales) : undefined,
           swiggySales: body.swiggySales !== undefined ? Number(body.swiggySales) : undefined,
           otherIncome: body.otherIncome !== undefined ? Number(body.otherIncome) : undefined,
+          juiceLabRevenue: body.juiceLabRevenue !== undefined ? Number(body.juiceLabRevenue) : undefined,
+          juiceLabCollected: body.juiceLabCollected !== undefined ? Number(body.juiceLabCollected) : undefined,
         },
         firestore,
       );

@@ -31,6 +31,8 @@ import {
   toDateKey,
   toTimeKey,
   netCashDrawerTransferAdjustment,
+  computeDailyClosingTotals,
+  dailyClosingPostingEvents,
   type CashDepositType,
   type DailyClosingDepositEntry,
   type DailyClosingExpenseEntry,
@@ -158,6 +160,10 @@ function emptyClosing(date: string, branchId: string, openingCash: number, openi
     zomatoSales: 0,
     swiggySales: 0,
     otherIncome: 0,
+    juiceLabRevenue: 0,
+    juiceLabCollected: 0,
+    juiceLabPending: 0,
+    upiNetSales: 0,
     closingCash: null,
     cashRevenue: 0,
     totalRevenue: 0,
@@ -176,28 +182,9 @@ function emptyClosing(date: string, branchId: string, openingCash: number, openi
   };
 }
 
-function computeDerivedTotals(input: {
-  openingCash: number;
-  expenses: DailyClosingExpenseEntry[];
-  deposits: DailyClosingDepositEntry[];
-  upiSales: number;
-  zomatoSales: number;
-  swiggySales: number;
-  otherIncome: number;
-  closingCash: number | null;
-}) {
-  const cashExpenseTotal = roundCurrency(input.expenses.reduce((sum, e) => sum + e.amount, 0));
-  const depositTotal = roundCurrency(input.deposits.reduce((sum, d) => sum + d.amount, 0));
-  const totalCashOut = roundCurrency(cashExpenseTotal + depositTotal);
-
-  let cashRevenue = 0;
-  let totalRevenue = 0;
-  if (input.closingCash !== null) {
-    cashRevenue = roundCurrency(input.closingCash - input.openingCash + cashExpenseTotal + depositTotal);
-    totalRevenue = roundCurrency(cashRevenue + input.upiSales + input.zomatoSales + input.swiggySales + input.otherIncome);
-  }
-
-  return { cashExpenseTotal, depositTotal, totalCashOut, cashRevenue, totalRevenue };
+/** See computeDailyClosingTotals in lib/finance.ts (pure, so scripts/verify-juice-lab.ts can test the exact same math). JUICE LAB INVARIANT: keep this a plain delegate — don't add revenue math here. */
+function computeDerivedTotals(input: Parameters<typeof computeDailyClosingTotals>[0]) {
+  return computeDailyClosingTotals(input);
 }
 
 /**
@@ -237,6 +224,8 @@ function normalizeClosing(raw: DocumentData): FinanceDailyClosing {
   const zomatoSales = typeof raw.zomatoSales === "number" ? raw.zomatoSales : 0;
   const swiggySales = typeof raw.swiggySales === "number" ? raw.swiggySales : 0;
   const otherIncome = typeof raw.otherIncome === "number" ? raw.otherIncome : 0;
+  const juiceLabRevenue = typeof raw.juiceLabRevenue === "number" ? raw.juiceLabRevenue : 0;
+  const juiceLabCollected = typeof raw.juiceLabCollected === "number" ? raw.juiceLabCollected : 0;
   const closingCash = typeof raw.closingCash === "number" ? raw.closingCash : null;
   // 0 for any day this hasn't been computed for yet (legacy docs, or a day
   // that hasn't been through closeDailyClosing/the history resync since
@@ -245,7 +234,18 @@ function normalizeClosing(raw: DocumentData): FinanceDailyClosing {
   const externalCashAdjustment = typeof raw.externalCashAdjustment === "number" ? raw.externalCashAdjustment : 0;
   const cashDrawerBalanceAsOfDate = typeof raw.cashDrawerBalanceAsOfDate === "number" ? raw.cashDrawerBalanceAsOfDate : null;
 
-  const totals = computeDerivedTotals({ openingCash, expenses, deposits, upiSales, zomatoSales, swiggySales, otherIncome, closingCash });
+  const totals = computeDerivedTotals({
+    openingCash,
+    expenses,
+    deposits,
+    upiSales,
+    zomatoSales,
+    swiggySales,
+    otherIncome,
+    juiceLabRevenue,
+    juiceLabCollected,
+    closingCash,
+  });
 
   return {
     id: raw.id ?? raw.date,
@@ -261,6 +261,8 @@ function normalizeClosing(raw: DocumentData): FinanceDailyClosing {
     zomatoSales,
     swiggySales,
     otherIncome,
+    juiceLabRevenue,
+    juiceLabCollected,
     closingCash,
     ...totals,
     locked: Boolean(raw.locked),
@@ -797,6 +799,8 @@ export interface UpdateSalesInput {
   zomatoSales?: number;
   swiggySales?: number;
   otherIncome?: number;
+  juiceLabRevenue?: number;
+  juiceLabCollected?: number;
 }
 
 /** Updates the day's manually-entered sales totals. No "which bank / which account" — those are recorded later at settlement. */
@@ -818,7 +822,16 @@ export async function updateDailyClosingSales(
       zomatoSales: input.zomatoSales !== undefined ? Math.max(0, roundCurrency(input.zomatoSales)) : base.zomatoSales,
       swiggySales: input.swiggySales !== undefined ? Math.max(0, roundCurrency(input.swiggySales)) : base.swiggySales,
       otherIncome: input.otherIncome !== undefined ? Math.max(0, roundCurrency(input.otherIncome)) : base.otherIncome,
+      juiceLabRevenue:
+        input.juiceLabRevenue !== undefined ? Math.max(0, roundCurrency(input.juiceLabRevenue)) : base.juiceLabRevenue,
+      juiceLabCollected:
+        input.juiceLabCollected !== undefined ? Math.max(0, roundCurrency(input.juiceLabCollected)) : base.juiceLabCollected,
     };
+    // JUICE LAB INVARIANT: collected ≤ revenue is the only check. Pending larger
+    // than today's UPI is valid (paid from the whole UPI balance) — don't block it.
+    if (merged.juiceLabCollected > merged.juiceLabRevenue) {
+      throw new Error("Juice Lab collected can't be more than Juice Lab revenue.");
+    }
     const totals = computeDerivedTotals(merged);
     const next: FinanceDailyClosing = { ...merged, ...totals };
 
@@ -863,46 +876,8 @@ export async function setDailyClosingOpeningCash(
  * anything missing" (getMissingAutoPostEventKeys) without touching
  * Firestore. Keeping this in one place means the two can never drift.
  */
-function getExpectedPostingEvents(
-  closing: FinanceDailyClosing,
-): Array<{ eventKey: string; eventName: string; amount: number; kind: "income" | "expense" | "deposit" }> {
-  const incomeEvents = [
-    { eventKey: "cash_sales", eventName: "Cash Sales", amount: closing.cashRevenue, kind: "income" as const },
-    { eventKey: "upi_sales", eventName: "UPI Sales", amount: closing.upiSales, kind: "income" as const },
-    // Revenue recognized today, not cash received today — these post to an
-    // Escrow account (per Finance Defaults), not straight to a bank account.
-    // The actual bank credit happens later via the platform's own settlement
-    // reconciliation (see services/zomatoFinanceService.ts for Zomato).
-    { eventKey: "zomato_sales", eventName: "Zomato Sales", amount: closing.zomatoSales, kind: "income" as const },
-    { eventKey: "swiggy_sales", eventName: "Swiggy Sales", amount: closing.swiggySales, kind: "income" as const },
-    { eventKey: "other_income", eventName: "Other Income", amount: closing.otherIncome, kind: "income" as const },
-  ].filter((e) => e.amount > 0);
-
-  // Cash Expenses: every rupee spent out of the physical cash drawer today.
-  // Posted as a single Expense out of whatever account "Cash Sales" maps to
-  // — the same implicit "cash drawer" account Cash Deposits already use —
-  // so the Cash account's ledger balance reflects money actually leaving
-  // the drawer, not just Cash Sales revenue piling up unopposed. No separate
-  // Finance Defaults mapping needed: cash expenses always come out of the
-  // same drawer Cash Sales revenue goes into.
-  const expenseEvents = [{ eventKey: "cash_expenses", eventName: "Cash Expenses", amount: closing.cashExpenseTotal, kind: "expense" as const }].filter(
-    (e) => e.amount > 0,
-  );
-
-  const depositTotalsByType = new Map<string, number>();
-  for (const d of closing.deposits) {
-    depositTotalsByType.set(d.type, roundCurrency((depositTotalsByType.get(d.type) ?? 0) + d.amount));
-  }
-  const depositEvents = Array.from(depositTotalsByType.entries())
-    .filter(([, amount]) => amount > 0)
-    .map(([type, amount]) => ({
-      eventKey: depositEventKey(type as CashDepositType),
-      eventName: `${CASH_DEPOSIT_TYPE_LABELS[type as CashDepositType] ?? type} Deposit`,
-      amount,
-      kind: "deposit" as const,
-    }));
-
-  return [...incomeEvents, ...expenseEvents, ...depositEvents];
+function getExpectedPostingEvents(closing: FinanceDailyClosing) {
+  return dailyClosingPostingEvents(closing);
 }
 
 /**
@@ -1011,6 +986,39 @@ async function postDailyClosingToLedger(
     }
   };
 
+  // JUICE LAB INVARIANT (rule 4 in lib/finance.ts): out of the UPI account,
+  // and MUST keep autoPostedSource "daily_closing" so pnlLedgerTransactions
+  // never counts it as a business expense.
+  const postJuiceLabPayout = async (event: (typeof expenseEvents)[number]): Promise<PostResult> => {
+    if (alreadyPostedEventKeys.has(event.eventKey)) return null;
+    if (!(event.amount > 0)) return null;
+    const upiMapping = resolveDestination("upi_sales", event.eventName, event.amount);
+    if (!upiMapping || !upiMapping.destinationAccountId) return null;
+
+    try {
+      const categoryId = await getOrCreateExpenseCategoryIdByName("Juice Lab Payout", userId, userName, db, branchId);
+      const tx = await createFinanceTransaction(
+        {
+          type: "expense",
+          date: closing.date,
+          categoryId,
+          amount: event.amount,
+          fromAccountId: upiMapping.destinationAccountId,
+          remarks: "Auto-posted from Daily Closing (Juice Lab's pending share, paid from UPI — not a business expense)",
+          branchId,
+          autoPosted: true,
+          autoPostedSource: "daily_closing",
+        },
+        userId,
+        userName,
+        db,
+      );
+      return { eventKey: event.eventKey, txId: tx.id };
+    } catch (err) {
+      return { eventKey: event.eventKey, warning: `${event.eventName}: failed to auto-post — ${err instanceof Error ? err.message : "unknown error"}` };
+    }
+  };
+
   const postExpenseEvent = async (event: (typeof expenseEvents)[number]): Promise<PostResult> => {
     if (alreadyPostedEventKeys.has(event.eventKey)) return null;
     if (!(event.amount > 0)) return null;
@@ -1084,23 +1092,34 @@ async function postDailyClosingToLedger(
   };
 
   const cashDrawerIncomeEvents = incomeEvents.filter((e) => e.eventKey === "cash_sales");
-  const otherIncomeEvents = incomeEvents.filter((e) => e.eventKey !== "cash_sales");
+  const upiIncomeEvents = incomeEvents.filter((e) => e.eventKey === "upi_sales");
+  const otherIncomeEvents = incomeEvents.filter((e) => e.eventKey !== "cash_sales" && e.eventKey !== "upi_sales");
+  const cashDrawerExpenseEvents = expenseEvents.filter((e) => e.eventKey !== "juice_lab_payout");
+  const juiceLabPayoutEvents = expenseEvents.filter((e) => e.eventKey === "juice_lab_payout");
 
-  const [cashDrawerResults, otherIncomeResults] = await Promise.all([
+  const [cashDrawerResults, upiResults, otherIncomeResults] = await Promise.all([
     // Cash-drawer group: strictly one at a time — these are the events that
     // actually collide with each other.
     (async () => {
       const results: PostResult[] = [];
       for (const event of cashDrawerIncomeEvents) results.push(await postIncomeEvent(event));
-      for (const event of expenseEvents) results.push(await postExpenseEvent(event));
+      for (const event of cashDrawerExpenseEvents) results.push(await postExpenseEvent(event));
       for (const event of depositEvents) results.push(await postDepositEvent(event));
+      return results;
+    })(),
+    // UPI account group: UPI Sales in, then Juice Lab's share out — one at a time
+    // (same account, so running them together would just fight over it).
+    (async () => {
+      const results: PostResult[] = [];
+      for (const event of upiIncomeEvents) results.push(await postIncomeEvent(event));
+      for (const event of juiceLabPayoutEvents) results.push(await postJuiceLabPayout(event));
       return results;
     })(),
     // Everything else posts to its own distinct account — safe to overlap.
     Promise.all(otherIncomeEvents.map(postIncomeEvent)),
   ]);
 
-  for (const result of [...cashDrawerResults, ...otherIncomeResults]) {
+  for (const result of [...cashDrawerResults, ...upiResults, ...otherIncomeResults]) {
     if (!result) continue;
     if ("txId" in result) {
       transactionsByEvent[result.eventKey] = result.txId;
@@ -2019,6 +2038,8 @@ export async function backfillCashDrawerRecounts(
       zomatoSales: closing.zomatoSales,
       swiggySales: closing.swiggySales,
       otherIncome: closing.otherIncome,
+      juiceLabRevenue: closing.juiceLabRevenue,
+      juiceLabCollected: closing.juiceLabCollected,
       closingCash: closing.closingCash,
     });
     const draft: FinanceDailyClosing = { ...closing, openingCash, openingCashSource, externalCashAdjustment: thisExternal, ...totals };

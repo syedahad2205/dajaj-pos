@@ -20,6 +20,10 @@ interface ClosingRecord {
   depositTotal: number;
   totalCashOut: number;
   upiSales: number;
+  upiNetSales?: number;
+  juiceLabRevenue?: number;
+  juiceLabCollected?: number;
+  juiceLabPending?: number;
   zomatoSales: number;
   swiggySales: number;
   otherIncome: number;
@@ -119,12 +123,29 @@ function ClosingCard({ record }: { record: ClosingRecord }) {
             </div>
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Other Revenue</p>
-              <StatRow label="UPI" value={formatCurrency(record.upiSales)} />
+              {(record.juiceLabPending ?? 0) > 0 ? (
+                <>
+                  <StatRow label="UPI received" value={formatCurrency(record.upiSales)} />
+                  {/* JUICE LAB INVARIANT: our UPI is upiNetSales, never raw upiSales. */}
+                  <StatRow label="UPI (ours)" value={formatCurrency(record.upiNetSales ?? record.upiSales)} />
+                </>
+              ) : (
+                <StatRow label="UPI" value={formatCurrency(record.upiSales)} />
+              )}
               <StatRow label="Zomato" value={formatCurrency(record.zomatoSales)} />
               <StatRow label="Swiggy" value={formatCurrency(record.swiggySales)} />
               <StatRow label="Other Income" value={formatCurrency(record.otherIncome)} />
             </div>
           </div>
+
+          {(record.juiceLabRevenue ?? 0) > 0 ? (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-lime-700">Juice Lab (not our revenue)</p>
+              <StatRow label="Revenue" value={formatCurrency(record.juiceLabRevenue ?? 0)} />
+              <StatRow label="Collected (cash from drawer)" value={formatCurrency(record.juiceLabCollected ?? 0)} />
+              <StatRow label="Pending (paid from UPI)" value={formatCurrency(record.juiceLabPending ?? 0)} />
+            </div>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>

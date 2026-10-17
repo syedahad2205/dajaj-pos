@@ -1,6 +1,6 @@
 import type { Firestore } from "firebase/firestore";
 import { firestore as defaultFirestore } from "@/lib/firebase";
-import { DEFAULT_BRANCH_ID, depositEventKey, isPnlCashDrawerAccount, roundCurrency, toDateKey, type FinanceDailyClosing } from "@/lib/finance";
+import { DEFAULT_BRANCH_ID, depositEventKey, isPnlCashDrawerAccount, pnlLedgerTransactions, roundCurrency, toDateKey, type FinanceDailyClosing } from "@/lib/finance";
 import { buildPlatformDayInfo, lookupPlatformDayInfo } from "@/lib/platformRevenue";
 import { getDailyClosingsForRange, getLatestLockedClosing } from "@/services/financeClosingService";
 import { getFinanceAccounts } from "@/services/financeAccountsService";
@@ -139,6 +139,7 @@ export async function getFinanceDashboardSummary(
   const swiggyActualRevenueForDate = (date: string): number => lookupPlatformDayInfo(swiggyByDate, date).actualNet;
   // A closing's non-platform revenue (cash + UPI + other) — the part of
   // totalRevenue that's never settlement-gated.
+  // JUICE LAB INVARIANT: built from totalRevenue, which already uses upiNetSales.
   const nonPlatformRevenue = (c: FinanceDailyClosing): number =>
     roundCurrency(c.totalRevenue - c.zomatoSales - c.swiggySales);
 
@@ -157,9 +158,8 @@ export async function getFinanceDashboardSummary(
   //    not money already counted elsewhere. Manually-entered Transactions
   //    tab rows (autoPosted false) also flow through as before.
   // Pigmi/Unity is not the cash drawer even if the account is typed "cash".
-  const notDailyClosingGenerated = rangeTransactions.filter((t) => t.autoPostedSource !== "daily_closing");
-  const bankIncome = notDailyClosingGenerated.filter((t) => t.type === "income" && !isCashDrawer(t.toAccountId));
-  const bankExpense = notDailyClosingGenerated.filter((t) => t.type === "expense" && !isCashDrawer(t.fromAccountId));
+  // JUICE LAB INVARIANT: shared filter — skips Daily Closing's UPI Sales / Juice Lab Payout postings.
+  const { income: bankIncome, expense: bankExpense } = pnlLedgerTransactions(rangeTransactions, isCashDrawer);
 
   const todayClosing = rangeClosings.find((c) => c.date === todayKey) ?? null;
   const cashOnHand = lastLocked && typeof lastLocked.closingCash === "number" ? lastLocked.closingCash : 0;
@@ -234,7 +234,8 @@ export async function getFinanceDashboardSummary(
 
   const incomeSources = sumByLabel([
     { label: "Cash Revenue", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + c.cashRevenue, 0)) },
-    { label: "UPI Sales", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + c.upiSales, 0)) },
+    // JUICE LAB INVARIANT: our UPI (upiNetSales), never raw upiSales.
+    { label: "UPI Sales", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + c.upiNetSales, 0)) },
     { label: "Zomato Sales", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + zomatoActualRevenueForDate(c.date), 0)) },
     { label: "Swiggy Sales", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + swiggyActualRevenueForDate(c.date), 0)) },
     { label: "Other Income", amount: roundCurrency(monthClosings.reduce((sum, c) => sum + c.otherIncome, 0)) },

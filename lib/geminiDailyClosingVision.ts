@@ -1,4 +1,9 @@
-import { EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION, type DailyClosingImageExtraction, type DailyClosingImageItem } from "@/lib/dailyClosingImage";
+import {
+  EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION,
+  type DailyClosingImageExtraction,
+  type DailyClosingImageItem,
+  type DailyClosingImageJuiceLab,
+} from "@/lib/dailyClosingImage";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Isolated Gemini vision client for Daily Closing's "Read from Image".
@@ -58,6 +63,8 @@ Rules:
 - "crossedOut" is true if the line is visibly struck through / crossed out on the sheet.
 - CRITICAL — hyphens are separators, not minus signs: a line written like "Veg - 240 -" means amount = 240 (positive), not -240. Do not treat a dash next to a number as a negative sign.
 - CRITICAL — the "Closing"/"Outstanding" line: put it in "closingLine", not "items". "amount" is always a positive number. "sign" is 1 if the line says "Closing" (a positive balance) and -1 if it says "Outstanding" (a negative balance) — the word's meaning decides the sign, regardless of any dash next to the number. For example "Closing - 1890" → amount 1890, sign 1. "Outstanding - 500" → amount 500, sign -1. If there is no such summary line visible, return closingLine as null.
+- CRITICAL — the "Juice Lab" row: the printed sheet has a row labelled "JUICE LAB" with three cells: REVENUE ₹, COLLECTED ₹ and PENDING ₹. Juice Lab is a separate business, NOT an expense — never put it in "items". Put its three handwritten numbers in "juiceLab" (revenue, collected, pending), each a positive number or null if that cell is blank/illegible. If the whole row is blank, return juiceLab as null.
+- Printed rows that only have a tick/cross or a dash (e.g. a salary row marked "X" or "-") with no number have no amount — return amount null for them, never 0 or a guess.
 - "date": YYYY-MM-DD if a date is clearly written on the sheet, else null — never guess a date.
 - "readable" is false if the image is too blurry/dark/cut off to make out the sheet at all, or it isn't a Daily Closing sheet — true otherwise.
 - Handle poor lighting, shadows, blur, perspective distortion, creased paper, underlines, different handwriting styles, minor spelling mistakes, and abbreviations — do your best, but never fabricate a value you can't actually make out.`;
@@ -92,6 +99,15 @@ const RESPONSE_SCHEMA = {
         sign: { type: "NUMBER" },
       },
       required: ["amount", "sign"],
+    },
+    juiceLab: {
+      type: "OBJECT",
+      nullable: true,
+      properties: {
+        revenue: { type: "NUMBER", nullable: true },
+        collected: { type: "NUMBER", nullable: true },
+        pending: { type: "NUMBER", nullable: true },
+      },
     },
   },
   required: ["readable", "items"],
@@ -149,6 +165,14 @@ function coerceClosingLine(raw: unknown): DailyClosingImageExtraction["closingLi
   return { label, amount, sign };
 }
 
+function coerceJuiceLab(raw: unknown): DailyClosingImageJuiceLab | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+  const juiceLab = { revenue: num(r.revenue), collected: num(r.collected), pending: num(r.pending) };
+  return juiceLab.revenue === null && juiceLab.collected === null && juiceLab.pending === null ? null : juiceLab;
+}
+
 function coerceExtraction(raw: unknown): DailyClosingImageExtraction {
   if (typeof raw !== "object" || raw === null) return { ...EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION };
   const r = raw as Record<string, unknown>;
@@ -157,8 +181,9 @@ function coerceExtraction(raw: unknown): DailyClosingImageExtraction {
   const readable = typeof r.readable === "boolean" ? r.readable : false;
   const items = Array.isArray(r.items) ? r.items.map(coerceItem).filter((item): item is DailyClosingImageItem => item !== null) : [];
   const closingLine = coerceClosingLine(r.closingLine);
+  const juiceLab = coerceJuiceLab(r.juiceLab);
 
-  return { date, readable, items, closingLine };
+  return { date, readable, items, closingLine, juiceLab };
 }
 
 interface GeminiGenerateContentResponse {

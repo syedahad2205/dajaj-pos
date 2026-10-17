@@ -25,6 +25,11 @@ interface DailyClosingRow {
   date: string;
   cashRevenue: number;
   upiSales: number;
+  /** upiSales − Juice Lab pending: our own UPI revenue. Missing on rows saved before Juice Lab tracking. */
+  upiNetSales?: number;
+  juiceLabRevenue?: number;
+  juiceLabCollected?: number;
+  juiceLabPending?: number;
   zomatoSales: number;
   swiggySales: number;
   otherIncome: number;
@@ -90,6 +95,8 @@ interface ReportSummary {
   ledgerIncomeByCategory: CategoryItem[];
   depositBreakdown: CategoryItem[];
   closingDeposits: number;
+  /** Juice Lab's own sales — kept out of every revenue/P&L figure above. */
+  juiceLab?: { days: number; revenue: number; collected: number; pending: number };
   /** Admin only — absent for Finance Managers. */
   ownerWithdrawals?: { count: number; total: number; ownerTotal: number; partnerTotal: number };
   retainedProfit?: number;
@@ -559,6 +566,25 @@ export default function FinanceReportsPage() {
               </section>
             )}
 
+            {/* ── Juice Lab (not our revenue) ── */}
+            {s.juiceLab && s.juiceLab.revenue > 0 ? (
+              <section className="space-y-3 rounded-[28px] border border-lime-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-black text-slate-900">Juice Lab — not our revenue</p>
+                  <span className="text-sm font-bold text-lime-700">{formatCurrency(s.juiceLab.revenue)}</span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <KpiCard label="Juice Lab Revenue" value={formatCurrency(s.juiceLab.revenue)} sub={`${s.juiceLab.days} day${s.juiceLab.days !== 1 ? "s" : ""}`} />
+                  <KpiCard label="Collected (cash from drawer)" value={formatCurrency(s.juiceLab.collected)} tone="muted" />
+                  <KpiCard label="Pending (paid from UPI)" value={formatCurrency(s.juiceLab.pending)} tone="muted" />
+                </div>
+                <p className="text-xs text-slate-400">
+                  Sold through our till and UPI but belongs to Juice Lab, so it&apos;s left out of Total Revenue and Net P&amp;L. Collected cash already left
+                  the drawer; the pending part is taken off that day&apos;s UPI Sales.
+                </p>
+              </section>
+            ) : null}
+
             {/* ── Day-by-Day Table ── */}
             <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-100 px-5 py-4">
@@ -577,7 +603,7 @@ export default function FinanceReportsPage() {
                 <p className="p-10 text-center text-sm font-semibold text-slate-400">No Daily Closings found in this range.</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[960px] text-sm">
+                  <table className="w-full min-w-[1060px] text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                         <th className="px-4 py-3">Date</th>
@@ -589,6 +615,12 @@ export default function FinanceReportsPage() {
                         <th className="px-4 py-3 text-right" title="Cash + UPI + Other + Zomato/Swiggy (actual once settled, estimated until then)">
                           Total Rev (est.)
                         </th>
+                        <th
+                          className="border-l border-lime-100 bg-lime-50/60 px-4 py-3 text-right text-lime-700"
+                          title="Juice Lab's own sales — NOT part of Total Rev. C = collected in cash from the drawer, P = pending, paid from UPI."
+                        >
+                          Juice Lab
+                        </th>
                         <th className="px-4 py-3 text-right">Expenses</th>
                         <th className="px-4 py-3 text-right">Deposits</th>
                         <th className="px-4 py-3">Status</th>
@@ -596,12 +628,21 @@ export default function FinanceReportsPage() {
                     </thead>
                     <tbody>
                       {rows.map((r) => {
-                        const totalRev = roundCurrency(r.cashRevenue + r.upiSales + r.otherIncome + r.zomatoDisplayRevenue + r.swiggyDisplayRevenue);
+                        // JUICE LAB INVARIANT: our UPI only (rows saved before Juice Lab tracking have no upiNetSales).
+                        const upiOurs = r.upiNetSales ?? r.upiSales;
+                        const totalRev = roundCurrency(r.cashRevenue + upiOurs + r.otherIncome + r.zomatoDisplayRevenue + r.swiggyDisplayRevenue);
                         return (
                           <tr key={r.date} className="border-b border-slate-50 hover:bg-slate-50/50">
                             <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-700">{formatDateDisplay(r.date)}</td>
                             <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(r.cashRevenue)}</td>
-                            <td className="px-4 py-3 text-right text-slate-500">{formatCurrency(r.upiSales)}</td>
+                            <td className="px-4 py-3 text-right text-slate-500">
+                              {formatCurrency(upiOurs)}
+                              {(r.juiceLabPending ?? 0) > 0 ? (
+                                <span className="block text-[11px] text-lime-700" title="Juice Lab's pending share, paid out of UPI">
+                                  −{formatCurrency(r.juiceLabPending ?? 0)} Juice Lab
+                                </span>
+                              ) : null}
+                            </td>
                             <td className="px-4 py-3 text-right text-slate-500">
                               <PlatformCell
                                 platform="Zomato"
@@ -626,6 +667,18 @@ export default function FinanceReportsPage() {
                             </td>
                             <td className="px-4 py-3 text-right text-slate-500">{formatCurrency(r.otherIncome)}</td>
                             <td className="px-4 py-3 text-right font-bold text-slate-900">{formatCurrency(totalRev)}</td>
+                            <td className="border-l border-lime-100 bg-lime-50/30 px-4 py-3 text-right text-lime-800">
+                              {(r.juiceLabRevenue ?? 0) > 0 ? (
+                                <>
+                                  {formatCurrency(r.juiceLabRevenue ?? 0)}
+                                  <span className="block whitespace-nowrap text-[11px] text-slate-500">
+                                    C {formatCurrency(r.juiceLabCollected ?? 0)} · P {formatCurrency(r.juiceLabPending ?? 0)}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-right text-rose-600">{formatCurrency(r.cashExpenseTotal)}</td>
                             <td className="px-4 py-3 text-right text-sky-600">{formatCurrency(r.depositTotal)}</td>
                             <td className="px-4 py-3">
@@ -658,6 +711,14 @@ export default function FinanceReportsPage() {
                             <td className="px-4 py-3 text-right">{formatCurrency(swiggyDisplayTotal)}</td>
                             <td className="px-4 py-3 text-right">{formatCurrency(rb?.otherIncome ?? 0)}</td>
                             <td className="px-4 py-3 text-right text-slate-900">{formatCurrency(totalRevSum)}</td>
+                            <td className="border-l border-lime-100 bg-lime-50/60 px-4 py-3 text-right text-lime-800">
+                              {formatCurrency(s.juiceLab?.revenue ?? 0)}
+                              {s.juiceLab && s.juiceLab.revenue > 0 ? (
+                                <span className="block whitespace-nowrap text-[11px] font-semibold text-slate-500">
+                                  C {formatCurrency(s.juiceLab.collected)} · P {formatCurrency(s.juiceLab.pending)}
+                                </span>
+                              ) : null}
+                            </td>
                             <td className="px-4 py-3 text-right text-rose-600">{formatCurrency(s.totalExpense)}</td>
                             <td className="px-4 py-3 text-right text-sky-600">{formatCurrency(s.closingDeposits)}</td>
                             <td className="px-4 py-3" />

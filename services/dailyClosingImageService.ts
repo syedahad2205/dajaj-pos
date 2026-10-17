@@ -213,6 +213,7 @@ export async function analyzeDailyClosingImage(
       items: finalItems,
       closingLine: rawExtraction.closingLine,
       deposits,
+      juiceLab: rawExtraction.juiceLab ?? null,
     },
     categories,
     aiError,

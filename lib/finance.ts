@@ -256,14 +256,24 @@ export interface FinanceDailyClosing {
 
   totalCashOut: number; // cashExpenseTotal + depositTotal
 
-  upiSales: number;
+  upiSales: number; // UPI received today, as entered — includes Juice Lab's UPI share
   zomatoSales: number;
   swiggySales: number;
   otherIncome: number;
 
+  // JUICE LAB INVARIANT — see the rules above computeDailyClosingTotals.
+  // Juice Lab sells through DAJAJ's till and UPI, but its revenue is not
+  // DAJAJ's. Collected = cash Juice Lab took from the drawer (already out of
+  // closingCash, so already out of cashRevenue). Pending = the rest, treated
+  // as paid to Juice Lab from the UPI account at close, so it comes off UPI.
+  juiceLabRevenue: number;
+  juiceLabCollected: number;
+  juiceLabPending: number; // max(0, juiceLabRevenue − juiceLabCollected)
+  upiNetSales: number; // upiSales − juiceLabPending: DAJAJ's own UPI revenue. Can be negative — Juice Lab is paid from the whole UPI account, not just today's UPI.
+
   closingCash: number | null; // manager's physical count
   cashRevenue: number; // closingCash - openingCash + cashExpenseTotal + depositTotal
-  totalRevenue: number; // cashRevenue + upiSales + zomatoSales + swiggySales + otherIncome
+  totalRevenue: number; // cashRevenue + upiNetSales + zomatoSales + swiggySales + otherIncome
 
   locked: boolean;
   closingTime: string | null;
@@ -569,4 +579,160 @@ export function generateLocalId(): string {
   const webCrypto = globalThis.crypto;
   if (webCrypto && typeof webCrypto.randomUUID === "function") return webCrypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Daily Closing math + "what counts toward P&L" — pure functions shared by
+// services/financeClosingService.ts, the Dashboard, the P&L report and the
+// AI Assistant, and exercised directly by scripts/verify-juice-lab.ts.
+//
+// JUICE LAB INVARIANT — read before changing any revenue/UPI/P&L math.
+// Juice Lab sells through DAJAJ's till and UPI account, but its money is
+// NEVER DAJAJ revenue, expense or profit. The rules, and why they hold:
+//
+//   1. Collected (cash Juice Lab takes from the drawer) is NOT subtracted
+//      anywhere. It physically left the drawer before the count, so
+//      closingCash — and therefore cashRevenue — already excludes it.
+//      Subtracting it again would double-count.
+//   2. Pending (= revenue − collected) is paid to Juice Lab out of the UPI
+//      account, so DAJAJ's UPI revenue is upiNetSales = upiSales − pending.
+//      It MAY be negative: Juice Lab is paid from the whole UPI balance, not
+//      just that day's UPI. Never clamp it and never block closing on it.
+//   3. totalRevenue uses upiNetSales, never upiSales. Every revenue figure
+//      (Daily Closing, Dashboard, P&L, AI Assistant, mobile history) must
+//      read totalRevenue or upiNetSales — never the raw upiSales.
+//   4. Ledger: "UPI Sales" posts the FULL upiSales (real money in) and
+//      "Juice Lab Payout" posts pending out of the UPI account. Both are
+//      autoPostedSource "daily_closing", which pnlLedgerTransactions skips,
+//      so neither ever counts as revenue/expense. Keep that tag.
+//   5. Result, for any split: totalRevenue = DAJAJ's own cash + UPI sales.
+//      (The cash-vs-UPI breakdown can shift by Juice Lab's UPI share, since
+//      the sheet doesn't say how Juice Lab's customers paid; the total can't.)
+//
+// Every place that depends on this is tagged "JUICE LAB INVARIANT" — grep it.
+// After any change here, run scripts/verify-juice-lab.ts (compile with tsc
+// like scripts/verify-opening-cash-rule.ts) and make sure every case passes.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * A day's derived totals. Juice Lab: collected cash already left the drawer
+ * (so it's already out of cashRevenue); the pending part is paid out of UPI,
+ * so only upiNetSales (UPI − pending) is DAJAJ revenue.
+ *
+ * JUICE LAB INVARIANT (rules 1–3 above): don't subtract collected from cash,
+ * don't clamp upiNetSales at 0, and keep totalRevenue on upiNetSales.
+ * Daily Closing's live preview (app/admin/finance/closing/page.tsx) mirrors
+ * this formula — change both together.
+ */
+export function computeDailyClosingTotals(input: {
+  openingCash: number;
+  expenses: DailyClosingExpenseEntry[];
+  deposits: DailyClosingDepositEntry[];
+  upiSales: number;
+  zomatoSales: number;
+  swiggySales: number;
+  otherIncome: number;
+  juiceLabRevenue?: number;
+  juiceLabCollected?: number;
+  closingCash: number | null;
+}) {
+  const cashExpenseTotal = roundCurrency(input.expenses.reduce((sum, e) => sum + e.amount, 0));
+  const depositTotal = roundCurrency(input.deposits.reduce((sum, d) => sum + d.amount, 0));
+  const totalCashOut = roundCurrency(cashExpenseTotal + depositTotal);
+
+  // JUICE LAB INVARIANT: collected cash already left the drawer (so it's
+  // already out of cashRevenue below); only the pending part comes off UPI.
+  const juiceLabPending = roundCurrency(Math.max(0, (input.juiceLabRevenue ?? 0) - (input.juiceLabCollected ?? 0)));
+  const upiNetSales = roundCurrency(input.upiSales - juiceLabPending);
+
+  let cashRevenue = 0;
+  let totalRevenue = 0;
+  if (input.closingCash !== null) {
+    cashRevenue = roundCurrency(input.closingCash - input.openingCash + cashExpenseTotal + depositTotal);
+    totalRevenue = roundCurrency(cashRevenue + upiNetSales + input.zomatoSales + input.swiggySales + input.otherIncome);
+  }
+
+  return { cashExpenseTotal, depositTotal, totalCashOut, cashRevenue, totalRevenue, juiceLabPending, upiNetSales };
+}
+
+/**
+ * The ledger postings a closed day should generate (amount > 0 only).
+ * UPI Sales posts everything that landed in the UPI account; Juice Lab's
+ * pending share leaves it again as "Juice Lab Payout". All of these are
+ * tagged autoPostedSource "daily_closing" and are skipped by
+ * pnlLedgerTransactions — revenue/profit come from the day's totals instead.
+ */
+export function dailyClosingPostingEvents(
+  closing: FinanceDailyClosing,
+): Array<{ eventKey: string; eventName: string; amount: number; kind: "income" | "expense" | "deposit" }> {
+  const incomeEvents = [
+    { eventKey: "cash_sales", eventName: "Cash Sales", amount: closing.cashRevenue, kind: "income" as const },
+    // JUICE LAB INVARIANT (rule 4): the FULL upiSales — what actually landed in
+    // the UPI account. Do NOT switch this to upiNetSales: Juice Lab's pending
+    // share leaves the account as a separate "Juice Lab Payout" below, and
+    // upiNetSales can be negative (an income posting can't be).
+    { eventKey: "upi_sales", eventName: "UPI Sales", amount: closing.upiSales, kind: "income" as const },
+    // Revenue recognized today, not cash received today — these post to an
+    // Escrow account (per Finance Defaults), not straight to a bank account.
+    // The actual bank credit happens later via the platform's own settlement
+    // reconciliation (see services/zomatoFinanceService.ts for Zomato).
+    { eventKey: "zomato_sales", eventName: "Zomato Sales", amount: closing.zomatoSales, kind: "income" as const },
+    { eventKey: "swiggy_sales", eventName: "Swiggy Sales", amount: closing.swiggySales, kind: "income" as const },
+    { eventKey: "other_income", eventName: "Other Income", amount: closing.otherIncome, kind: "income" as const },
+  ].filter((e) => e.amount > 0);
+
+  // Cash Expenses: every rupee spent out of the physical cash drawer today.
+  // Posted as a single Expense out of whatever account "Cash Sales" maps to
+  // — the same implicit "cash drawer" account Cash Deposits already use —
+  // so the Cash account's ledger balance reflects money actually leaving
+  // the drawer, not just Cash Sales revenue piling up unopposed. No separate
+  // Finance Defaults mapping needed: cash expenses always come out of the
+  // same drawer Cash Sales revenue goes into.
+  //
+  // Juice Lab Payout — JUICE LAB INVARIANT (rule 4): Juice Lab's pending
+  // share, paid out of the UPI account (the whole account — it may be more
+  // than today's UPI Sales). It's typed "expense" only so the UPI balance
+  // drops; like every Daily Closing auto-post it's skipped by
+  // pnlLedgerTransactions, so it is never counted as a business expense.
+  const expenseEvents = [
+    { eventKey: "cash_expenses", eventName: "Cash Expenses", amount: closing.cashExpenseTotal, kind: "expense" as const },
+    { eventKey: "juice_lab_payout", eventName: "Juice Lab Payout", amount: closing.juiceLabPending, kind: "expense" as const },
+  ].filter((e) => e.amount > 0);
+
+  const depositTotalsByType = new Map<string, number>();
+  for (const d of closing.deposits) {
+    depositTotalsByType.set(d.type, roundCurrency((depositTotalsByType.get(d.type) ?? 0) + d.amount));
+  }
+  const depositEvents = Array.from(depositTotalsByType.entries())
+    .filter(([, amount]) => amount > 0)
+    .map(([type, amount]) => ({
+      eventKey: depositEventKey(type as CashDepositType),
+      eventName: `${CASH_DEPOSIT_TYPE_LABELS[type as CashDepositType] ?? type} Deposit`,
+      amount,
+      kind: "deposit" as const,
+    }));
+
+  return [...incomeEvents, ...expenseEvents, ...depositEvents];
+}
+
+/**
+ * The only ledger rows that count toward revenue/expense on the Dashboard,
+ * P&L and AI Assistant. Skips Daily Closing's own auto-posts (their amounts
+ * are already in the day's totals — including UPI Sales and Juice Lab
+ * Payout) and anything on the cash drawer (Daily Closing owns the till).
+ * Transfers and Owner Withdrawals are never income or expense.
+ *
+ * JUICE LAB INVARIANT (rule 4): the "daily_closing" filter is what keeps
+ * UPI Sales (posted gross) and Juice Lab Payout out of revenue/expense —
+ * never remove or loosen it. Use this function rather than re-writing the
+ * filter; the Dashboard, P&L and AI Assistant all call it.
+ */
+export function pnlLedgerTransactions<
+  T extends { type: string; autoPostedSource?: string | null; fromAccountId: string | null; toAccountId: string | null },
+>(transactions: T[], isCashDrawer: (accountId: string | null) => boolean): { income: T[]; expense: T[] } {
+  const relevant = transactions.filter((t) => t.autoPostedSource !== "daily_closing");
+  return {
+    income: relevant.filter((t) => t.type === "income" && !isCashDrawer(t.toAccountId)),
+    expense: relevant.filter((t) => t.type === "expense" && !isCashDrawer(t.fromAccountId)),
+  };
 }

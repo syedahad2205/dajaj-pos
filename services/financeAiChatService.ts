@@ -29,6 +29,7 @@ import {
   type FinanceIncomeCategory,
   type FinanceTransaction,
   isPnlCashDrawerAccount,
+  pnlLedgerTransactions,
 } from "@/lib/finance";
 import {
   FINANCE_AI_CHAT_COLLECTION,
@@ -198,9 +199,8 @@ function buildFinanceHistorySnapshot(
   // Same rule as financeDashboardService.ts: a transaction Daily Closing
   // itself generated is already inside that day's totalRevenue/
   // cashExpenseTotal below — counting it again here would double it.
-  const notDailyClosingGenerated = transactions.filter((t) => t.autoPostedSource !== "daily_closing");
-  const bankIncome = notDailyClosingGenerated.filter((t) => t.type === "income" && !isCashDrawer(t.toAccountId));
-  const bankExpense = notDailyClosingGenerated.filter((t) => t.type === "expense" && !isCashDrawer(t.fromAccountId));
+  // JUICE LAB INVARIANT: shared filter — skips Daily Closing's UPI Sales / Juice Lab Payout postings.
+  const { income: bankIncome, expense: bankExpense } = pnlLedgerTransactions(transactions, isCashDrawer);
   const lockedClosings = closings.filter((c) => c.locked);
 
   if (lockedClosings.length === 0 && bankIncome.length === 0 && bankExpense.length === 0) {
@@ -231,7 +231,7 @@ function buildFinanceHistorySnapshot(
   };
 
   for (const c of lockedClosings) {
-    addDay(c.date, c.totalRevenue, c.cashExpenseTotal);
+    addDay(c.date, c.totalRevenue, c.cashExpenseTotal); // JUICE LAB INVARIANT: totalRevenue already excludes Juice Lab
     for (const e of c.expenses) addCategory(c.date, e.categoryName, e.amount);
   }
   for (const t of bankIncome) addDay(t.date, t.amount, 0);

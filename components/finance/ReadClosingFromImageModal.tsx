@@ -125,6 +125,8 @@ export default function ReadClosingFromImageModal({
   const [detectedDate, setDetectedDate] = useState<string | null>(null);
   const [dateSwitched, setDateSwitched] = useState(false);
   const [closingLine, setClosingLine] = useState<ClosingLine | null>(null);
+  // Juice Lab row (Revenue / Collected) — saved through the existing sales endpoint, not as an expense.
+  const [juiceLab, setJuiceLab] = useState<{ revenue: string; collected: string; include: boolean } | null>(null);
 
   const handleFileChosen = (chosen: File | null) => {
     setUploadError("");
@@ -162,6 +164,7 @@ export default function ReadClosingFromImageModal({
         items: ExtractedItem[];
         closingLine: ClosingLine | null;
         deposits: ExtractedDeposit[];
+        juiceLab?: { revenue: number | null; collected: number | null; pending: number | null } | null;
       } = payload.extraction;
 
       setRows(
@@ -190,6 +193,17 @@ export default function ReadClosingFromImageModal({
       setDetectedDate(extraction.date);
       setDateSwitched(false);
       setClosingLine(extraction.closingLine);
+      // Fill whichever of Revenue/Collected the sheet left blank from the
+      // other two cells (Revenue = Collected + Pending). Only Revenue and
+      // Collected are saved; Pending is always derived (JUICE LAB INVARIANT).
+      const jl = extraction.juiceLab ?? null;
+      if (jl) {
+        const revenue = jl.revenue ?? (jl.collected !== null || jl.pending !== null ? (jl.collected ?? 0) + (jl.pending ?? 0) : null);
+        const collected = jl.collected ?? (revenue !== null && jl.pending !== null ? Math.max(0, revenue - jl.pending) : 0);
+        setJuiceLab({ revenue: revenue !== null ? String(revenue) : "", collected: String(collected), include: revenue !== null });
+      } else {
+        setJuiceLab(null);
+      }
       // No extra click needed: a detected Closing/Outstanding line is
       // applied to the parent's (still-editable, still-unsaved) Closing
       // Cash draft field immediately — the Finance Manager can freely
@@ -218,11 +232,17 @@ export default function ReadClosingFromImageModal({
   const invalidAmountIncluded = includedRows.filter((r) => !Number.isFinite(Number(r.amount)) || Number(r.amount) <= 0);
   const includedDeposits = depositRows.filter((d) => d.include);
   const invalidAmountDeposits = includedDeposits.filter((d) => !Number.isFinite(Number(d.amount)) || Number(d.amount) <= 0);
+  const juiceIncluded = juiceLab?.include === true;
+  const juiceRevenue = Number(juiceLab?.revenue ?? "");
+  const juiceCollected = Number(juiceLab?.collected || 0);
+  const juiceInvalid =
+    juiceIncluded && (!Number.isFinite(juiceRevenue) || juiceRevenue < 0 || !Number.isFinite(juiceCollected) || juiceCollected < 0 || juiceCollected > juiceRevenue);
   const canApply =
-    (includedRows.length > 0 || includedDeposits.length > 0) &&
+    (includedRows.length > 0 || includedDeposits.length > 0 || juiceIncluded) &&
     unresolvedIncluded.length === 0 &&
     invalidAmountIncluded.length === 0 &&
-    invalidAmountDeposits.length === 0;
+    invalidAmountDeposits.length === 0 &&
+    !juiceInvalid;
 
   const handleApply = async () => {
     setApplyError("");
@@ -230,6 +250,7 @@ export default function ReadClosingFromImageModal({
       if (unresolvedIncluded.length > 0) setApplyError("Select a category for every included expense before applying.");
       else if (invalidAmountIncluded.length > 0) setApplyError("Enter a valid amount for every included expense before applying.");
       else if (invalidAmountDeposits.length > 0) setApplyError("Enter a valid amount for every included deposit before applying.");
+      else if (juiceInvalid) setApplyError("Juice Lab: enter a valid revenue, and collected can't be more than revenue.");
       else setApplyError("Include at least one expense or deposit, or close this and enter values manually.");
       return;
     }
@@ -266,6 +287,15 @@ export default function ReadClosingFromImageModal({
               amount: Number(d.amount),
               remarks: d.remarks,
             }),
+          }),
+        );
+      }
+      if (juiceIncluded) {
+        await readJson(
+          await firebaseAuthedFetch(`/api/finance/closing/${date}/sales`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ juiceLabRevenue: juiceRevenue, juiceLabCollected: juiceCollected }),
           }),
         );
       }
@@ -373,6 +403,43 @@ export default function ReadClosingFromImageModal({
                 to Closing Cash below. Edit it there if needed.
               </p>
               <span className="flex-shrink-0 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">Applied ✓</span>
+            </div>
+          ) : null}
+
+          {juiceLab ? (
+            <div className={`rounded-2xl border p-3 ${juiceLab.include ? "border-lime-200 bg-lime-50/50" : "border-slate-100 bg-slate-50 opacity-70"}`}>
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <input type="checkbox" checked={juiceLab.include} onChange={(e) => setJuiceLab({ ...juiceLab, include: e.target.checked })} />
+                Juice Lab row detected <span className="font-normal text-slate-500">— not an expense, kept out of our revenue</span>
+              </label>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <div>
+                  <span className="mb-1 block text-xs font-semibold text-slate-500">Revenue</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={juiceLab.revenue}
+                    onChange={(e) => setJuiceLab({ ...juiceLab, revenue: e.target.value })}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <span className="mb-1 block text-xs font-semibold text-slate-500">Collected (cash)</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={juiceLab.collected}
+                    onChange={(e) => setJuiceLab({ ...juiceLab, collected: e.target.value })}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <span className="mb-1 block text-xs font-semibold text-slate-500">Pending (UPI)</span>
+                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold">
+                    {Number.isFinite(juiceRevenue) && Number.isFinite(juiceCollected) ? formatCurrency(Math.max(0, juiceRevenue - juiceCollected)) : "—"}
+                  </div>
+                </div>
+              </div>
             </div>
           ) : null}
 

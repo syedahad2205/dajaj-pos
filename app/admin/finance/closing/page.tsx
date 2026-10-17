@@ -53,6 +53,10 @@ interface DailyClosing {
   zomatoSales: number;
   swiggySales: number;
   otherIncome: number;
+  juiceLabRevenue?: number;
+  juiceLabCollected?: number;
+  juiceLabPending?: number;
+  upiNetSales?: number;
   closingCash: number | null;
   cashRevenue: number;
   totalRevenue: number;
@@ -102,7 +106,14 @@ function FinanceClosingContent() {
 
   // Local, instantly-reactive drafts so the summary card updates as the manager types,
   // without waiting on a round trip for every keystroke.
-  const [salesDraft, setSalesDraft] = useState({ upiSales: "0", zomatoSales: "0", swiggySales: "0", otherIncome: "0" });
+  const [salesDraft, setSalesDraft] = useState({
+    upiSales: "0",
+    zomatoSales: "0",
+    swiggySales: "0",
+    otherIncome: "0",
+    juiceLabRevenue: "0",
+    juiceLabCollected: "0",
+  });
   const [closingCashDraft, setClosingCashDraft] = useState("");
   const [openingCashDraft, setOpeningCashDraft] = useState("0");
 
@@ -152,6 +163,8 @@ function FinanceClosingContent() {
         zomatoSales: String(c.zomatoSales),
         swiggySales: String(c.swiggySales),
         otherIncome: String(c.otherIncome),
+        juiceLabRevenue: String(c.juiceLabRevenue ?? 0),
+        juiceLabCollected: String(c.juiceLabCollected ?? 0),
       });
       setClosingCashDraft(c.closingCash !== null ? String(c.closingCash) : "");
       setOpeningCashDraft(String(c.openingCash));
@@ -210,12 +223,20 @@ function FinanceClosingContent() {
     swiggy: Number(salesDraft.swiggySales) || 0,
     other: Number(salesDraft.otherIncome) || 0,
   };
+  // JUICE LAB INVARIANT — live preview mirroring computeDailyClosingTotals() in
+  // lib/finance.ts (change both together): collected cash already left the
+  // drawer; the pending part is paid out of UPI, so only UPI − pending is ours.
+  // upiNetSales may go negative — that's valid, don't clamp it.
+  const juiceLabRevenue = Number(salesDraft.juiceLabRevenue) || 0;
+  const juiceLabCollected = Number(salesDraft.juiceLabCollected) || 0;
+  const juiceLabPending = roundCurrency(Math.max(0, juiceLabRevenue - juiceLabCollected));
+  const upiNetSales = roundCurrency(previewSales.upi - juiceLabPending);
   const cashExpenseTotal = closing?.cashExpenseTotal ?? 0;
   const depositTotal = closing?.depositTotal ?? 0;
   const totalCashOut = closing?.totalCashOut ?? 0;
   const cashRevenue =
     previewClosingCash !== null ? roundCurrency(previewClosingCash - previewOpeningCash + cashExpenseTotal + depositTotal) : null;
-  const totalRevenue = cashRevenue !== null ? roundCurrency(cashRevenue + previewSales.upi + previewSales.zomato + previewSales.swiggy + previewSales.other) : null;
+  const totalRevenue = cashRevenue !== null ? roundCurrency(cashRevenue + upiNetSales + previewSales.zomato + previewSales.swiggy + previewSales.other) : null;
 
   const handleSaveSales = async () => {
     if (!closing || closing.locked) return;
@@ -228,6 +249,8 @@ function FinanceClosingContent() {
           zomatoSales: Number(salesDraft.zomatoSales) || 0,
           swiggySales: Number(salesDraft.swiggySales) || 0,
           otherIncome: Number(salesDraft.otherIncome) || 0,
+          juiceLabRevenue: Number(salesDraft.juiceLabRevenue) || 0,
+          juiceLabCollected: Number(salesDraft.juiceLabCollected) || 0,
         }),
       });
       const payload = await readJson(response);
@@ -716,9 +739,59 @@ function FinanceClosingContent() {
                 <p className="mt-2 text-xs text-slate-400">No need to say which bank — that gets reconciled later.</p>
               </section>
 
+              {/* Juice Lab — sold through our till/UPI, but not our revenue */}
+              <section className="rounded-2xl border border-lime-200 bg-white p-4 shadow-sm sm:p-5">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-lime-700">5. Juice Lab</p>
+                <p className="mb-3 text-xs text-slate-400">Kept out of our revenue. Enter today&apos;s Juice Lab sales and how much they took in cash.</p>
+                <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Revenue</label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      disabled={locked}
+                      value={salesDraft.juiceLabRevenue}
+                      onChange={(e) => setSalesDraft((s) => ({ ...s, juiceLabRevenue: e.target.value }))}
+                      onBlur={handleSaveSales}
+                      className={numericInputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Collected (cash)</label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      disabled={locked}
+                      value={salesDraft.juiceLabCollected}
+                      onChange={(e) => setSalesDraft((s) => ({ ...s, juiceLabCollected: e.target.value }))}
+                      onBlur={handleSaveSales}
+                      className={numericInputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Pending (UPI)</label>
+                    <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-base font-semibold text-slate-700">
+                      {formatCurrency(juiceLabPending)}
+                    </div>
+                  </div>
+                </div>
+                {juiceLabCollected > juiceLabRevenue ? (
+                  <p className="mt-2 text-xs font-semibold text-rose-600">Collected can&apos;t be more than Juice Lab revenue.</p>
+                ) : juiceLabRevenue > 0 ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    {juiceLabCollected > 0 ? `${formatCurrency(juiceLabCollected)} taken from the drawer (already out of the cash count). ` : ""}
+                    {juiceLabPending > 0
+                      ? `${formatCurrency(juiceLabPending)} paid to Juice Lab from the UPI account — our UPI is ${formatCurrency(upiNetSales)}${
+                          upiNetSales < 0 ? " (more than today's UPI, so the rest comes from the UPI balance)" : ""
+                        }.`
+                      : ""}
+                  </p>
+                ) : null}
+              </section>
+
               {/* Closing Cash */}
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">5. Count the Drawer</p>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">6. Count the Drawer</p>
                 <label className="mb-1 block text-sm font-semibold text-slate-700">Closing Cash</label>
                 <input
                   type="number"
@@ -739,12 +812,27 @@ function FinanceClosingContent() {
                 <SummaryRow label="Cash Deposits" value={formatCurrency(depositTotal)} muted />
                 <SummaryRow label="Total Cash Out" value={formatCurrency(totalCashOut)} />
                 <SummaryRow label="Cash Revenue" value={cashRevenue !== null ? formatCurrency(cashRevenue) : "—"} emphasis />
-                <SummaryRow label="UPI Sales" value={formatCurrency(previewSales.upi)} muted />
+                {juiceLabPending > 0 ? (
+                  <>
+                    <SummaryRow label="UPI Received" value={formatCurrency(previewSales.upi)} muted />
+                    <SummaryRow label="− Juice Lab Pending (paid from UPI)" value={formatCurrency(juiceLabPending)} muted />
+                    <SummaryRow label="UPI Sales (ours)" value={formatCurrency(upiNetSales)} muted />
+                  </>
+                ) : (
+                  <SummaryRow label="UPI Sales" value={formatCurrency(previewSales.upi)} muted />
+                )}
                 <SummaryRow label="Zomato Sales" value={formatCurrency(previewSales.zomato)} muted />
                 <SummaryRow label="Swiggy Sales" value={formatCurrency(previewSales.swiggy)} muted />
                 <SummaryRow label="Other Income" value={formatCurrency(previewSales.other)} muted />
                 <SummaryRow label="Total Revenue" value={totalRevenue !== null ? formatCurrency(totalRevenue) : "—"} emphasis />
                 <SummaryRow label="Closing Cash" value={previewClosingCash !== null ? formatCurrency(previewClosingCash) : "—"} />
+                {juiceLabRevenue > 0 ? (
+                  <div className="mt-2 border-t border-slate-100 pt-2">
+                    <SummaryRow label="Juice Lab Revenue (not ours)" value={formatCurrency(juiceLabRevenue)} muted />
+                    <SummaryRow label="Collected from drawer" value={formatCurrency(juiceLabCollected)} muted />
+                    <SummaryRow label="Pending — paid from UPI" value={formatCurrency(juiceLabPending)} muted />
+                  </div>
+                ) : null}
               </section>
             </>
           )}
