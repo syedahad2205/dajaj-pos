@@ -37,6 +37,22 @@ export interface DailyClosingImageJuiceLab {
   pending: number | null;
 }
 
+/** One row of the sheet's "Daily Stock" table, as written. Values null when blank / dash — never invented. */
+export interface DailyClosingImageStockRow {
+  label: string;
+  opening: number | null;
+  closing: number | null;
+  order: number | null;
+}
+
+/** The sheet's "Total Shawarmas Sold" grid. null = blank cell. */
+export interface DailyClosingImageShawarma {
+  khubbusRoll: number | null;
+  khubbusPlate: number | null;
+  rumaliRoll: number | null;
+  rumaliPlate: number | null;
+}
+
 /** Raw, validated (but not yet category-resolved) AI extraction. */
 export interface DailyClosingImageExtraction {
   /** YYYY-MM-DD if a date was clearly visible on the sheet — never guessed. */
@@ -47,6 +63,8 @@ export interface DailyClosingImageExtraction {
   closingLine: DailyClosingImageClosingLine | null;
   /** null when the sheet has no Juice Lab row or all three cells are blank. */
   juiceLab: DailyClosingImageJuiceLab | null;
+  stock: DailyClosingImageStockRow[];
+  shawarma: DailyClosingImageShawarma | null;
 }
 
 export const EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION: DailyClosingImageExtraction = {
@@ -55,7 +73,15 @@ export const EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION: DailyClosingImageExtraction =
   items: [],
   closingLine: null,
   juiceLab: null,
+  stock: [],
+  shawarma: null,
 };
+
+/** A stock row matched to a configured stock item (itemId null = no match — shown, but not applied). */
+export interface ResolvedDailyClosingImageStockRow extends DailyClosingImageStockRow {
+  itemId: string | null;
+  itemName: string | null;
+}
 
 /** How an item's category ended up resolved (or not) — surfaced to the UI so an AI-guessed match can be shown differently from a deterministic one, per spec §6's priority ladder. "misc_fallback" means neither a deterministic nor a validated AI match was found, so it was defaulted to the existing "Misc"-style category rather than left blank — still fully editable by the Finance Manager. */
 export type DailyClosingCategoryMatchSource = "deterministic" | "ai" | "misc_fallback" | null;
@@ -85,4 +111,6 @@ export interface ResolvedDailyClosingImageExtraction {
   closingLine: DailyClosingImageClosingLine | null;
   deposits: DailyClosingImageDepositCandidate[];
   juiceLab: DailyClosingImageJuiceLab | null;
+  stock: ResolvedDailyClosingImageStockRow[];
+  shawarma: DailyClosingImageShawarma | null;
 }

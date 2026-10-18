@@ -30,11 +30,6 @@ const adminLinks = [
     description: "Daily Closing — log cash expenses, Pigmi deposits, and sales, then close the books in under 2 minutes",
   },
   {
-    href: "/admin/inventory",
-    title: "Inventory Logs",
-    description: "Review inventory updates and audit history",
-  },
-  {
     href: "/admin/zomato",
     title: "Zomato Sales Tracker",
     description: "Import payout CSVs, analyse item performance, and generate reports",

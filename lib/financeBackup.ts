@@ -57,7 +57,7 @@ export const BACKUP_COLLECTIONS: BackupCollectionConfig[] = [
   {
     name: "fin_daily_closing",
     label: "Daily Closings",
-    childArrays: ["expenses", "deposits"],
+    childArrays: ["expenses", "deposits", "stock"],
     preferredColumns: [
       "date", "locked", "openingCash", "openingCashSource", "externalCashAdjustment", "closingCash", "cashRevenue",
       "upiSales", "zomatoSales", "swiggySales", "otherIncome", "totalRevenue", "cashExpenseTotal", "depositTotal",
@@ -70,6 +70,7 @@ export const BACKUP_COLLECTIONS: BackupCollectionConfig[] = [
   { name: "fin_vendors", label: "Vendors", preferredColumns: ["name", "phone", "status"] },
   { name: "finance_defaults", label: "Finance Defaults (event → account)", preferredColumns: ["eventName", "destinationAccountId", "isActive"] },
   { name: "fin_settings", label: "Finance settings" },
+  { name: "finance_stock_config", label: "Daily stock items & prices" },
   { name: "finance_managers", label: "Finance Managers", preferredColumns: ["name", "email", "active"] },
   { name: "quick_entry_payee_rules", label: "Quick Entry payee rules" },
   { name: "quick_entry_records", label: "Quick Entry records" },

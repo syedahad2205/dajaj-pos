@@ -231,6 +231,16 @@ export async function GET(request: Request) {
       // the totals above). JUICE LAB INVARIANT: display only — never add these
       // to totalRevenue/totalExpense/netPnl. Collected = cash taken from the drawer; pending =
       // paid to Juice Lab out of UPI at close.
+      // ── Estimated sales from stock counts + shawarmas — a cross-check only,
+      // never part of revenue/P&L. Compared against each day's Total Revenue
+      // (only days that have an estimate).
+      const estimatedDays = lockedClosings.filter((c) => c.estimatedSales.total > 0);
+      const stockEstimate = {
+        days: estimatedDays.length,
+        estimated: roundCurrency(estimatedDays.reduce((s, c) => s + c.estimatedSales.total, 0)),
+        actual: roundCurrency(estimatedDays.reduce((s, c) => s + c.totalRevenue, 0)),
+      };
+
       const juiceDays = lockedClosings.filter((c) => c.juiceLabRevenue > 0);
       const juiceLab = {
         days: juiceDays.length,
@@ -257,6 +267,7 @@ export async function GET(request: Request) {
           depositBreakdown,
           closingDeposits,
           juiceLab,
+          stockEstimate,
           // Owner payouts are Admin-only information.
           ...((await requireAdminCaller(firestore, userId).then(() => true, () => false)) ? { ownerWithdrawals, retainedProfit } : {}),
         },

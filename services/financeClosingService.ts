@@ -33,6 +33,17 @@ import {
   netCashDrawerTransferAdjustment,
   computeDailyClosingTotals,
   dailyClosingPostingEvents,
+  computeEstimatedSales,
+  expectedOpeningFromPrevious,
+  unexplainedStockMismatches,
+  DEFAULT_STOCK_PRICING,
+  EMPTY_SHAWARMA_COUNTS,
+  SHAWARMA_KINDS,
+  type DailyClosingStockEntry,
+  type EstimatedSales,
+  type ShawarmaCounts,
+  type ShawarmaPrices,
+  type StockPricingConfig,
   type CashDepositType,
   type DailyClosingDepositEntry,
   type DailyClosingExpenseEntry,
@@ -179,6 +190,10 @@ function emptyClosing(date: string, branchId: string, openingCash: number, openi
     cashDrawerBalanceAsOfDate: null,
     autoPostedTransactionsByEvent: {},
     postingWarnings: [],
+    stock: [],
+    shawarmaSold: { ...EMPTY_SHAWARMA_COUNTS },
+    shawarmaPrices: null,
+    estimatedSales: computeEstimatedSales([], EMPTY_SHAWARMA_COUNTS, null),
   };
 }
 
@@ -280,9 +295,43 @@ function normalizeClosing(raw: DocumentData): FinanceDailyClosing {
     autoPostedTransactionsByEvent:
       raw.autoPostedTransactionsByEvent && typeof raw.autoPostedTransactionsByEvent === "object" ? raw.autoPostedTransactionsByEvent : {},
     postingWarnings: Array.isArray(raw.postingWarnings) ? raw.postingWarnings : [],
+    ...normalizeStockFields(raw),
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Stock fields of a raw day doc (absent on days saved before stock tracking). estimatedSales is always recomputed. */
+function normalizeStockFields(raw: DocumentData): {
+  stock: DailyClosingStockEntry[];
+  shawarmaSold: ShawarmaCounts;
+  shawarmaPrices: ShawarmaPrices | null;
+  estimatedSales: EstimatedSales;
+} {
+  const stock: DailyClosingStockEntry[] = Array.isArray(raw.stock)
+    ? raw.stock
+        .filter((r: DocumentData) => r && typeof r.itemId === "string")
+        .map((r: DocumentData) => ({
+          itemId: r.itemId,
+          itemName: typeof r.itemName === "string" ? r.itemName : r.itemId,
+          opening: numberOrNull(r.opening),
+          closing: numberOrNull(r.closing),
+          order: numberOrNull(r.order),
+          unitPrice: numberOrNull(r.unitPrice),
+          mismatchReason: typeof r.mismatchReason === "string" && r.mismatchReason.trim() ? r.mismatchReason.trim() : null,
+        }))
+    : [];
+  const shawarmaSold = { ...EMPTY_SHAWARMA_COUNTS };
+  for (const k of SHAWARMA_KINDS) shawarmaSold[k.key] = numberOrNull(raw.shawarmaSold?.[k.key]) ?? 0;
+  const shawarmaPrices =
+    raw.shawarmaPrices && typeof raw.shawarmaPrices === "object"
+      ? (Object.fromEntries(SHAWARMA_KINDS.map((k) => [k.key, numberOrNull(raw.shawarmaPrices[k.key]) ?? 0])) as unknown as ShawarmaPrices)
+      : null;
+  return { stock, shawarmaSold, shawarmaPrices, estimatedSales: computeEstimatedSales(stock, shawarmaSold, shawarmaPrices) };
 }
 
 /**
@@ -1657,6 +1706,20 @@ export async function closeDailyClosing(
   const base = await loadOrBootstrapClosing(date, db, branchId);
   if (base.locked) throw new Error(`${date} is already closed. Ask an admin to reopen it first.`);
 
+  // Stock chain: today's Opening must equal yesterday's Closing + Order, or carry a reason.
+  if (base.stock.length > 0) {
+    const prevSnap = await getDoc(doc(dailyClosingCollection(db), previousDateKey(date)));
+    const expected = expectedOpeningFromPrevious(prevSnap.exists() ? normalizeClosing(prevSnap.data()).stock : null);
+    const mismatches = unexplainedStockMismatches(base.stock, expected);
+    if (mismatches.length > 0) {
+      throw new Error(
+        `Stock opening doesn't match yesterday's closing + order for ${mismatches
+          .map((m) => `${m.itemName} (${m.opening} vs ${m.expected})`)
+          .join(", ")}. Fix the opening or add a reason in the Stock section.`,
+      );
+    }
+  }
+
   // Recompute today's cash-drawer transfers fresh at save time (load already
   // folded in whatever it could see). Subtract the load-time adjustment first
   // so we never apply the same transfer twice.
@@ -2111,4 +2174,205 @@ export async function backfillCashDrawerRecounts(
   }
 
   return { daysChecked: lockedClosings.length, openingCashDaysAdjusted, daysAdjusted, totalAdjustment, warnings };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Daily stock + estimated sales — see the rules above DailyClosingStockEntry
+// in lib/finance.ts. Prices live in finance_stock_config/main.
+// ─────────────────────────────────────────────────────────────────────────
+
+function stockConfigRef(db: Firestore) {
+  return doc(collection(db, "finance_stock_config"), "main");
+}
+
+function normalizeStockConfig(raw: DocumentData | undefined): StockPricingConfig {
+  if (!raw) return { items: DEFAULT_STOCK_PRICING.items.map((i) => ({ ...i })), shawarmaPrices: { ...DEFAULT_STOCK_PRICING.shawarmaPrices } };
+  const items = Array.isArray(raw.items)
+    ? raw.items
+        .filter((i: DocumentData) => i && typeof i.id === "string" && typeof i.name === "string")
+        .map((i: DocumentData, index: number) => ({
+          id: i.id,
+          name: i.name,
+          unitPrice: numberOrNull(i.unitPrice),
+          active: i.active !== false,
+          displayOrder: typeof i.displayOrder === "number" ? i.displayOrder : index + 1,
+        }))
+        .sort((a: { displayOrder: number }, b: { displayOrder: number }) => a.displayOrder - b.displayOrder)
+    : DEFAULT_STOCK_PRICING.items.map((i) => ({ ...i }));
+  const shawarmaPrices = { ...DEFAULT_STOCK_PRICING.shawarmaPrices };
+  for (const k of SHAWARMA_KINDS) shawarmaPrices[k.key] = numberOrNull(raw.shawarmaPrices?.[k.key]) ?? shawarmaPrices[k.key];
+  return { items, shawarmaPrices };
+}
+
+/** Stock items + prices. Falls back to the built-in defaults until an Admin saves them. */
+export async function getStockPricingConfig(db: Firestore = defaultFirestore): Promise<StockPricingConfig> {
+  const snap = await getDoc(stockConfigRef(db));
+  return normalizeStockConfig(snap.exists() ? snap.data() : undefined);
+}
+
+/** Admin-only (enforced by the route and firestore.rules). Only affects days whose stock is saved from now on. */
+export async function saveStockPricingConfig(
+  input: StockPricingConfig,
+  userId: string,
+  userName: string,
+  db: Firestore = defaultFirestore,
+): Promise<StockPricingConfig> {
+  const seen = new Set<string>();
+  const items = (Array.isArray(input.items) ? input.items : []).map((i, index) => {
+    const name = String(i.name ?? "").trim();
+    if (!name) throw new Error("Every stock item needs a name.");
+    const id = String(i.id ?? "").trim() || name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    if (!id || seen.has(id)) throw new Error(`Duplicate or invalid stock item "${name}".`);
+    seen.add(id);
+    const unitPrice = i.unitPrice === null || i.unitPrice === undefined || (i.unitPrice as unknown) === "" ? null : Number(i.unitPrice);
+    if (unitPrice !== null && (!Number.isFinite(unitPrice) || unitPrice < 0)) throw new Error(`Price for ${name} must be a positive number or empty.`);
+    return { id, name, unitPrice: unitPrice === null ? null : roundCurrency(unitPrice), active: i.active !== false, displayOrder: index + 1 };
+  });
+  const shawarmaPrices = { ...DEFAULT_STOCK_PRICING.shawarmaPrices };
+  for (const k of SHAWARMA_KINDS) {
+    const v = Number(input.shawarmaPrices?.[k.key]);
+    if (!Number.isFinite(v) || v < 0) throw new Error(`${k.label} price must be a positive number.`);
+    shawarmaPrices[k.key] = roundCurrency(v);
+  }
+  const before = await getStockPricingConfig(db);
+  const next: StockPricingConfig = { items, shawarmaPrices };
+  await setDoc(stockConfigRef(db), { ...next, updatedBy: userId, updatedByName: userName, updatedAt: serverTimestamp() });
+  await logFinanceAudit(
+    { module: "stock", entityId: "pricing", entityLabel: "Stock & shawarma prices", action: "update", userId, userName, oldValue: before, newValue: next },
+    db,
+  );
+  return next;
+}
+
+export interface DailyClosingStockView {
+  date: string;
+  locked: boolean;
+  config: StockPricingConfig;
+  stock: DailyClosingStockEntry[];
+  shawarmaSold: ShawarmaCounts;
+  shawarmaPrices: ShawarmaPrices | null;
+  estimatedSales: EstimatedSales;
+  /** Per item: previous day's Closing + Order. Empty on the first day of tracking. */
+  expectedOpening: Record<string, number | null>;
+  /** Whether the previous day recorded any stock — false means "first day": only Closing + Order needed. */
+  hasPreviousStock: boolean;
+  totalRevenue: number;
+  closingCash: number | null;
+}
+
+/** Read-only view for the Stock section (never writes). */
+export async function getDailyClosingStockView(
+  date: string,
+  db: Firestore = defaultFirestore,
+  branchId: string = DEFAULT_BRANCH_ID,
+): Promise<DailyClosingStockView> {
+  if (!isValidDateKey(date)) throw new Error("Invalid date.");
+  const [config, snap, prevSnap] = await Promise.all([
+    getStockPricingConfig(db),
+    getDoc(doc(dailyClosingCollection(db), date)),
+    getDoc(doc(dailyClosingCollection(db), previousDateKey(date))),
+  ]);
+  const day = snap.exists() ? normalizeClosing(snap.data()) : emptyClosing(date, branchId, 0, "manual");
+  const prevStock = prevSnap.exists() ? normalizeClosing(prevSnap.data()).stock : [];
+  return {
+    date,
+    locked: day.locked,
+    config,
+    stock: day.stock,
+    shawarmaSold: day.shawarmaSold,
+    shawarmaPrices: day.shawarmaPrices,
+    estimatedSales: day.estimatedSales,
+    expectedOpening: expectedOpeningFromPrevious(prevStock),
+    hasPreviousStock: prevStock.some((r) => r.closing !== null),
+    totalRevenue: day.totalRevenue,
+    closingCash: day.closingCash,
+  };
+}
+
+export interface UpdateDailyClosingStockInput {
+  rows: Array<{ itemId: string; opening?: number | null; closing?: number | null; order?: number | null; mismatchReason?: string | null }>;
+  shawarmaSold?: Partial<ShawarmaCounts>;
+}
+
+function stockNumber(value: unknown, label: string): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be zero or more.`);
+  return roundCurrency(n);
+}
+
+/**
+ * Saves stock rows and shawarma counts, snapshotting today's prices onto the
+ * day. Merges: only items present in `rows` change (a row with all three
+ * values empty removes that item); other items keep what was saved, so Read
+ * from Image can apply just the items it read.
+ */
+export async function updateDailyClosingStock(
+  date: string,
+  input: UpdateDailyClosingStockInput,
+  db: Firestore = defaultFirestore,
+  branchId: string = DEFAULT_BRANCH_ID,
+): Promise<FinanceDailyClosing> {
+  await assertCanEditDailyClosingDate(date, db, branchId);
+  const config = await getStockPricingConfig(db);
+  const itemsById = new Map(config.items.map((i) => [i.id, i]));
+
+  // Validate input up front (outside the transaction).
+  const updates = new Map<string, DailyClosingStockEntry | null>();
+  for (const row of Array.isArray(input.rows) ? input.rows : []) {
+    const item = itemsById.get(row.itemId);
+    if (!item) continue; // unknown / removed item
+    const opening = stockNumber(row.opening, `${item.name} opening`);
+    const closing = stockNumber(row.closing, `${item.name} closing`);
+    const order = stockNumber(row.order, `${item.name} order`);
+    updates.set(
+      item.id,
+      opening === null && closing === null && order === null
+        ? null
+        : {
+            itemId: item.id,
+            itemName: item.name,
+            opening,
+            closing,
+            order,
+            unitPrice: item.unitPrice,
+            mismatchReason: row.mismatchReason?.trim() ? row.mismatchReason.trim().slice(0, 200) : null,
+          },
+    );
+  }
+
+  return runTransaction(db, async (tx) => {
+    const closingRef = doc(dailyClosingCollection(db), date);
+    const closingSnap = await tx.get(closingRef);
+    const base = await loadOrBootstrapClosingInTx(tx, db, date, branchId, closingSnap);
+
+    // Existing rows (refreshed to today's name/price) + updates, in config order.
+    const merged = new Map<string, DailyClosingStockEntry>();
+    for (const row of base.stock) {
+      const item = itemsById.get(row.itemId);
+      if (item) merged.set(row.itemId, { ...row, itemName: item.name, unitPrice: item.unitPrice });
+    }
+    updates.forEach((row, itemId) => {
+      if (row) merged.set(itemId, row);
+      else merged.delete(itemId);
+    });
+    const stock = config.items.filter((i) => merged.has(i.id)).map((i) => merged.get(i.id)!);
+
+    const shawarmaSold = { ...base.shawarmaSold };
+    for (const k of SHAWARMA_KINDS) {
+      if (input.shawarmaSold && input.shawarmaSold[k.key] !== undefined) {
+        shawarmaSold[k.key] = stockNumber(input.shawarmaSold[k.key], k.label) ?? 0;
+      }
+    }
+    const shawarmaPrices = { ...config.shawarmaPrices };
+    const next: FinanceDailyClosing = {
+      ...base,
+      stock,
+      shawarmaSold,
+      shawarmaPrices,
+      estimatedSales: computeEstimatedSales(stock, shawarmaSold, shawarmaPrices),
+    };
+    tx.set(closingRef, { ...next, createdAt: closingSnap.exists() ? closingSnap.data().createdAt : serverTimestamp(), updatedAt: serverTimestamp() });
+    return next;
+  });
 }

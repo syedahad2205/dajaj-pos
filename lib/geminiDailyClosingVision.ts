@@ -3,6 +3,8 @@ import {
   type DailyClosingImageExtraction,
   type DailyClosingImageItem,
   type DailyClosingImageJuiceLab,
+  type DailyClosingImageShawarma,
+  type DailyClosingImageStockRow,
 } from "@/lib/dailyClosingImage";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -64,6 +66,8 @@ Rules:
 - CRITICAL — hyphens are separators, not minus signs: a line written like "Veg - 240 -" means amount = 240 (positive), not -240. Do not treat a dash next to a number as a negative sign.
 - CRITICAL — the "Closing"/"Outstanding" line: put it in "closingLine", not "items". "amount" is always a positive number. "sign" is 1 if the line says "Closing" (a positive balance) and -1 if it says "Outstanding" (a negative balance) — the word's meaning decides the sign, regardless of any dash next to the number. For example "Closing - 1890" → amount 1890, sign 1. "Outstanding - 500" → amount 500, sign -1. If there is no such summary line visible, return closingLine as null.
 - CRITICAL — the "Juice Lab" row: the printed sheet has a row labelled "JUICE LAB" with three cells: REVENUE ₹, COLLECTED ₹ and PENDING ₹. Juice Lab is a separate business, NOT an expense — never put it in "items". Put its three handwritten numbers in "juiceLab" (revenue, collected, pending), each a positive number or null if that cell is blank/illegible. If the whole row is blank, return juiceLab as null.
+- "stock": the printed "DAILY STOCK" table (columns ITEM, OPENING, CLOSING, ORDER — items like Alfaham, Grill, Tandoori, Tikka, Tandoori Kebab, Boneless). One entry per item row, "label" = the printed item name. Numbers can be fractions — halves and quarters: "2½" or "2 1/2" = 2.5, "2¼" or "2 1/4" = 2.25, "2¾" or "2 3/4" = 2.75, "¼" = 0.25. Read the fraction carefully (a small ¼ next to a number is easy to miss). A dash, "-" or blank cell means null, never 0 or a guess; a written "0" is 0. Stock rows are NEVER expenses — never put them in "items".
+- "shawarma": the printed "TOTAL SHAWARMAS SOLD" grid (rows Khubbus and Rumali, columns ROLL and PLATE) → khubbusRoll, khubbusPlate, rumaliRoll, rumaliPlate, each a number or null if blank. Return null if the whole grid is blank. Never put these in "items".
 - Printed rows that only have a tick/cross or a dash (e.g. a salary row marked "X" or "-") with no number have no amount — return amount null for them, never 0 or a guess.
 - "date": YYYY-MM-DD if a date is clearly written on the sheet, else null — never guess a date.
 - "readable" is false if the image is too blurry/dark/cut off to make out the sheet at all, or it isn't a Daily Closing sheet — true otherwise.
@@ -107,6 +111,29 @@ const RESPONSE_SCHEMA = {
         revenue: { type: "NUMBER", nullable: true },
         collected: { type: "NUMBER", nullable: true },
         pending: { type: "NUMBER", nullable: true },
+      },
+    },
+    stock: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          label: { type: "STRING" },
+          opening: { type: "NUMBER", nullable: true },
+          closing: { type: "NUMBER", nullable: true },
+          order: { type: "NUMBER", nullable: true },
+        },
+        required: ["label"],
+      },
+    },
+    shawarma: {
+      type: "OBJECT",
+      nullable: true,
+      properties: {
+        khubbusRoll: { type: "NUMBER", nullable: true },
+        khubbusPlate: { type: "NUMBER", nullable: true },
+        rumaliRoll: { type: "NUMBER", nullable: true },
+        rumaliPlate: { type: "NUMBER", nullable: true },
       },
     },
   },
@@ -173,6 +200,28 @@ function coerceJuiceLab(raw: unknown): DailyClosingImageJuiceLab | null {
   return juiceLab.revenue === null && juiceLab.collected === null && juiceLab.pending === null ? null : juiceLab;
 }
 
+const nonNegative = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+
+function coerceStock(raw: unknown): DailyClosingImageStockRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((r) => {
+      if (typeof r !== "object" || r === null) return null;
+      const o = r as Record<string, unknown>;
+      const label = cleanString(o.label, 60);
+      if (!label) return null;
+      return { label, opening: nonNegative(o.opening), closing: nonNegative(o.closing), order: nonNegative(o.order) };
+    })
+    .filter((r): r is DailyClosingImageStockRow => r !== null && (r.opening !== null || r.closing !== null || r.order !== null));
+}
+
+function coerceShawarma(raw: unknown): DailyClosingImageShawarma | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const o = raw as Record<string, unknown>;
+  const s = { khubbusRoll: nonNegative(o.khubbusRoll), khubbusPlate: nonNegative(o.khubbusPlate), rumaliRoll: nonNegative(o.rumaliRoll), rumaliPlate: nonNegative(o.rumaliPlate) };
+  return Object.values(s).every((v) => v === null) ? null : s;
+}
+
 function coerceExtraction(raw: unknown): DailyClosingImageExtraction {
   if (typeof raw !== "object" || raw === null) return { ...EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION };
   const r = raw as Record<string, unknown>;
@@ -182,8 +231,10 @@ function coerceExtraction(raw: unknown): DailyClosingImageExtraction {
   const items = Array.isArray(r.items) ? r.items.map(coerceItem).filter((item): item is DailyClosingImageItem => item !== null) : [];
   const closingLine = coerceClosingLine(r.closingLine);
   const juiceLab = coerceJuiceLab(r.juiceLab);
+  const stock = coerceStock(r.stock);
+  const shawarma = coerceShawarma(r.shawarma);
 
-  return { date, readable, items, closingLine, juiceLab };
+  return { date, readable, items, closingLine, juiceLab, stock, shawarma };
 }
 
 interface GeminiGenerateContentResponse {

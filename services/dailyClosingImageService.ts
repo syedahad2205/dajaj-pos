@@ -1,3 +1,6 @@
+import { getStockPricingConfig } from "@/services/financeClosingService";
+import type { StockItemConfig } from "@/lib/finance";
+import type { DailyClosingImageStockRow, ResolvedDailyClosingImageStockRow } from "@/lib/dailyClosingImage";
 import type { Firestore } from "firebase/firestore";
 import { firestore as defaultFirestore } from "@/lib/firebase";
 import { CASH_DEPOSIT_TYPE_LABELS, DEFAULT_BRANCH_ID, SUPPORTED_CASH_DEPOSIT_TYPES, type FinanceExpenseCategory } from "@/lib/finance";
@@ -118,12 +121,12 @@ function splitOutDepositCandidates(
   return { items: remainingItems, deposits };
 }
 
-const SALARY_DEFAULT_AMOUNT = 2500;
+const SALARY_DEFAULT_AMOUNT = 1800;
 const SALARY_LABEL = "Salary";
 
 /**
  * Business rule: if this sheet doesn't mention Salary at all, add a
- * default ₹2,500 Salary expense so it's never silently skipped just
+ * default ₹1,800 Salary expense so it's never silently skipped just
  * because it wasn't written down that day. Checked against THIS sheet's
  * own extraction only (not the day's already-saved expenses) — matched by
  * loose text against both the raw label and any already-resolved category
@@ -186,7 +189,10 @@ export async function analyzeDailyClosingImage(
     throw new Error("This image is too large. Please upload a photo under 8MB.");
   }
 
-  const categories = await getExpenseCategories({ branchId }, db); // active only
+  const [categories, stockConfig] = await Promise.all([
+    getExpenseCategories({ branchId }, db), // active only
+    getStockPricingConfig(db),
+  ]);
 
   let aiError: string | null = null;
   let rawExtraction = EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION;
@@ -214,8 +220,28 @@ export async function analyzeDailyClosingImage(
       closingLine: rawExtraction.closingLine,
       deposits,
       juiceLab: rawExtraction.juiceLab ?? null,
+      stock: resolveStockRows(rawExtraction.stock ?? [], stockConfig.items),
+      shawarma: rawExtraction.shawarma ?? null,
     },
     categories,
     aiError,
   };
+}
+
+/** Loose key for matching handwritten/printed stock labels to configured items ("Tandoori Kabab" ≈ "Tandoori Kebab"). */
+function stockKey(text: string): string {
+  return text.toLowerCase().replace(/kabab|kabob/g, "kebab").replace(/[^a-z]/g, "");
+}
+
+/** Matches each sheet stock row to a configured stock item (exact key first, then contains). Never invents an item. */
+function resolveStockRows(rows: DailyClosingImageStockRow[], items: StockItemConfig[]): ResolvedDailyClosingImageStockRow[] {
+  const used = new Set<string>();
+  return rows.map((row) => {
+    const key = stockKey(row.label);
+    const match =
+      items.find((i) => !used.has(i.id) && stockKey(i.name) === key) ??
+      items.find((i) => !used.has(i.id) && key.length >= 4 && (stockKey(i.name).includes(key) || key.includes(stockKey(i.name))));
+    if (match) used.add(match.id);
+    return { ...row, itemId: match?.id ?? null, itemName: match?.name ?? null };
+  });
 }

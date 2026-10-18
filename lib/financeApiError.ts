@@ -5,7 +5,7 @@ import { ClosingSequenceError } from "@/lib/finance";
 
 /**
  * Shared error → HTTP response mapping for every Finance module API route,
- * following the same convention as app/api/inventory/*: auth errors are
+ * following the same convention as the other API routes: auth errors are
  * 401, Firestore permission-denied is 403, "not found" reads as 404,
  * everything else (including our own validation Errors, day-locked errors,
  * etc.) is a 400 with the thrown message surfaced directly — these are

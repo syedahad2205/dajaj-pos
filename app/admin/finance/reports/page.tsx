@@ -30,6 +30,8 @@ interface DailyClosingRow {
   juiceLabRevenue?: number;
   juiceLabCollected?: number;
   juiceLabPending?: number;
+  /** Estimated sales from stock counts + shawarmas (cross-check only). */
+  estimatedSales?: { total: number; stockTotal: number; shawarmaTotal: number };
   zomatoSales: number;
   swiggySales: number;
   otherIncome: number;
@@ -97,6 +99,8 @@ interface ReportSummary {
   closingDeposits: number;
   /** Juice Lab's own sales — kept out of every revenue/P&L figure above. */
   juiceLab?: { days: number; revenue: number; collected: number; pending: number };
+  /** Days with a stock/shawarma estimate: estimated vs actual Total Revenue. */
+  stockEstimate?: { days: number; estimated: number; actual: number };
   /** Admin only — absent for Finance Managers. */
   ownerWithdrawals?: { count: number; total: number; ownerTotal: number; partnerTotal: number };
   retainedProfit?: number;
@@ -566,6 +570,35 @@ export default function FinanceReportsPage() {
               </section>
             )}
 
+            {/* ── Estimated sales (stock + shawarmas) vs actual ── */}
+            {s.stockEstimate && s.stockEstimate.days > 0 ? (
+              <section className="space-y-3 rounded-[28px] border border-orange-200 bg-white p-6 shadow-sm">
+                <p className="text-sm font-black text-slate-900">Estimated sales vs actual revenue</p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <KpiCard
+                    label="Estimated (stock + shawarmas)"
+                    value={formatCurrency(s.stockEstimate.estimated)}
+                    sub={`${s.stockEstimate.days} day${s.stockEstimate.days !== 1 ? "s" : ""} with counts`}
+                  />
+                  <KpiCard label="Actual Total Revenue (same days)" value={formatCurrency(s.stockEstimate.actual)} />
+                  <KpiCard
+                    label="Difference"
+                    value={`${s.stockEstimate.actual - s.stockEstimate.estimated > 0 ? "+" : ""}${formatCurrency(roundCurrency(s.stockEstimate.actual - s.stockEstimate.estimated))}`}
+                    tone={s.stockEstimate.actual - s.stockEstimate.estimated < 0 ? "negative" : "positive"}
+                    sub={
+                      s.stockEstimate.estimated > 0
+                        ? `${Math.round(((s.stockEstimate.actual - s.stockEstimate.estimated) / s.stockEstimate.estimated) * 100)}% vs estimate`
+                        : undefined
+                    }
+                  />
+                </div>
+                <p className="text-xs text-slate-400">
+                  Estimate = pieces sold (Opening − Closing) × item price + shawarmas × price, from each day&apos;s Daily Closing Stock section. A
+                  cross-check only — never part of revenue or P&amp;L.
+                </p>
+              </section>
+            ) : null}
+
             {/* ── Juice Lab (not our revenue) ── */}
             {s.juiceLab && s.juiceLab.revenue > 0 ? (
               <section className="space-y-3 rounded-[28px] border border-lime-200 bg-white p-6 shadow-sm">
@@ -603,7 +636,7 @@ export default function FinanceReportsPage() {
                 <p className="p-10 text-center text-sm font-semibold text-slate-400">No Daily Closings found in this range.</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1060px] text-sm">
+                  <table className="w-full min-w-[1160px] text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                         <th className="px-4 py-3">Date</th>
@@ -614,6 +647,9 @@ export default function FinanceReportsPage() {
                         <th className="px-4 py-3 text-right">Other</th>
                         <th className="px-4 py-3 text-right" title="Cash + UPI + Other + Zomato/Swiggy (actual once settled, estimated until then)">
                           Total Rev (est.)
+                        </th>
+                        <th className="px-4 py-3 text-right" title="Estimated sales from stock counts + shawarmas, and the gap to that day's Total Revenue">
+                          Est. (stock)
                         </th>
                         <th
                           className="border-l border-lime-100 bg-lime-50/60 px-4 py-3 text-right text-lime-700"
@@ -667,6 +703,23 @@ export default function FinanceReportsPage() {
                             </td>
                             <td className="px-4 py-3 text-right text-slate-500">{formatCurrency(r.otherIncome)}</td>
                             <td className="px-4 py-3 text-right font-bold text-slate-900">{formatCurrency(totalRev)}</td>
+                            <td className="px-4 py-3 text-right text-slate-600">
+                              {(r.estimatedSales?.total ?? 0) > 0 ? (
+                                <>
+                                  {formatCurrency(r.estimatedSales?.total ?? 0)}
+                                  {r.locked ? (
+                                    <span
+                                      className={`block whitespace-nowrap text-[11px] ${r.totalRevenue - (r.estimatedSales?.total ?? 0) < 0 ? "text-rose-600" : "text-emerald-600"}`}
+                                    >
+                                      {r.totalRevenue - (r.estimatedSales?.total ?? 0) > 0 ? "+" : ""}
+                                      {formatCurrency(roundCurrency(r.totalRevenue - (r.estimatedSales?.total ?? 0)))} actual
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
                             <td className="border-l border-lime-100 bg-lime-50/30 px-4 py-3 text-right text-lime-800">
                               {(r.juiceLabRevenue ?? 0) > 0 ? (
                                 <>
@@ -711,6 +764,7 @@ export default function FinanceReportsPage() {
                             <td className="px-4 py-3 text-right">{formatCurrency(swiggyDisplayTotal)}</td>
                             <td className="px-4 py-3 text-right">{formatCurrency(rb?.otherIncome ?? 0)}</td>
                             <td className="px-4 py-3 text-right text-slate-900">{formatCurrency(totalRevSum)}</td>
+                            <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(s.stockEstimate?.estimated ?? 0)}</td>
                             <td className="border-l border-lime-100 bg-lime-50/60 px-4 py-3 text-right text-lime-800">
                               {formatCurrency(s.juiceLab?.revenue ?? 0)}
                               {s.juiceLab && s.juiceLab.revenue > 0 ? (

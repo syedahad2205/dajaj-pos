@@ -127,6 +127,11 @@ export default function ReadClosingFromImageModal({
   const [closingLine, setClosingLine] = useState<ClosingLine | null>(null);
   // Juice Lab row (Revenue / Collected) — saved through the existing sales endpoint, not as an expense.
   const [juiceLab, setJuiceLab] = useState<{ revenue: string; collected: string; include: boolean } | null>(null);
+  // Daily Stock rows + shawarma counts — saved through the Stock section's endpoint (merges; only matched items change).
+  type StockDraft = { key: string; label: string; itemId: string | null; itemName: string | null; opening: string; closing: string; order: string };
+  const [stockRows, setStockRows] = useState<StockDraft[]>([]);
+  const [shawarmaDraft, setShawarmaDraft] = useState<Record<string, string> | null>(null);
+  const [includeStock, setIncludeStock] = useState(true);
 
   const handleFileChosen = (chosen: File | null) => {
     setUploadError("");
@@ -165,6 +170,8 @@ export default function ReadClosingFromImageModal({
         closingLine: ClosingLine | null;
         deposits: ExtractedDeposit[];
         juiceLab?: { revenue: number | null; collected: number | null; pending: number | null } | null;
+        stock?: Array<{ label: string; itemId: string | null; itemName: string | null; opening: number | null; closing: number | null; order: number | null }>;
+        shawarma?: { khubbusRoll: number | null; khubbusPlate: number | null; rumaliRoll: number | null; rumaliPlate: number | null } | null;
       } = payload.extraction;
 
       setRows(
@@ -204,6 +211,29 @@ export default function ReadClosingFromImageModal({
       } else {
         setJuiceLab(null);
       }
+      const str = (v: number | null) => (v === null ? "" : String(v));
+      setStockRows(
+        (extraction.stock ?? []).map((r, index) => ({
+          key: `stock-${index}`,
+          label: r.label,
+          itemId: r.itemId,
+          itemName: r.itemName,
+          opening: str(r.opening),
+          closing: str(r.closing),
+          order: str(r.order),
+        })),
+      );
+      setShawarmaDraft(
+        extraction.shawarma
+          ? {
+              khubbusRoll: str(extraction.shawarma.khubbusRoll),
+              khubbusPlate: str(extraction.shawarma.khubbusPlate),
+              rumaliRoll: str(extraction.shawarma.rumaliRoll),
+              rumaliPlate: str(extraction.shawarma.rumaliPlate),
+            }
+          : null,
+      );
+      setIncludeStock(true);
       // No extra click needed: a detected Closing/Outstanding line is
       // applied to the parent's (still-editable, still-unsaved) Closing
       // Cash draft field immediately — the Finance Manager can freely
@@ -237,8 +267,10 @@ export default function ReadClosingFromImageModal({
   const juiceCollected = Number(juiceLab?.collected || 0);
   const juiceInvalid =
     juiceIncluded && (!Number.isFinite(juiceRevenue) || juiceRevenue < 0 || !Number.isFinite(juiceCollected) || juiceCollected < 0 || juiceCollected > juiceRevenue);
+  const matchedStock = stockRows.filter((r) => r.itemId);
+  const stockIncluded = includeStock && (matchedStock.length > 0 || shawarmaDraft !== null);
   const canApply =
-    (includedRows.length > 0 || includedDeposits.length > 0 || juiceIncluded) &&
+    (includedRows.length > 0 || includedDeposits.length > 0 || juiceIncluded || stockIncluded) &&
     unresolvedIncluded.length === 0 &&
     invalidAmountIncluded.length === 0 &&
     invalidAmountDeposits.length === 0 &&
@@ -286,6 +318,27 @@ export default function ReadClosingFromImageModal({
               type: d.type,
               amount: Number(d.amount),
               remarks: d.remarks,
+            }),
+          }),
+        );
+      }
+      if (stockIncluded) {
+        const num = (v: string) => (v.trim() === "" ? null : Number(v));
+        await readJson(
+          await firebaseAuthedFetch(`/api/finance/closing/${date}/stock`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              rows: matchedStock.map((r) => ({ itemId: r.itemId, opening: num(r.opening), closing: num(r.closing), order: num(r.order) })),
+              ...(shawarmaDraft
+                ? {
+                    shawarmaSold: Object.fromEntries(
+                      Object.entries(shawarmaDraft)
+                        .filter(([, v]) => v.trim() !== "")
+                        .map(([k, v]) => [k, Number(v)]),
+                    ),
+                  }
+                : {}),
             }),
           }),
         );
@@ -440,6 +493,75 @@ export default function ReadClosingFromImageModal({
                   </div>
                 </div>
               </div>
+            </div>
+          ) : null}
+
+          {stockRows.length > 0 || shawarmaDraft ? (
+            <div className={`rounded-2xl border p-3 ${includeStock ? "border-orange-200 bg-orange-50/40" : "border-slate-100 bg-slate-50 opacity-70"}`}>
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <input type="checkbox" checked={includeStock} onChange={(e) => setIncludeStock(e.target.checked)} />
+                Daily Stock &amp; shawarmas detected <span className="font-normal text-slate-500">— fills the Stock section</span>
+              </label>
+              {stockRows.length > 0 ? (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full min-w-[420px] text-sm">
+                    <thead className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      <tr>
+                        <th className="py-1">Item</th>
+                        <th className="px-1 py-1">Opening</th>
+                        <th className="px-1 py-1">Closing</th>
+                        <th className="px-1 py-1">Order</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stockRows.map((r) => (
+                        <tr key={r.key}>
+                          <td className="py-1 pr-2">
+                            <span className="font-semibold">{r.itemName ?? r.label}</span>
+                            {!r.itemId ? <span className="block text-[11px] text-amber-700">no matching stock item — skipped</span> : null}
+                          </td>
+                          {(["opening", "closing", "order"] as const).map((field) => (
+                            <td key={field} className="px-1 py-1">
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                step="0.25"
+                                value={r[field]}
+                                disabled={!r.itemId}
+                                onChange={(e) => setStockRows((list) => list.map((x) => (x.key === r.key ? { ...x, [field]: e.target.value } : x)))}
+                                className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {shawarmaDraft ? (
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {(
+                    [
+                      ["khubbusRoll", "Khubbus Roll"],
+                      ["khubbusPlate", "Khubbus Plate"],
+                      ["rumaliRoll", "Rumali Roll"],
+                      ["rumaliPlate", "Rumali Plate"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="block text-xs font-semibold text-slate-500">
+                      {label}
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={shawarmaDraft[key]}
+                        onChange={(e) => setShawarmaDraft({ ...shawarmaDraft, [key]: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
 

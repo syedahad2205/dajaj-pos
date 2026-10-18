@@ -297,6 +297,16 @@ export interface FinanceDailyClosing {
   // saving — the day still closes, the money just isn't in the ledger yet.
   postingWarnings: string[];
 
+  // Daily stock count + shawarmas sold (replaces the old inventory module).
+  // Prices are snapshotted onto the day when entered, so changing a price
+  // later never rewrites a past day's estimate. estimatedSales is derived
+  // (see computeEstimatedSales) and is only an estimate to compare against
+  // totalRevenue — it never feeds revenue, the ledger or P&L.
+  stock: DailyClosingStockEntry[];
+  shawarmaSold: ShawarmaCounts;
+  shawarmaPrices: ShawarmaPrices | null;
+  estimatedSales: EstimatedSales;
+
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -372,7 +382,8 @@ export type FinanceAuditModule =
   | "closing_deposit"
   | "finance_default"
   | "finance_user"
-  | "backup";
+  | "backup"
+  | "stock";
 
 export type FinanceAuditAction =
   | "create"
@@ -735,4 +746,143 @@ export function pnlLedgerTransactions<
     income: relevant.filter((t) => t.type === "income" && !isCashDrawer(t.toAccountId)),
     expense: relevant.filter((t) => t.type === "expense" && !isCashDrawer(t.fromAccountId)),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Daily stock + estimated sales (Daily Closing "Stock" section)
+//
+// Each day records, per stock item: Opening (start of day), Closing (left at
+// the end of the day) and Order (arriving for the next day). The chain rule:
+// today's Opening must equal yesterday's Closing + Order — Daily Closing
+// pre-fills it and refuses to close a day where it differs without a reason
+// (spoilage, short delivery, …). The very first day has no previous count, so
+// only Closing + Order are needed.
+//
+// Estimated sales = Σ (Opening − Closing) × item price + Σ shawarmas × price.
+// It is ONLY a cross-check against the day's Total Revenue; it never feeds
+// revenue, the ledger or P&L. Prices live in finance_stock_config/main and
+// are copied onto each day when its stock is saved.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface StockItemConfig {
+  id: string;
+  name: string;
+  /** ₹ per piece. null = price not set yet (left out of the estimate, flagged in the UI). */
+  unitPrice: number | null;
+  active: boolean;
+  displayOrder: number;
+}
+
+export interface ShawarmaPrices {
+  khubbusRoll: number;
+  khubbusPlate: number;
+  rumaliRoll: number;
+  rumaliPlate: number;
+}
+
+export type ShawarmaCounts = ShawarmaPrices;
+
+export interface StockPricingConfig {
+  items: StockItemConfig[];
+  shawarmaPrices: ShawarmaPrices;
+}
+
+export const SHAWARMA_KINDS: Array<{ key: keyof ShawarmaPrices; label: string }> = [
+  { key: "khubbusRoll", label: "Khubbus Roll" },
+  { key: "khubbusPlate", label: "Khubbus Plate" },
+  { key: "rumaliRoll", label: "Rumali Roll" },
+  { key: "rumaliPlate", label: "Rumali Plate" },
+];
+
+export const EMPTY_SHAWARMA_COUNTS: ShawarmaCounts = { khubbusRoll: 0, khubbusPlate: 0, rumaliRoll: 0, rumaliPlate: 0 };
+
+export const DEFAULT_STOCK_PRICING: StockPricingConfig = {
+  items: [
+    { id: "alfaham", name: "Alfaham", unitPrice: 480, active: true, displayOrder: 1 },
+    { id: "grill", name: "Grill", unitPrice: 480, active: true, displayOrder: 2 },
+    { id: "tandoori", name: "Tandoori", unitPrice: 480, active: true, displayOrder: 3 },
+    { id: "tikka", name: "Tikka", unitPrice: 80, active: true, displayOrder: 4 },
+    { id: "tandoori_kebab", name: "Tandoori Kebab", unitPrice: 100, active: true, displayOrder: 5 },
+    { id: "boneless", name: "Boneless", unitPrice: null, active: true, displayOrder: 6 },
+  ],
+  shawarmaPrices: { khubbusRoll: 60, khubbusPlate: 100, rumaliRoll: 80, rumaliPlate: 140 },
+};
+
+export interface DailyClosingStockEntry {
+  itemId: string;
+  itemName: string;
+  /** null on the first day of tracking (no previous count to chain from). */
+  opening: number | null;
+  closing: number | null;
+  order: number | null;
+  /** Price snapshot at the time this day's stock was saved. */
+  unitPrice: number | null;
+  /** Required when Opening ≠ previous day's Closing + Order. */
+  mismatchReason?: string | null;
+}
+
+export interface EstimatedSalesLine {
+  itemId: string;
+  itemName: string;
+  sold: number;
+  unitPrice: number | null;
+  amount: number;
+}
+
+export interface EstimatedSales {
+  lines: EstimatedSalesLine[];
+  stockTotal: number;
+  shawarmaTotal: number;
+  total: number;
+  /** Items with a count but no price — not included in total. */
+  unpricedItems: string[];
+  /** Items whose Closing is more than Opening — sold treated as 0. */
+  negativeItems: string[];
+}
+
+/** Pure. Sold = Opening − Closing (only when both are known); never negative. */
+export function computeEstimatedSales(
+  stock: DailyClosingStockEntry[],
+  shawarmaSold: ShawarmaCounts,
+  shawarmaPrices: ShawarmaPrices | null,
+): EstimatedSales {
+  const lines: EstimatedSalesLine[] = [];
+  const unpricedItems: string[] = [];
+  const negativeItems: string[] = [];
+  for (const row of stock) {
+    if (row.opening === null || row.closing === null) continue;
+    const rawSold = roundCurrency(row.opening - row.closing);
+    if (rawSold < 0) negativeItems.push(row.itemName);
+    const sold = Math.max(0, rawSold);
+    if (sold > 0 && row.unitPrice === null) unpricedItems.push(row.itemName);
+    lines.push({ itemId: row.itemId, itemName: row.itemName, sold, unitPrice: row.unitPrice, amount: roundCurrency(sold * (row.unitPrice ?? 0)) });
+  }
+  const stockTotal = roundCurrency(lines.reduce((sum, l) => sum + l.amount, 0));
+  const shawarmaTotal = shawarmaPrices
+    ? roundCurrency(SHAWARMA_KINDS.reduce((sum, k) => sum + (shawarmaSold[k.key] ?? 0) * shawarmaPrices[k.key], 0))
+    : 0;
+  return { lines, stockTotal, shawarmaTotal, total: roundCurrency(stockTotal + shawarmaTotal), unpricedItems, negativeItems };
+}
+
+/** What today's Opening should be per item: previous day's Closing + Order (null when the previous day didn't count it). */
+export function expectedOpeningFromPrevious(previousStock: DailyClosingStockEntry[] | null | undefined): Record<string, number | null> {
+  const expected: Record<string, number | null> = {};
+  for (const row of previousStock ?? []) {
+    expected[row.itemId] = row.closing === null ? null : roundCurrency(row.closing + (row.order ?? 0));
+  }
+  return expected;
+}
+
+/** Rows whose Opening differs from the expected chain value and have no reason yet. */
+export function unexplainedStockMismatches(
+  stock: DailyClosingStockEntry[],
+  expected: Record<string, number | null>,
+): Array<{ itemName: string; opening: number; expected: number }> {
+  const out: Array<{ itemName: string; opening: number; expected: number }> = [];
+  for (const row of stock) {
+    const exp = expected[row.itemId];
+    if (exp === null || exp === undefined || row.opening === null) continue;
+    if (Math.abs(row.opening - exp) > 0.001 && !row.mismatchReason?.trim()) out.push({ itemName: row.itemName, opening: row.opening, expected: exp });
+  }
+  return out;
 }

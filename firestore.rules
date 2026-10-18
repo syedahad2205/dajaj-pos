@@ -514,6 +514,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Daily stock items + prices used for Daily Closing's estimated sales.
+    // Finance Managers read them (to fill the Stock section); only Admins edit.
+    match /finance_stock_config/{docId} {
+      allow read: if isAdminOrFinanceManager();
+      allow write: if isAdmin();
+    }
+
     match /fin_settings/{docId} {
       allow read, write: if isAdmin();
     }

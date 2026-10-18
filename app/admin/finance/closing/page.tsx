@@ -12,6 +12,7 @@ import FinanceNav from "@/components/finance/FinanceNav";
 import Modal from "@/components/finance/Modal";
 import NativeSelectField from "@/components/ui/NativeSelectField";
 import ReadClosingFromImageModal from "@/components/finance/ReadClosingFromImageModal";
+import DailyStockSection from "@/components/finance/DailyStockSection";
 
 interface ExpenseEntry {
   id: string;
@@ -103,6 +104,8 @@ function FinanceClosingContent() {
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  // Bumped to make the Stock section reload (e.g. after Read from Image applied stock counts).
+  const [stockRefreshKey, setStockRefreshKey] = useState(0);
 
   // Local, instantly-reactive drafts so the summary card updates as the manager types,
   // without waiting on a round trip for every keystroke.
@@ -789,9 +792,19 @@ function FinanceClosingContent() {
                 ) : null}
               </section>
 
+              {/* Stock + shawarmas → estimated sales vs Total Revenue */}
+              <DailyStockSection
+                date={date}
+                locked={locked}
+                isAdmin={role === "admin"}
+                totalRevenue={totalRevenue}
+                refreshKey={stockRefreshKey}
+                sectionNumber={6}
+              />
+
               {/* Closing Cash */}
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">6. Count the Drawer</p>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">7. Count the Drawer</p>
                 <label className="mb-1 block text-sm font-semibold text-slate-700">Closing Cash</label>
                 <input
                   type="number"
@@ -1058,6 +1071,7 @@ function FinanceClosingContent() {
           categories={activeCategories}
           onClose={() => setImageModalOpen(false)}
           onApplied={() => {
+            setStockRefreshKey((k) => k + 1);
             void (async () => {
               await load();
               // Reapply the AI's Closing/Outstanding guess after the
