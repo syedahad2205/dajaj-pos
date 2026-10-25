@@ -782,9 +782,20 @@ export interface ShawarmaPrices {
 
 export type ShawarmaCounts = ShawarmaPrices;
 
+/** A staff member on the sheet's "A. FIXED EXPENSES (Salary)" rows. A ticked PAID box with no amount uses dailySalary. */
+export interface StaffSalaryConfig {
+  id: string;
+  name: string;
+  /** ₹ per day. null = not set yet (a ticked row then needs the amount typed in during review). */
+  dailySalary: number | null;
+  active: boolean;
+}
+
+/** Stored in finance_stock_config/main (Admin edits, Finance Manager reads). */
 export interface StockPricingConfig {
   items: StockItemConfig[];
   shawarmaPrices: ShawarmaPrices;
+  staff: StaffSalaryConfig[];
 }
 
 export const SHAWARMA_KINDS: Array<{ key: keyof ShawarmaPrices; label: string }> = [
@@ -806,6 +817,11 @@ export const DEFAULT_STOCK_PRICING: StockPricingConfig = {
     { id: "boneless", name: "Boneless", unitPrice: null, active: true, displayOrder: 6 },
   ],
   shawarmaPrices: { khubbusRoll: 60, khubbusPlate: 100, rumaliRoll: 80, rumaliPlate: 140 },
+  staff: [
+    { id: "sahil", name: "Sahil", dailySalary: null, active: true },
+    { id: "anees", name: "Anees", dailySalary: null, active: true },
+    { id: "shaban", name: "Shaban", dailySalary: null, active: true },
+  ],
 };
 
 export interface DailyClosingStockEntry {

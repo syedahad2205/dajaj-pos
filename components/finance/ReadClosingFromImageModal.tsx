@@ -37,6 +37,7 @@ interface ExtractedItem {
   categoryName: string | null;
   categorySource: "deterministic" | "ai" | "misc_fallback" | null;
   isDefault?: boolean;
+  amountSource?: "sheet" | "staff_salary";
 }
 
 interface ExtractedDeposit {
@@ -62,6 +63,7 @@ interface ReviewRow {
   include: boolean;
   categorySource: "deterministic" | "ai" | "misc_fallback" | null;
   isDefault: boolean;
+  fromStaffSalary: boolean;
 }
 
 interface ReviewDepositRow {
@@ -93,26 +95,38 @@ function readFileAsDataUrl(file: Blob): Promise<string> {
 /** Longest side sent to the AI. Plenty for handwriting; keeps uploads small and the AI fast. */
 const MAX_UPLOAD_EDGE = 2000;
 
+/** Small copy used only to ask which way the sheet faces. */
+const ORIENTATION_THUMB_EDGE = 640;
+
+/** Clockwise rotation that turns the photo upright, given which photo edge the sheet's title faces. */
+const ROTATION_FOR_TITLE_EDGE: Record<string, number> = { top: 0, right: 270, bottom: 180, left: 90 };
+
 /**
- * Downscales a phone photo to MAX_UPLOAD_EDGE px (JPEG) before upload. A raw
- * 4–8 MB photo is slow to upload and slow for the AI to read — and big ones
- * can exceed the hosting upload limit. Small images pass through unchanged;
- * any failure falls back to the original file.
+ * Downscales (to maxEdge px, JPEG) and rotates (clockwise, multiples of 90°)
+ * a photo in the browser before upload. A raw 4–8 MB photo is slow to upload
+ * and slow for the AI to read — and big ones can exceed the hosting upload
+ * limit. A small, already-upright image passes through unchanged; any failure
+ * falls back to the original file.
  */
-async function prepareImageForUpload(file: File): Promise<{ dataUrl: string; mimeType: string }> {
+async function prepareImageForUpload(file: File, rotation = 0, maxEdge = MAX_UPLOAD_EDGE): Promise<{ dataUrl: string; mimeType: string }> {
   try {
     const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, MAX_UPLOAD_EDGE / Math.max(bitmap.width, bitmap.height));
-    if (scale === 1 && file.size <= 1_500_000) {
+    const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && rotation === 0 && file.size <= 1_500_000) {
       bitmap.close();
       return { dataUrl: await readFileAsDataUrl(file), mimeType: file.type };
     }
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+    const sideways = rotation === 90 || rotation === 270;
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
+    canvas.width = sideways ? h : w;
+    canvas.height = sideways ? w : h;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("no canvas");
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((rotation * Math.PI) / 180);
+    ctx.drawImage(bitmap, -w / 2, -h / 2, w, h);
     bitmap.close();
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
     if (!blob) throw new Error("encode failed");
@@ -132,6 +146,8 @@ export interface ReadClosingFromImageModalProps {
   onDateDetected: (detectedDate: string) => void;
   /** Called when the user chooses to use the detected Closing/Outstanding line — the parent should set its existing Closing Cash draft field. Never auto-saves/locks. */
   onClosingCashSuggested: (value: string) => void;
+  /** The app's Opening Cash for this day — compared with the sheet's handwritten Opening Balance. */
+  appOpeningCash?: number | null;
 }
 
 export default function ReadClosingFromImageModal({
@@ -141,12 +157,17 @@ export default function ReadClosingFromImageModal({
   onApplied,
   onDateDetected,
   onClosingCashSuggested,
+  appOpeningCash = null,
 }: ReadClosingFromImageModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [stage, setStage] = useState<Stage>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
+  // Clockwise degrees applied before reading. Auto-detected unless the user rotated it themselves.
+  const [rotation, setRotation] = useState(0);
+  const [rotationManual, setRotationManual] = useState(false);
+  const [analyzeStep, setAnalyzeStep] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [analyzeError, setAnalyzeError] = useState("");
   const [aiWarning, setAiWarning] = useState("");
@@ -157,6 +178,7 @@ export default function ReadClosingFromImageModal({
   const [detectedDate, setDetectedDate] = useState<string | null>(null);
   const [dateSwitched, setDateSwitched] = useState(false);
   const [closingLine, setClosingLine] = useState<ClosingLine | null>(null);
+  const [sheetOpeningBalance, setSheetOpeningBalance] = useState<number | null>(null);
   // Juice Lab row (Revenue / Collected) — saved through the existing sales endpoint, not as an expense.
   const [juiceLab, setJuiceLab] = useState<{ revenue: string; collected: string; include: boolean } | null>(null);
   // Daily Stock rows + shawarma counts — saved through the Stock section's endpoint (merges; only matched items change).
@@ -178,6 +200,8 @@ export default function ReadClosingFromImageModal({
     }
     setFile(chosen);
     setPreviewUrl(URL.createObjectURL(chosen));
+    setRotation(0);
+    setRotationManual(false);
   };
 
   const runAnalysis = async () => {
@@ -186,7 +210,29 @@ export default function ReadClosingFromImageModal({
     setAnalyzeError("");
     setAiWarning("");
     try {
-      const { dataUrl, mimeType } = await prepareImageForUpload(file);
+      // A sideways photo makes the AI slide values between rows, so straighten it first.
+      let turn = rotation;
+      if (!rotationManual) {
+        setAnalyzeStep("Straightening photo…");
+        try {
+          const thumb = await prepareImageForUpload(file, 0, ORIENTATION_THUMB_EDGE);
+          const orientation = await readJson(
+            await firebaseAuthedFetch("/api/finance/closing/read-image/orientation", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ imageBase64: thumb.dataUrl, mimeType: thumb.mimeType }),
+            }),
+          );
+          if (orientation.edge && orientation.edge in ROTATION_FOR_TITLE_EDGE) {
+            turn = ROTATION_FOR_TITLE_EDGE[orientation.edge];
+            setRotation(turn);
+          }
+        } catch {
+          // Unsure — read the photo as it is.
+        }
+      }
+      setAnalyzeStep("Reading the sheet…");
+      const { dataUrl, mimeType } = await prepareImageForUpload(file, turn);
       const payload = await readJson(
         await firebaseAuthedFetch("/api/finance/closing/read-image", {
           method: "POST",
@@ -202,6 +248,7 @@ export default function ReadClosingFromImageModal({
         closingLine: ClosingLine | null;
         deposits: ExtractedDeposit[];
         juiceLab?: { revenue: number | null; collected: number | null; pending: number | null } | null;
+        openingBalance?: number | null;
         stock?: Array<{ label: string; itemId: string | null; itemName: string | null; opening: number | null; closing: number | null; order: number | null }>;
         shawarma?: { khubbusRoll: number | null; khubbusPlate: number | null; rumaliRoll: number | null; rumaliPlate: number | null } | null;
       } = payload.extraction;
@@ -217,6 +264,7 @@ export default function ReadClosingFromImageModal({
           include: !item.crossedOut && item.amount !== null,
           categorySource: item.categorySource,
           isDefault: item.isDefault === true,
+          fromStaffSalary: item.amountSource === "staff_salary",
         })),
       );
       setDepositRows(
@@ -232,6 +280,7 @@ export default function ReadClosingFromImageModal({
       setDetectedDate(extraction.date);
       setDateSwitched(false);
       setClosingLine(extraction.closingLine);
+      setSheetOpeningBalance(typeof extraction.openingBalance === "number" ? extraction.openingBalance : null);
       // Fill whichever of Revenue/Collected the sheet left blank from the
       // other two cells (Revenue = Collected + Pending). Only Revenue and
       // Collected are saved; Pending is always derived (JUICE LAB INVARIANT).
@@ -416,9 +465,30 @@ export default function ReadClosingFromImageModal({
             </label>
           ) : (
             <div className="space-y-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={previewUrl} alt="Daily Closing sheet preview" className="mx-auto max-h-80 w-full rounded-2xl border border-slate-200 object-contain" />
+              <div className="flex h-80 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl}
+                  alt="Daily Closing sheet preview"
+                  className="max-h-80 max-w-full object-contain transition-transform"
+                  style={{ transform: `rotate(${rotation}deg)${rotation % 180 ? " scale(0.75)" : ""}` }}
+                />
+              </div>
+              <p className="text-center text-xs text-slate-500">
+                {rotationManual ? "Rotated by you." : "The photo is straightened automatically before reading."} Use ↻ Rotate if it isn&apos;t upright.
+              </p>
               <div className="flex gap-3">
+                <button
+                  type="button"
+                  disabled={stage === "analyzing"}
+                  onClick={() => {
+                    setRotation((r) => (r + 90) % 360);
+                    setRotationManual(true);
+                  }}
+                  className="flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                >
+                  ↻ Rotate
+                </button>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -456,7 +526,7 @@ export default function ReadClosingFromImageModal({
             onClick={runAnalysis}
             className="w-full rounded-2xl bg-orange-600 px-6 py-4 text-base font-black text-white transition hover:bg-orange-700 disabled:opacity-40"
           >
-            {stage === "analyzing" ? "Analysing…" : analyzeError ? "Retry Analysis" : "Analyse Sheet"}
+            {stage === "analyzing" ? analyzeStep || "Analysing…" : analyzeError ? "Retry Analysis" : "Analyse Sheet"}
           </button>
         </div>
       ) : (
@@ -479,6 +549,23 @@ export default function ReadClosingFromImageModal({
                 Switch to that date
               </button>
             </div>
+          ) : null}
+
+          {sheetOpeningBalance !== null ? (
+            <p
+              className={`rounded-2xl border px-4 py-3 text-sm ${
+                appOpeningCash !== null && Math.abs(sheetOpeningBalance - appOpeningCash) > 0.009
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : "border-slate-200 bg-slate-50 text-slate-600"
+              }`}
+            >
+              Sheet opening balance <strong>{formatCurrency(sheetOpeningBalance)}</strong>
+              {appOpeningCash !== null
+                ? Math.abs(sheetOpeningBalance - appOpeningCash) > 0.009
+                  ? ` — the app’s Opening Cash is ${formatCurrency(appOpeningCash)}. Check yesterday’s closing.`
+                  : " — matches the app’s Opening Cash."
+                : ""}
+            </p>
           ) : null}
 
           {closingLine ? (
@@ -630,6 +717,11 @@ export default function ReadClosingFromImageModal({
                     {row.categorySource === "misc_fallback" ? (
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                         Misc (check this)
+                      </span>
+                    ) : null}
+                    {row.fromStaffSalary ? (
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                        Ticked · salary from settings
                       </span>
                     ) : null}
                     {row.isDefault ? (

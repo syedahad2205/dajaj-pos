@@ -20,6 +20,8 @@ export interface DailyClosingImageItem {
   categoryConfidence: number;
   amountConfidence: number;
   crossedOut: boolean;
+  /** "staff_salary": a ticked salary row whose amount came from the staff's daily salary setting, not the sheet. */
+  amountSource?: "sheet" | "staff_salary";
 }
 
 /** The special "Closing"/"Outstanding" summary line, extracted separately from the item list per spec §12 — "Closing" is always a positive balance, "Outstanding" is always negative, regardless of the separator dash. */
@@ -53,6 +55,16 @@ export interface DailyClosingImageShawarma {
   rumaliPlate: number | null;
 }
 
+/** One printed row of the sheet's "A. FIXED EXPENSES (Salary)" table (staff salaries + PIGMI). */
+export interface DailyClosingImageFixedExpense {
+  /** Printed row name, e.g. "Sahil – Salary", "PIGMI". */
+  label: string;
+  /** PAID box ticked. A ticked salary with no amount means "paid at the usual daily salary". */
+  paid: boolean;
+  /** Handwritten amount, or null when blank — never invented. */
+  amount: number | null;
+}
+
 /** Raw, validated (but not yet category-resolved) AI extraction. */
 export interface DailyClosingImageExtraction {
   /** YYYY-MM-DD if a date was clearly visible on the sheet — never guessed. */
@@ -65,6 +77,12 @@ export interface DailyClosingImageExtraction {
   juiceLab: DailyClosingImageJuiceLab | null;
   stock: DailyClosingImageStockRow[];
   shawarma: DailyClosingImageShawarma | null;
+  /** Handwritten OPENING BALANCE — a cross-check against the app's Opening Cash only, never saved. */
+  openingBalance: number | null;
+  /** Printed fixed-expense rows; empty for free-form (non-printed) sheets. */
+  fixedExpenses: DailyClosingImageFixedExpense[];
+  /** Set when one of the two AI requests failed but the other succeeded — shown as a warning. */
+  partialError?: string;
 }
 
 export const EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION: DailyClosingImageExtraction = {
@@ -75,6 +93,8 @@ export const EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION: DailyClosingImageExtraction =
   juiceLab: null,
   stock: [],
   shawarma: null,
+  openingBalance: null,
+  fixedExpenses: [],
 };
 
 /** A stock row matched to a configured stock item (itemId null = no match — shown, but not applied). */
@@ -113,4 +133,5 @@ export interface ResolvedDailyClosingImageExtraction {
   juiceLab: DailyClosingImageJuiceLab | null;
   stock: ResolvedDailyClosingImageStockRow[];
   shawarma: DailyClosingImageShawarma | null;
+  openingBalance: number | null;
 }

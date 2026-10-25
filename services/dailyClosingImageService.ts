@@ -1,6 +1,6 @@
 import { getStockPricingConfig } from "@/services/financeClosingService";
-import type { StockItemConfig } from "@/lib/finance";
-import type { DailyClosingImageStockRow, ResolvedDailyClosingImageStockRow } from "@/lib/dailyClosingImage";
+import type { StaffSalaryConfig, StockItemConfig } from "@/lib/finance";
+import type { DailyClosingImageFixedExpense, DailyClosingImageStockRow, ResolvedDailyClosingImageStockRow } from "@/lib/dailyClosingImage";
 import type { Firestore } from "firebase/firestore";
 import { firestore as defaultFirestore } from "@/lib/firebase";
 import { CASH_DEPOSIT_TYPE_LABELS, DEFAULT_BRANCH_ID, SUPPORTED_CASH_DEPOSIT_TYPES, type FinanceExpenseCategory } from "@/lib/finance";
@@ -121,6 +121,9 @@ function splitOutDepositCandidates(
   return { items: remainingItems, deposits };
 }
 
+/** Printed rows of the sheet's "B. EXPENSES" table — a blank one simply wasn't used that day. */
+const PRINTED_EXPENSE_ROWS = new Set(["vegetables", "parcel charges", "food"]);
+
 const SALARY_DEFAULT_AMOUNT = 1800;
 const SALARY_LABEL = "Salary";
 
@@ -197,20 +200,35 @@ export async function analyzeDailyClosingImage(
   let aiError: string | null = null;
   let rawExtraction = EMPTY_DAILY_CLOSING_IMAGE_EXTRACTION;
   try {
-    rawExtraction = await analyzeDailyClosingSheet(input.base64Data, mimeType, categories.map((c) => c.name));
+    rawExtraction = await analyzeDailyClosingSheet(
+      input.base64Data,
+      mimeType,
+      categories.map((c) => c.name),
+      stockConfig.items.filter((i) => i.active).map((i) => ({ id: i.id, name: i.name })),
+    );
   } catch (error) {
     aiError = isGeminiUnavailableError(error)
       ? error.message
       : "Unable to read the image clearly. Please upload a clearer photo or enter the values manually.";
   }
 
+  if (!aiError && rawExtraction.partialError) {
+    aiError = rawExtraction.partialError;
+  }
   if (!aiError && !rawExtraction.readable) {
     aiError = "Unable to read the image clearly. Please upload a clearer photo or enter the values manually.";
   }
 
-  const resolvedItems = rawExtraction.items.map((item) => resolveItem(categories, item));
+  const fixedItems = fixedExpensesToItems(rawExtraction.fixedExpenses ?? [], stockConfig.staff);
+  // The AI lists every expense row (so amounts can't slide between rows);
+  // rows with no amount are dropped here unless they look handwritten-but-unreadable.
+  const sheetItems = rawExtraction.items.filter((item) => item.amount !== null || !PRINTED_EXPENSE_ROWS.has(item.rawLabel.trim().toLowerCase()));
+  const resolvedItems = [...fixedItems, ...sheetItems].map((item) => resolveItem(categories, item));
   const { items: itemsWithoutDeposits, deposits } = splitOutDepositCandidates(resolvedItems);
-  const finalItems = ensureSalaryDefault(itemsWithoutDeposits, categories);
+  // Printed sheets list every salary row explicitly (ticked or not), so the
+  // "no salary written → add the default" rule only applies to free-form sheets.
+  const finalItems =
+    (rawExtraction.fixedExpenses ?? []).length > 0 ? itemsWithoutDeposits : ensureSalaryDefault(itemsWithoutDeposits, categories);
 
   return {
     extraction: {
@@ -222,6 +240,7 @@ export async function analyzeDailyClosingImage(
       juiceLab: rawExtraction.juiceLab ?? null,
       stock: resolveStockRows(rawExtraction.stock ?? [], stockConfig.items),
       shawarma: rawExtraction.shawarma ?? null,
+      openingBalance: rawExtraction.openingBalance ?? null,
     },
     categories,
     aiError,
@@ -244,4 +263,37 @@ function resolveStockRows(rows: DailyClosingImageStockRow[], items: StockItemCon
     if (match) used.add(match.id);
     return { ...row, itemId: match?.id ?? null, itemName: match?.name ?? null };
   });
+}
+
+/**
+ * Printed "A. FIXED EXPENSES (Salary)" rows → expense lines for review:
+ *   - a staff salary row that is ticked PAID or has an amount becomes a line;
+ *     a written amount wins, otherwise that person's daily salary from
+ *     Settings (amountSource "staff_salary"); if neither is known the amount
+ *     is left blank for the manager to type in;
+ *   - the PIGMI row (ticked or with an amount) becomes a "Pigmi" line, which
+ *     splitOutDepositCandidates then turns into a Cash Deposit;
+ *   - unticked rows with no amount are skipped.
+ */
+function fixedExpensesToItems(rows: DailyClosingImageFixedExpense[], staff: StaffSalaryConfig[]): DailyClosingImageItem[] {
+  const items: DailyClosingImageItem[] = [];
+  for (const row of rows) {
+    if (!row.paid && row.amount === null) continue;
+    const label = row.label.toLowerCase();
+    const base = { aiCategory: null, categoryConfidence: 1, amountConfidence: row.amount === null ? 0.5 : 1, crossedOut: false };
+    if (/pigmi/.test(label)) {
+      items.push({ ...base, rawLabel: "Pigmi", amount: row.amount });
+      continue;
+    }
+    const person = staff.find((p) => p.active && label.includes(p.name.trim().toLowerCase()));
+    const fromSettings = row.amount === null && person?.dailySalary != null;
+    items.push({
+      ...base,
+      rawLabel: person ? `${person.name} – Salary` : row.label,
+      aiCategory: "Salary",
+      amount: row.amount ?? person?.dailySalary ?? null,
+      amountSource: fromSettings ? "staff_salary" : "sheet",
+    });
+  }
+  return items;
 }

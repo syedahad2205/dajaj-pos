@@ -2186,7 +2186,13 @@ function stockConfigRef(db: Firestore) {
 }
 
 function normalizeStockConfig(raw: DocumentData | undefined): StockPricingConfig {
-  if (!raw) return { items: DEFAULT_STOCK_PRICING.items.map((i) => ({ ...i })), shawarmaPrices: { ...DEFAULT_STOCK_PRICING.shawarmaPrices } };
+  if (!raw) {
+    return {
+      items: DEFAULT_STOCK_PRICING.items.map((i) => ({ ...i })),
+      shawarmaPrices: { ...DEFAULT_STOCK_PRICING.shawarmaPrices },
+      staff: DEFAULT_STOCK_PRICING.staff.map((p) => ({ ...p })),
+    };
+  }
   const items = Array.isArray(raw.items)
     ? raw.items
         .filter((i: DocumentData) => i && typeof i.id === "string" && typeof i.name === "string")
@@ -2201,7 +2207,12 @@ function normalizeStockConfig(raw: DocumentData | undefined): StockPricingConfig
     : DEFAULT_STOCK_PRICING.items.map((i) => ({ ...i }));
   const shawarmaPrices = { ...DEFAULT_STOCK_PRICING.shawarmaPrices };
   for (const k of SHAWARMA_KINDS) shawarmaPrices[k.key] = numberOrNull(raw.shawarmaPrices?.[k.key]) ?? shawarmaPrices[k.key];
-  return { items, shawarmaPrices };
+  const staff = Array.isArray(raw.staff)
+    ? raw.staff
+        .filter((p: DocumentData) => p && typeof p.id === "string" && typeof p.name === "string")
+        .map((p: DocumentData) => ({ id: p.id, name: p.name, dailySalary: numberOrNull(p.dailySalary), active: p.active !== false }))
+    : DEFAULT_STOCK_PRICING.staff.map((p) => ({ ...p }));
+  return { items, shawarmaPrices, staff };
 }
 
 /** Stock items + prices. Falls back to the built-in defaults until an Admin saves them. */
@@ -2234,11 +2245,22 @@ export async function saveStockPricingConfig(
     if (!Number.isFinite(v) || v < 0) throw new Error(`${k.label} price must be a positive number.`);
     shawarmaPrices[k.key] = roundCurrency(v);
   }
+  const seenStaff = new Set<string>();
+  const staff = (Array.isArray(input.staff) ? input.staff : []).map((p) => {
+    const name = String(p.name ?? "").trim();
+    if (!name) throw new Error("Every staff member needs a name.");
+    const id = String(p.id ?? "").trim() || name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    if (!id || seenStaff.has(id)) throw new Error(`Duplicate or invalid staff member "${name}".`);
+    seenStaff.add(id);
+    const salary = p.dailySalary === null || p.dailySalary === undefined || (p.dailySalary as unknown) === "" ? null : Number(p.dailySalary);
+    if (salary !== null && (!Number.isFinite(salary) || salary < 0)) throw new Error(`Daily salary for ${name} must be a positive number or empty.`);
+    return { id, name, dailySalary: salary === null ? null : roundCurrency(salary), active: p.active !== false };
+  });
   const before = await getStockPricingConfig(db);
-  const next: StockPricingConfig = { items, shawarmaPrices };
+  const next: StockPricingConfig = { items, shawarmaPrices, staff };
   await setDoc(stockConfigRef(db), { ...next, updatedBy: userId, updatedByName: userName, updatedAt: serverTimestamp() });
   await logFinanceAudit(
-    { module: "stock", entityId: "pricing", entityLabel: "Stock & shawarma prices", action: "update", userId, userName, oldValue: before, newValue: next },
+    { module: "stock", entityId: "pricing", entityLabel: "Stock, shawarma & salary settings", action: "update", userId, userName, oldValue: before, newValue: next },
     db,
   );
   return next;

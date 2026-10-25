@@ -181,7 +181,7 @@ export default function DailyStockSection({
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{sectionNumber}. Stock &amp; Shawarmas</p>
         {isAdmin ? (
           <button type="button" onClick={() => setPricesOpen(true)} className="text-xs font-semibold text-orange-600 underline">
-            Edit items &amp; prices
+            Edit items, prices &amp; salaries
           </button>
         ) : null}
       </div>
@@ -359,6 +359,7 @@ function StockPricesModal({ config, onClose, onSaved }: { config: StockPricingCo
   const [shawarma, setShawarma] = useState<Record<string, string>>(
     Object.fromEntries(SHAWARMA_KINDS.map((k) => [k.key, String(config.shawarmaPrices[k.key])])),
   );
+  const [staff, setStaff] = useState((config.staff ?? []).map((p) => ({ ...p, salary: p.dailySalary === null ? "" : String(p.dailySalary) })));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const input = "w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400";
@@ -374,6 +375,7 @@ function StockPricesModal({ config, onClose, onSaved }: { config: StockPricingCo
           body: JSON.stringify({
             items: items.map((i) => ({ id: i.id, name: i.name, unitPrice: i.price.trim() === "" ? null : Number(i.price), active: i.active })),
             shawarmaPrices: Object.fromEntries(SHAWARMA_KINDS.map((k) => [k.key, Number(shawarma[k.key])])),
+            staff: staff.map((p) => ({ id: p.id, name: p.name, dailySalary: p.salary.trim() === "" ? null : Number(p.salary), active: p.active })),
           }),
         }),
       );
@@ -386,7 +388,7 @@ function StockPricesModal({ config, onClose, onSaved }: { config: StockPricingCo
   };
 
   return (
-    <Modal title="Stock items & prices" subtitle="Used for estimated sales. Changes apply to days saved from now on." onClose={() => !saving && onClose()}>
+    <Modal title="Stock, prices & salaries" subtitle="Prices feed estimated sales (days saved from now on). Salaries fill ticked salary rows in Read from Image." onClose={() => !saving && onClose()}>
       <div className="space-y-4">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Stock items (₹ per piece)</p>
@@ -427,6 +429,36 @@ function StockPricesModal({ config, onClose, onSaved }: { config: StockPricingCo
               </label>
             ))}
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Staff daily salary (₹)</p>
+          <p className="text-xs text-slate-500">Used by Read from Image: a ticked PAID box with no amount on the sheet uses this salary.</p>
+          {staff.map((person, index) => (
+            <div key={person.id || `staff-${index}`} className="grid grid-cols-[1fr_7rem_auto] items-center gap-2">
+              <input value={person.name} onChange={(e) => setStaff((list) => list.map((x, j) => (j === index ? { ...x, name: e.target.value } : x)))} className={input} placeholder="Name" />
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={person.salary}
+                onChange={(e) => setStaff((list) => list.map((x, j) => (j === index ? { ...x, salary: e.target.value } : x)))}
+                className={input}
+                placeholder="not set"
+              />
+              <label className="flex items-center gap-1 text-xs text-slate-600">
+                <input type="checkbox" checked={person.active} onChange={(e) => setStaff((list) => list.map((x, j) => (j === index ? { ...x, active: e.target.checked } : x)))} />
+                Active
+              </label>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setStaff((list) => [...list, { id: "", name: "", dailySalary: null, salary: "", active: true }])}
+            className="text-xs font-semibold text-orange-600 underline"
+          >
+            + Add staff member
+          </button>
         </div>
 
         {error ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}

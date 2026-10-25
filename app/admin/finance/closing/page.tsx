@@ -1069,6 +1069,7 @@ function FinanceClosingContent() {
         <ReadClosingFromImageModal
           date={date}
           categories={activeCategories}
+          appOpeningCash={closing?.openingCash ?? null}
           onClose={() => setImageModalOpen(false)}
           onApplied={() => {
             setStockRefreshKey((k) => k + 1);
