@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { firebaseAuthedFetch } from "@/lib/firebaseAuthFetch";
 import { formatCurrency } from "@/lib/financeFormat";
 import {
+  AGGREGATOR_MARKUP_PCT,
   SHAWARMA_KINDS,
   computeEstimatedSales,
+  revenueAtMenuPrices,
   roundCurrency,
   type DailyClosingStockEntry,
   type EstimatedSales,
@@ -57,6 +59,8 @@ export default function DailyStockSection({
   locked,
   isAdmin,
   totalRevenue,
+  zomatoSales,
+  swiggySales,
   refreshKey,
   sectionNumber,
 }: {
@@ -65,6 +69,9 @@ export default function DailyStockSection({
   isAdmin: boolean;
   /** Live Total Revenue from the page (null until Closing Cash is entered). */
   totalRevenue: number | null;
+  /** Live Zomato / Swiggy Sales from the page — their markup is removed before comparing. */
+  zomatoSales: number;
+  swiggySales: number;
   /** Bump to reload (e.g. after Read from Image applied stock). */
   refreshKey: number;
   sectionNumber: number;
@@ -172,7 +179,10 @@ export default function DailyStockSection({
 
   const setRow = (id: string, patch: Partial<RowDraft>) => setRows((r) => ({ ...r, [id]: { ...r[id], ...patch } }));
   const cell = "w-full min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-orange-400 disabled:bg-slate-50";
-  const difference = totalRevenue !== null ? roundCurrency(totalRevenue - estimate.total) : null;
+  // Compare like with like: the estimate uses menu prices, so strip the
+  // aggregator markup from Zomato/Swiggy sales first (Daily Closing only).
+  const atMenu = totalRevenue !== null ? revenueAtMenuPrices(totalRevenue, zomatoSales, swiggySales) : null;
+  const difference = atMenu !== null ? roundCurrency(atMenu.comparable - estimate.total) : null;
   const differencePct = difference !== null && estimate.total > 0 ? Math.round((difference / estimate.total) * 100) : null;
 
   return (
@@ -319,6 +329,18 @@ export default function DailyStockSection({
           <span className="text-slate-500">Total Revenue (actual)</span>
           <span className="font-semibold">{totalRevenue !== null ? formatCurrency(totalRevenue) : "— (enter Closing Cash)"}</span>
         </div>
+        {atMenu !== null && atMenu.markupRemoved > 0 ? (
+          <>
+            <div className="flex justify-between py-0.5">
+              <span className="text-slate-500">− Zomato/Swiggy markup ({AGGREGATOR_MARKUP_PCT}%)</span>
+              <span className="font-semibold">{formatCurrency(atMenu.markupRemoved)}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-slate-500">Revenue at menu prices</span>
+              <span className="font-semibold">{formatCurrency(atMenu.comparable)}</span>
+            </div>
+          </>
+        ) : null}
         {difference !== null ? (
           <div className="flex justify-between py-0.5">
             <span className="text-slate-500">Difference (actual − estimated)</span>

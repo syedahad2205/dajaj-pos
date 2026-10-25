@@ -9,6 +9,7 @@ import {
   DEFAULT_STOCK_PRICING,
   computeEstimatedSales,
   expectedOpeningFromPrevious,
+  revenueAtMenuPrices,
   unexplainedStockMismatches,
   type DailyClosingStockEntry,
 } from "../lib/finance";
@@ -81,6 +82,11 @@ check("quarter pieces (3.25 − 0.75 = 2.5 sold → 1200)", quarter.lines[0]?.so
 check("quarter chain (0.75 + 1.25 = 2)", expectedOpeningFromPrevious([row("alfaham", "Alfaham", 3.25, 0.75, 1.25)]).alfaham === 2);
 const q2 = computeEstimatedSales([row("tikka", "Tikka", 5.25, 2, null)], noShawarma, prices);
 check("quarter sold (5.25 − 2 = 3.25 → 260)", q2.total === 260, String(q2.total));
+
+// Zomato/Swiggy: flat 30% off platform sales before comparing (Daily Closing only).
+const atMenu = revenueAtMenuPrices(5000, 1300, 700); // cash/UPI 3000 + Zomato 1300 + Swiggy 700
+check("aggregator 30% off: 1300+700 → 1400, markup 600", atMenu.markupRemoved === 600 && atMenu.comparable === 4400, JSON.stringify(atMenu));
+check("no aggregator sales: unchanged", revenueAtMenuPrices(3000, 0, 0).comparable === 3000);
 
 // Price snapshot: a day keeps the price it was saved with.
 const snap = computeEstimatedSales([{ ...row("tikka", "Tikka", 10, 0, null), unitPrice: 90 }], noShawarma, prices);

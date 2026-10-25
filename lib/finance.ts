@@ -889,6 +889,23 @@ export function expectedOpeningFromPrevious(previousStock: DailyClosingStockEntr
   return expected;
 }
 
+/**
+ * Zomato/Swiggy sales are priced above DAJAJ's own menu, so Daily Closing's
+ * stock check takes a flat AGGREGATOR_MARKUP_PCT off them (₹1,300 → ₹910)
+ * before comparing with the stock-based estimate, which uses menu prices.
+ * A flat percentage off, as decided by the owner — not ÷ 1.30. Display-only:
+ * never used for revenue, the ledger, P&L or Reports.
+ */
+export const AGGREGATOR_MARKUP_PCT = 30;
+
+/** Revenue with Zomato/Swiggy sales reduced by a flat AGGREGATOR_MARKUP_PCT (platform sales × 0.70). */
+export function revenueAtMenuPrices(totalRevenue: number, zomatoSales: number, swiggySales: number): { comparable: number; markupRemoved: number } {
+  const platform = (zomatoSales || 0) + (swiggySales || 0);
+  const atMenu = roundCurrency(platform * (1 - AGGREGATOR_MARKUP_PCT / 100));
+  const markupRemoved = roundCurrency(platform - atMenu);
+  return { comparable: roundCurrency(totalRevenue - markupRemoved), markupRemoved };
+}
+
 /** Rows whose Opening differs from the expected chain value and have no reason yet. */
 export function unexplainedStockMismatches(
   stock: DailyClosingStockEntry[],

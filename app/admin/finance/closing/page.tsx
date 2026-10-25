@@ -798,6 +798,8 @@ function FinanceClosingContent() {
                 locked={locked}
                 isAdmin={role === "admin"}
                 totalRevenue={totalRevenue}
+                zomatoSales={previewSales.zomato}
+                swiggySales={previewSales.swiggy}
                 refreshKey={stockRefreshKey}
                 sectionNumber={6}
               />
