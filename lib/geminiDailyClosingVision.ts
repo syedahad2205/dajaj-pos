@@ -30,7 +30,10 @@ import {
 // ─────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
-const REQUEST_TIMEOUT_MS = 25_000;
+// The sheet reading returns a lot (expenses, closing line, Juice Lab, stock
+// table, shawarmas), so it needs more time than the single-field readers.
+// Must stay below the read-image route's maxDuration (60 s).
+const REQUEST_TIMEOUT_MS = 55_000;
 
 export class GeminiUnavailableError extends Error {
   constructor(message: string) {

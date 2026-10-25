@@ -4,6 +4,9 @@ import { financeErrorResponse } from "@/lib/financeApiError";
 import { analyzeDailyClosingImage } from "@/services/dailyClosingImageService";
 
 export const dynamic = "force-dynamic";
+// The AI read can take a while for a full sheet; give the function room so the
+// host never cuts it off before lib/geminiDailyClosingVision.ts's own 55 s limit.
+export const maxDuration = 60;
 
 /**
  * Stateless analysis only — never touches fin_daily_closing or any other

@@ -81,13 +81,45 @@ async function readJson(response: Response) {
   return payload;
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
+function readFileAsDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(new Error("Couldn't read this file."));
     reader.readAsDataURL(file);
   });
+}
+
+/** Longest side sent to the AI. Plenty for handwriting; keeps uploads small and the AI fast. */
+const MAX_UPLOAD_EDGE = 2000;
+
+/**
+ * Downscales a phone photo to MAX_UPLOAD_EDGE px (JPEG) before upload. A raw
+ * 4–8 MB photo is slow to upload and slow for the AI to read — and big ones
+ * can exceed the hosting upload limit. Small images pass through unchanged;
+ * any failure falls back to the original file.
+ */
+async function prepareImageForUpload(file: File): Promise<{ dataUrl: string; mimeType: string }> {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, MAX_UPLOAD_EDGE / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size <= 1_500_000) {
+      bitmap.close();
+      return { dataUrl: await readFileAsDataUrl(file), mimeType: file.type };
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no canvas");
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    if (!blob) throw new Error("encode failed");
+    return { dataUrl: await readFileAsDataUrl(blob), mimeType: "image/jpeg" };
+  } catch {
+    return { dataUrl: await readFileAsDataUrl(file), mimeType: file.type };
+  }
 }
 
 export interface ReadClosingFromImageModalProps {
@@ -154,12 +186,12 @@ export default function ReadClosingFromImageModal({
     setAnalyzeError("");
     setAiWarning("");
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const { dataUrl, mimeType } = await prepareImageForUpload(file);
       const payload = await readJson(
         await firebaseAuthedFetch("/api/finance/closing/read-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imageBase64: dataUrl, mimeType: file.type }),
+          body: JSON.stringify({ imageBase64: dataUrl, mimeType }),
         }),
       );
 
